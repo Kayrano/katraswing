@@ -5,7 +5,7 @@ Computes all technical indicators and detects chart patterns.
 
 import pandas as pd
 import numpy as np
-import pandas_ta as ta
+import utils.ta_compat as ta
 from models.report import IndicatorBundle
 
 

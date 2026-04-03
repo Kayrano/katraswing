@@ -7,7 +7,7 @@ import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
-import pandas_ta as ta
+import utils.ta_compat as ta
 from models.report import ReportData, MTFResult
 from utils.formatting import fmt_price, fmt_pct, fmt_market_cap, score_color, direction_color
 
