@@ -88,7 +88,18 @@ class CanSlimAgent:
             if q4 == 0:
                 raise ValueError("prior year quarter is zero")
 
-            growth = (q0 - q4) / abs(q4) * 100
+            # Handle sign changes: turnarounds (loss→profit) get a modest score
+            # since percentage growth is mathematically undefined/misleading
+            if q4 < 0 and q0 > 0:
+                # Loss to profit: encouraging but not yet proven — modest score
+                score, label = 55, "Weak"
+                detail = "Quarterly net income: turned profitable (loss → profit)"
+                return CanSlimLetterScore("C", "Current Earnings", score, label, detail)
+            elif q4 < 0 and q0 < 0:
+                # Both negative: measure improvement (less negative = better)
+                growth = (abs(q4) - abs(q0)) / abs(q4) * 100
+            else:
+                growth = (q0 - q4) / abs(q4) * 100
 
             if growth >= 40:
                 score, label = 95, "Strong"
@@ -131,10 +142,17 @@ class CanSlimAgent:
             values = [float(v) for v in ni.iloc[:4]]
             growths = []
             for i in range(len(values) - 1):
-                prev = values[i + 1]
+                curr, prev = values[i], values[i + 1]
                 if prev == 0:
                     continue
-                growths.append((values[i] - prev) / abs(prev) * 100)
+                if prev < 0 and curr > 0:
+                    # Turnaround year: treat as 0% growth (can't calculate meaningfully)
+                    growths.append(0.0)
+                elif prev < 0 and curr < 0:
+                    # Both negative: improvement if curr is less negative
+                    growths.append((abs(prev) - abs(curr)) / abs(prev) * 100)
+                else:
+                    growths.append((curr - prev) / abs(prev) * 100)
 
             if not growths:
                 raise ValueError("cannot compute growth")

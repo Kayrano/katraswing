@@ -81,13 +81,14 @@ class AnalyzerAgent:
 
         # ── Pattern Detection ─────────────────────────────────────────────────
         # Golden / Death Cross: EMA20 vs EMA50 crossover in last 5 bars
+        # Align by date index before comparing to avoid misalignment after dropna()
         golden_cross = False
         death_cross = False
         if ema20_s is not None and ema50_s is not None:
-            ema20_arr = ema20_s.dropna().values
-            ema50_arr = ema50_s.dropna().values
-            min_len = min(len(ema20_arr), len(ema50_arr))
-            if min_len >= 6:
+            aligned = pd.concat([ema20_s, ema50_s], axis=1).dropna()
+            if len(aligned) >= 6:
+                ema20_arr = aligned.iloc[:, 0].values
+                ema50_arr = aligned.iloc[:, 1].values
                 for i in range(-5, 0):
                     above = ema20_arr[i] > ema50_arr[i]
                     below_prev = ema20_arr[i - 1] <= ema50_arr[i - 1]

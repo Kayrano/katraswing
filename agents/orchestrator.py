@@ -137,13 +137,13 @@ def _build_mtf(
         agreement = False
         direction = "MIXED"
 
-    combined = round(daily_score * 0.60 + weekly_score * 0.40, 1)
-
-    # Agreement bonus: when both timeframes agree closely, add confidence boost
-    if agreement and abs(daily_score - weekly_score) < 10:
-        bonus = 5.0 if direction == "BULLISH" else -5.0
-        combined = max(0.0, min(100.0, combined + bonus))
-        combined = round(combined, 1)
+    # Weight weekly more heavily when both timeframes agree (max 65/35 → 60/40 default)
+    # Agreement is already captured by the blend; no additive bonus to avoid double-counting
+    if agreement:
+        combined = round(daily_score * 0.65 + weekly_score * 0.35, 1)
+    else:
+        combined = round(daily_score * 0.60 + weekly_score * 0.40, 1)
+    combined = max(0.0, min(100.0, combined))
 
     return MTFResult(
         daily_score=daily_score,

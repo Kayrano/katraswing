@@ -48,7 +48,7 @@ def macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> p
 
 def bbands(close: pd.Series, length: int = 20, std: float = 2.0) -> pd.DataFrame:
     mid = close.rolling(length).mean()
-    stddev = close.rolling(length).std(ddof=0)
+    stddev = close.rolling(length).std(ddof=1)
     upper = mid + std * stddev
     lower = mid - std * stddev
     # Column order matches pandas_ta: BBL, BBM, BBU  (iloc 0,1,2)

@@ -125,15 +125,20 @@ class StatisticianAgent:
     def _score_trend(self, ind: IndicatorBundle) -> float:
         close = ind.close if ind.close > 0 else ind.ema20
         points = 0
+        max_points = 2
+
         if close > ind.ema20:
             points += 1
         if ind.ema20 > ind.ema50:
             points += 1
-        if ind.sma200 is not None and close > ind.sma200:
-            points += 1
-            return (points / 3) * 10
-        # If no SMA200 data, score out of 2
-        return (points / 2) * 10
+
+        # SMA200 adds a third criterion only when data is available
+        if ind.sma200 is not None:
+            max_points = 3
+            if close > ind.sma200:
+                points += 1
+
+        return (points / max_points) * 10
 
     def _score_volume(self, ind: IndicatorBundle) -> float:
         if ind.volume_sma20 == 0:

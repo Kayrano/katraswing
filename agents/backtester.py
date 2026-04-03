@@ -48,10 +48,10 @@ class BacktestResult:
     profit_factor: float
     trades: list[BacktestTrade] = field(default_factory=list)
     equity_curve: list[float] = field(default_factory=list)
-    score_threshold: float = 65.0
+    score_threshold: float = 50.0
 
 
-ATR_STOP_MULT   = 1.5
+ATR_STOP_MULT   = 2.0   # 2.0× ATR — research-backed for swing trades (1.5× is for day trades)
 REWARD_MULT     = 2.0
 MAX_BARS        = 20        # Force-exit after 20 bars if neither SL nor TP hit
 
@@ -59,7 +59,7 @@ MAX_BARS        = 20        # Force-exit after 20 bars if neither SL nor TP hit
 def run_backtest(
     ticker: str,
     period: str = "2y",
-    score_threshold: float = 65.0,
+    score_threshold: float = 50.0,
     short_threshold: float = 35.0,
 ) -> BacktestResult:
     """

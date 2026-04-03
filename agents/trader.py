@@ -14,7 +14,7 @@ class TraderAgent:
     Uses ATR-based stop loss placement and enforces 1:2 R:R on every trade.
     """
 
-    ATR_STOP_MULTIPLIER = 1.5   # Stop is 1.5 × ATR from entry
+    ATR_STOP_MULTIPLIER = 2.0   # Stop is 2.0 × ATR from entry (research-backed for swing trades)
     REWARD_MULTIPLIER   = 2.0   # Take profit is 2× the risk (1:2 R:R)
 
     def compute_trade_setup(
