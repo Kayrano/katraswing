@@ -405,7 +405,7 @@ def render_mtf_panel(report: ReportData) -> None:
         <div style="background:#1a1a2e; padding:16px; border-radius:10px;
                     border:1px solid {w_color}; text-align:center;">
             <div style="color:#888; font-size:12px; margin-bottom:4px;">WEEKLY SCORE</div>
-            <div style="font-size:32px; font-weight:700; color:{w_color};">{mtf.weekly_score:.0f if mtf.weekly_score > 0 else "—"}</div>
+            <div style="font-size:32px; font-weight:700; color:{w_color};">{f"{mtf.weekly_score:.0f}" if mtf.weekly_score > 0 else "—"}</div>
             <div style="color:{w_color}; font-size:13px; margin-top:4px;">{w_label}</div>
         </div>
         """, unsafe_allow_html=True)
