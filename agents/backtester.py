@@ -67,12 +67,41 @@ def run_backtest(
     Enters LONG when score >= score_threshold, SHORT when score <= short_threshold.
     """
     # ── Fetch data ────────────────────────────────────────────────────────────
-    df = yf.Ticker(ticker).history(period=period, interval="1d", auto_adjust=True)
-    df = df[["Open", "High", "Low", "Close", "Volume"]].dropna()
+    try:
+        raw = yf.Ticker(ticker).history(period=period, interval="1d", auto_adjust=True)
+    except Exception as e:
+        raise ValueError(f"Failed to fetch data for '{ticker}': {e}")
+
+    if raw.empty:
+        raise ValueError(
+            f"No data returned for '{ticker}'. "
+            "Check the ticker symbol (e.g. 'AAPL', 'TSLA') and try again."
+        )
+
+    # yfinance >=0.2.50 sometimes returns multi-level columns -- flatten them
+    if isinstance(raw.columns, pd.MultiIndex):
+        raw.columns = raw.columns.get_level_values(0)
+
+    cols_needed = ["Open", "High", "Low", "Close", "Volume"]
+    missing_cols = [c for c in cols_needed if c not in raw.columns]
+    if missing_cols:
+        raise ValueError(
+            f"Unexpected columns from yfinance for '{ticker}': {list(raw.columns)}. "
+            f"Missing: {missing_cols}"
+        )
+
+    df = raw[cols_needed].dropna()
+
+    # Strip timezone so downstream date comparisons are consistent
     df.index = pd.to_datetime(df.index)
+    if df.index.tz is not None:
+        df.index = df.index.tz_localize(None)
 
     if len(df) < 120:
-        raise ValueError(f"Not enough data for backtest (got {len(df)} bars, need 120+).")
+        raise ValueError(
+            f"Not enough data for backtest (got {len(df)} bars, need 120+). "
+            f"Try a longer period or verify '{ticker}' is a valid equity symbol."
+        )
 
     # ── Compute all indicators on full series (causal — no look-ahead bias) ──
     scores = _compute_scores_series(df)
