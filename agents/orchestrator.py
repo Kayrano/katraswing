@@ -39,20 +39,29 @@ def run_analysis(query: str) -> ReportData:
     indicators   = analyzer.analyze(df)
     score_result = statistician.score(indicators)
 
-    # ── Phase 3: Trade setup ──────────────────────────────────────────────────
-    trade_setup = trader.compute_trade_setup(df, indicators, score_result.total_score)
-
-    # ── Phase 4: Multi-timeframe analysis (weekly) ────────────────────────────
-    mtf = _run_mtf(ticker, score_result.total_score, analyzer, statistician)
-
-    # ── Phase 5: CAN SLIM analysis ────────────────────────────────────────────
+    # ── Phase 3: CAN SLIM analysis (before trade setup so we can blend) ───────
     try:
         from agents.canslim_agent import CanSlimAgent
         canslim = CanSlimAgent().analyze(ticker, df)
     except Exception:
         canslim = None
 
-    # ── Phase 6: Assemble report ──────────────────────────────────────────────
+    # ── Phase 4: Blend technical score with CAN SLIM (80/20) ─────────────────
+    if canslim is not None:
+        blended = round(0.80 * score_result.total_score + 0.20 * canslim.overall_score, 1)
+        blended = max(0.0, min(100.0, blended))
+        score_result.total_score   = blended
+        score_result.signal_label  = statistician._label(blended)
+        score_result.win_probability = round(statistician._win_probability(blended), 3)
+        score_result.expected_value  = round(statistician._expected_value(score_result.win_probability), 2)
+
+    # ── Phase 5: Trade setup (uses blended score for direction) ───────────────
+    trade_setup = trader.compute_trade_setup(df, indicators, score_result.total_score)
+
+    # ── Phase 6: Multi-timeframe analysis (weekly) ────────────────────────────
+    mtf = _run_mtf(ticker, score_result.total_score, analyzer, statistician)
+
+    # ── Phase 7: Assemble report ──────────────────────────────────────────────
     return ReportData(
         ticker=ticker,
         company_name=company_name,
@@ -129,6 +138,12 @@ def _build_mtf(
         direction = "MIXED"
 
     combined = round(daily_score * 0.60 + weekly_score * 0.40, 1)
+
+    # Agreement bonus: when both timeframes agree closely, add confidence boost
+    if agreement and abs(daily_score - weekly_score) < 10:
+        bonus = 5.0 if direction == "BULLISH" else -5.0
+        combined = max(0.0, min(100.0, combined + bonus))
+        combined = round(combined, 1)
 
     return MTFResult(
         daily_score=daily_score,

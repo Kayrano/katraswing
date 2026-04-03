@@ -44,13 +44,38 @@ def render_header(report: ReportData) -> None:
     """, unsafe_allow_html=True)
 
 
+def _plot_colors() -> dict:
+    """Return Plotly bg/font colors based on current theme."""
+    light = st.session_state.get("light_theme", False)
+    if light:
+        return {
+            "paper_bgcolor": "#f0f2f6",
+            "plot_bgcolor":  "#ffffff",
+            "font_color":    "#1a1a2e",
+            "grid_color":    "#d0d4e0",
+            "panel_bg":      "#e8eaf2",
+            "panel_border":  "#b0b8d0",
+            "text_muted":    "#555555",
+        }
+    return {
+        "paper_bgcolor": "#0d0d1a",
+        "plot_bgcolor":  "#111122",
+        "font_color":    "#e0e0e0",
+        "grid_color":    "#1e1e2e",
+        "panel_bg":      "#1a1a2e",
+        "panel_border":  "#2d2d4e",
+        "text_muted":    "#aaaaaa",
+    }
+
+
 def render_score_panel(report: ReportData) -> None:
-    """Trade score gauge and signal label."""
+    """Trade score gauge, signal label, and component mini bar chart."""
     score = report.score.total_score
     label = report.score.signal_label
     win_prob = report.score.win_probability
     ev = report.score.expected_value
     color = score_color(score)
+    th = _plot_colors()
 
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
@@ -59,7 +84,7 @@ def render_score_panel(report: ReportData) -> None:
         gauge={
             "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": "#555"},
             "bar": {"color": color, "thickness": 0.3},
-            "bgcolor": "#1a1a2e",
+            "bgcolor": th["panel_bg"],
             "borderwidth": 2,
             "bordercolor": "#333",
             "steps": [
@@ -76,27 +101,57 @@ def render_score_panel(report: ReportData) -> None:
                 "value": score,
             },
         },
-        title={"text": "TRADE SCORE", "font": {"size": 14, "color": "#aaaaaa"}},
+        title={"text": "TRADE SCORE", "font": {"size": 14, "color": th["text_muted"]}},
     ))
     fig.update_layout(
-        paper_bgcolor="#0d0d1a",
+        paper_bgcolor=th["paper_bgcolor"],
         height=250,
         margin=dict(t=40, b=10, l=20, r=20),
     )
     st.plotly_chart(fig, width="stretch")
 
     st.markdown(f"""
-    <div style="text-align:center; background:#1a1a2e; padding:12px; border-radius:8px;
+    <div style="text-align:center; background:{th['panel_bg']}; padding:12px; border-radius:8px;
                 border:1px solid {color}; margin-top:-10px;">
         <span style="font-size:22px; font-weight:700; color:{color};">{label}</span>
         <br/>
-        <span style="color:#aaaaaa; font-size:13px;">
-            Win Probability: <b style="color:#e0e0e0;">{win_prob*100:.1f}%</b>
+        <span style="color:{th['text_muted']}; font-size:13px;">
+            Win Probability: <b style="color:{th['font_color']};">{win_prob*100:.1f}%</b>
             &nbsp;&nbsp;|&nbsp;&nbsp;
             EV per $100 risked: <b style="color:{'#00c851' if ev>0 else '#ff4444'};">${ev:+.2f}</b>
         </span>
     </div>
     """, unsafe_allow_html=True)
+
+    # ── Component mini bar chart ──────────────────────────────────────────────
+    cs = report.score.component_scores
+    comp_names  = ["RSI", "MACD", "Bollinger", "Trend", "Volume", "ATR", "Stoch", "Pattern"]
+    comp_vals   = [cs.rsi, cs.macd, cs.bollinger, cs.trend,
+                   cs.volume, cs.atr_momentum, cs.stochastic, cs.pattern]
+    comp_weights = [15, 15, 10, 20, 10, 10, 10, 10]
+    comp_colors  = [score_color(v * 10) for v in comp_vals]
+    comp_labels  = [f"{v:.1f} ({w}%)" for v, w in zip(comp_vals, comp_weights)]
+
+    fig2 = go.Figure(go.Bar(
+        x=comp_vals,
+        y=comp_names,
+        orientation="h",
+        marker_color=comp_colors,
+        text=comp_labels,
+        textposition="outside",
+        textfont=dict(size=10, color=th["text_muted"]),
+    ))
+    fig2.update_layout(
+        title=dict(text="Component Scores (0–10)", font=dict(size=12, color=th["text_muted"])),
+        paper_bgcolor=th["paper_bgcolor"],
+        plot_bgcolor=th["plot_bgcolor"],
+        font=dict(color=th["font_color"], size=11),
+        xaxis=dict(range=[0, 13], gridcolor=th["grid_color"], showgrid=True, zeroline=False),
+        yaxis=dict(gridcolor=th["grid_color"]),
+        height=240,
+        margin=dict(t=30, b=10, l=10, r=80),
+    )
+    st.plotly_chart(fig2, width="stretch")
 
 
 def render_trade_setup(report: ReportData) -> None:
@@ -163,7 +218,7 @@ def render_trade_setup(report: ReportData) -> None:
 def render_candlestick_chart(report: ReportData) -> None:
     """Candlestick chart with Bollinger Bands and EMAs overlay."""
     df = report.last_90 if hasattr(report, 'last_90') else report.df.iloc[-90:]
-    ind = report.indicators
+    th = _plot_colors()
 
     fig = make_subplots(rows=1, cols=1)
 
@@ -200,8 +255,9 @@ def render_candlestick_chart(report: ReportData) -> None:
 
     # Trade levels (only if trade exists)
     ts = report.trade_setup
+    entry_line_color = "#333333" if st.session_state.get("light_theme") else "#ffffff"
     if ts.direction != "NO TRADE":
-        fig.add_hline(y=ts.entry, line_color="#ffffff", line_width=1.5, line_dash="dot",
+        fig.add_hline(y=ts.entry, line_color=entry_line_color, line_width=1.5, line_dash="dot",
                       annotation_text=f"Entry {fmt_price(ts.entry)}", annotation_position="right")
         fig.add_hline(y=ts.stop_loss, line_color="#ff4444", line_width=1.5, line_dash="dash",
                       annotation_text=f"SL {fmt_price(ts.stop_loss)}", annotation_position="right")
@@ -210,12 +266,12 @@ def render_candlestick_chart(report: ReportData) -> None:
 
     fig.update_layout(
         title=f"{report.ticker} — Price Chart (90 days)",
-        paper_bgcolor="#0d0d1a",
-        plot_bgcolor="#111122",
-        font=dict(color="#e0e0e0"),
-        xaxis=dict(gridcolor="#1e1e2e", showgrid=True),
-        yaxis=dict(gridcolor="#1e1e2e", showgrid=True),
-        legend=dict(bgcolor="#1a1a2e", bordercolor="#333"),
+        paper_bgcolor=th["paper_bgcolor"],
+        plot_bgcolor=th["plot_bgcolor"],
+        font=dict(color=th["font_color"]),
+        xaxis=dict(gridcolor=th["grid_color"], showgrid=True),
+        yaxis=dict(gridcolor=th["grid_color"], showgrid=True),
+        legend=dict(bgcolor=th["panel_bg"], bordercolor="#333"),
         height=450,
         margin=dict(t=40, b=20, l=10, r=80),
         xaxis_rangeslider_visible=False,
@@ -226,6 +282,7 @@ def render_candlestick_chart(report: ReportData) -> None:
 def render_macd_chart(report: ReportData) -> None:
     """MACD chart."""
     df = report.df.iloc[-90:]
+    th = _plot_colors()
     macd_df = ta.macd(df["Close"], fast=12, slow=26, signal=9)
     if macd_df is None or macd_df.empty:
         return
@@ -247,14 +304,14 @@ def render_macd_chart(report: ReportData) -> None:
 
     fig.update_layout(
         title="MACD (12, 26, 9)",
-        paper_bgcolor="#0d0d1a",
-        plot_bgcolor="#111122",
-        font=dict(color="#e0e0e0"),
-        xaxis=dict(gridcolor="#1e1e2e"),
-        yaxis=dict(gridcolor="#1e1e2e"),
+        paper_bgcolor=th["paper_bgcolor"],
+        plot_bgcolor=th["plot_bgcolor"],
+        font=dict(color=th["font_color"]),
+        xaxis=dict(gridcolor=th["grid_color"]),
+        yaxis=dict(gridcolor=th["grid_color"]),
         height=220,
         margin=dict(t=40, b=20, l=10, r=10),
-        legend=dict(bgcolor="#1a1a2e"),
+        legend=dict(bgcolor=th["panel_bg"]),
     )
     st.plotly_chart(fig, width="stretch")
 
@@ -262,6 +319,7 @@ def render_macd_chart(report: ReportData) -> None:
 def render_rsi_chart(report: ReportData) -> None:
     """RSI chart with overbought/oversold zones."""
     df = report.df.iloc[-90:]
+    th = _plot_colors()
     rsi = ta.rsi(df["Close"], length=14)
     if rsi is None or rsi.empty:
         return
@@ -278,11 +336,11 @@ def render_rsi_chart(report: ReportData) -> None:
 
     fig.update_layout(
         title="RSI (14)",
-        paper_bgcolor="#0d0d1a",
-        plot_bgcolor="#111122",
-        font=dict(color="#e0e0e0"),
-        xaxis=dict(gridcolor="#1e1e2e"),
-        yaxis=dict(gridcolor="#1e1e2e", range=[0, 100]),
+        paper_bgcolor=th["paper_bgcolor"],
+        plot_bgcolor=th["plot_bgcolor"],
+        font=dict(color=th["font_color"]),
+        xaxis=dict(gridcolor=th["grid_color"]),
+        yaxis=dict(gridcolor=th["grid_color"], range=[0, 100]),
         height=200,
         margin=dict(t=40, b=20, l=10, r=10),
     )
@@ -302,16 +360,17 @@ def render_volume_chart(report: ReportData) -> None:
     fig.add_trace(go.Scatter(x=df.index, y=vol_sma, name="Vol SMA20",
                               line=dict(color="#ffbb33", width=1.5)))
 
+    th = _plot_colors()
     fig.update_layout(
         title="Volume",
-        paper_bgcolor="#0d0d1a",
-        plot_bgcolor="#111122",
-        font=dict(color="#e0e0e0"),
-        xaxis=dict(gridcolor="#1e1e2e"),
-        yaxis=dict(gridcolor="#1e1e2e"),
+        paper_bgcolor=th["paper_bgcolor"],
+        plot_bgcolor=th["plot_bgcolor"],
+        font=dict(color=th["font_color"]),
+        xaxis=dict(gridcolor=th["grid_color"]),
+        yaxis=dict(gridcolor=th["grid_color"]),
         height=200,
         margin=dict(t=40, b=20, l=10, r=10),
-        legend=dict(bgcolor="#1a1a2e"),
+        legend=dict(bgcolor=th["panel_bg"]),
     )
     st.plotly_chart(fig, width="stretch")
 
@@ -502,13 +561,14 @@ def render_backtest_results(result) -> None:
             fillcolor="rgba(68,136,255,0.08)",
             name="Equity %",
         ))
+        th = _plot_colors()
         fig.add_hline(y=0, line_color="#555", line_width=1)
         fig.update_layout(
             title="Equity Curve (%)",
-            paper_bgcolor="#0d0d1a", plot_bgcolor="#111122",
-            font=dict(color="#e0e0e0"),
-            xaxis=dict(gridcolor="#1e1e2e", title="Bar"),
-            yaxis=dict(gridcolor="#1e1e2e", title="Return %"),
+            paper_bgcolor=th["paper_bgcolor"], plot_bgcolor=th["plot_bgcolor"],
+            font=dict(color=th["font_color"]),
+            xaxis=dict(gridcolor=th["grid_color"], title="Bar"),
+            yaxis=dict(gridcolor=th["grid_color"], title="Return %"),
             height=280, margin=dict(t=40, b=20, l=10, r=10),
         )
         st.plotly_chart(fig, width="stretch")
@@ -714,13 +774,14 @@ def render_sector_heatmap(scan_results: dict, sector_avgs: list[dict]) -> None:
         text=[f"{s:.1f}" for s in scores_sorted],
         textposition="outside",
     ))
+    th = _plot_colors()
     fig.add_vline(x=50, line_color="#555", line_width=1, line_dash="dash")
     fig.update_layout(
         title="Average Trade Score by Sector",
-        paper_bgcolor="#0d0d1a", plot_bgcolor="#111122",
-        font=dict(color="#e0e0e0"),
-        xaxis=dict(range=[0, 100], gridcolor="#1e1e2e"),
-        yaxis=dict(gridcolor="#1e1e2e"),
+        paper_bgcolor=th["paper_bgcolor"], plot_bgcolor=th["plot_bgcolor"],
+        font=dict(color=th["font_color"]),
+        xaxis=dict(range=[0, 100], gridcolor=th["grid_color"]),
+        yaxis=dict(gridcolor=th["grid_color"]),
         height=380, margin=dict(t=40, b=20, l=20, r=60),
     )
     st.plotly_chart(fig, width="stretch")
@@ -923,9 +984,14 @@ def render_comparison(reports: list) -> None:
     # ── Radar chart — component score comparison ──────────────────────────────
     st.markdown("---")
     st.markdown("#### Component Score Comparison")
+    st.caption("Scores are 0–10 per component. Higher = more bullish signal for that indicator.")
 
-    categories = ["RSI", "MACD", "Bollinger", "Trend", "Volume", "ATR", "Stochastic", "Pattern"]
-    palette    = ["#4488ff", "#00c851", "#ffbb33"]
+    th = _plot_colors()
+    categories = [
+        "RSI (15%)", "MACD (15%)", "Bollinger (10%)", "Trend (20%)",
+        "Volume (10%)", "ATR (10%)", "Stochastic (10%)", "Pattern (10%)",
+    ]
+    palette = ["#4488ff", "#00c851", "#ffbb33"]
 
     fig = go.Figure()
     for i, r in enumerate(reports):
@@ -945,15 +1011,15 @@ def render_comparison(reports: list) -> None:
 
     fig.update_layout(
         polar=dict(
-            radialaxis=dict(visible=True, range=[0, 10], color="#888",
-                            gridcolor="#2d2d4e", linecolor="#2d2d4e"),
-            angularaxis=dict(color="#aaa"),
-            bgcolor="#111122",
+            radialaxis=dict(visible=True, range=[0, 10], color=th["text_muted"],
+                            gridcolor=th["panel_border"], linecolor=th["panel_border"]),
+            angularaxis=dict(color=th["text_muted"]),
+            bgcolor=th["plot_bgcolor"],
         ),
-        paper_bgcolor="#0d0d1a",
-        font=dict(color="#e0e0e0"),
+        paper_bgcolor=th["paper_bgcolor"],
+        font=dict(color=th["font_color"]),
         showlegend=True,
-        legend=dict(bgcolor="#1a1a2e", bordercolor="#333"),
+        legend=dict(bgcolor=th["panel_bg"], bordercolor="#333"),
         height=400,
         margin=dict(t=20, b=20, l=40, r=40),
     )

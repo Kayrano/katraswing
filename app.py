@@ -88,6 +88,33 @@ with tab_analyzer:
     report = st.session_state.get("last_report")
 
     if report:
+        # ── Sidebar sticky summary ────────────────────────────────────────────
+        from utils.formatting import score_color, direction_color
+        _sc = score_color(report.score.total_score)
+        _dc = direction_color(report.trade_setup.direction)
+        _mtf_dir = report.mtf.agreement_direction if report.mtf else "—"
+        _mtf_score = f"{report.mtf.combined_score:.0f}" if report.mtf else "—"
+        with st.sidebar:
+            st.markdown(f"""
+            <div style="padding:10px; border-radius:10px; background:#1a1a2e;
+                        border:1px solid {_sc}; margin-bottom:10px;">
+                <div style="font-size:16px; font-weight:700; color:#e0e0e0;">{report.ticker}</div>
+                <div style="font-size:11px; color:#888; margin-bottom:6px;">{report.company_name[:24]}</div>
+                <div style="font-size:28px; font-weight:700; color:{_sc};">{report.score.total_score:.0f}</div>
+                <div style="font-size:12px; color:{_sc};">{report.score.signal_label}</div>
+                <div style="margin-top:6px; font-size:13px; font-weight:700; color:{_dc};">
+                    {report.trade_setup.direction}
+                </div>
+                <div style="margin-top:4px; font-size:11px; color:#888;">
+                    Win: {report.score.win_probability*100:.1f}%
+                    &nbsp;|&nbsp; EV: ${report.score.expected_value:+.2f}
+                </div>
+                <div style="margin-top:4px; font-size:11px; color:#888;">
+                    MTF: {_mtf_dir} &nbsp;({_mtf_score})
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
         st.markdown("---")
         render_header(report)
 
@@ -203,14 +230,15 @@ with tab_watchlist:
                         "entry":      r.trade_setup.entry,
                         "stop_loss":  r.trade_setup.stop_loss,
                         "take_profit":r.trade_setup.take_profit,
-                        "win_prob":   f"{r.score.win_probability*100:.1f}%",
+                        "win_prob":   r.score.win_probability,
+                        "ev":         r.score.expected_value,
                         "mtf":        r.mtf.agreement_direction if r.mtf else "—",
                     })
                 except Exception as e:
                     results.append({"ticker": t, "company": "Error", "price": 0,
                                     "chg_pct": 0, "score": 0, "signal": str(e)[:30],
                                     "direction": "—", "entry": 0, "stop_loss": 0,
-                                    "take_profit": 0, "win_prob": "—", "mtf": "—"})
+                                    "take_profit": 0, "win_prob": 0.0, "ev": 0.0, "mtf": "—"})
             progress.empty()
             st.session_state["wl_results"] = results
 
@@ -228,15 +256,19 @@ with tab_watchlist:
                 chg   = float(row["chg_pct"])
                 chg_col = "#00c851" if chg >= 0 else "#ff4444"
                 arrow   = "▲" if chg >= 0 else "▼"
+                wp = float(row["win_prob"]) * 100
+                ev = float(row["ev"])
+                ev_col = "#00c851" if ev >= 0 else "#ff4444"
 
-                c1, c2, c3, c4, c5, c6, c7 = st.columns([1.5, 2, 1.2, 1.2, 1, 1.5, 0.6])
+                c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.5, 2, 1.2, 1.2, 1, 1.2, 1.2, 0.6])
                 c1.markdown(f"<b style='color:#e0e0e0;'>{row['ticker']}</b>", unsafe_allow_html=True)
                 c2.markdown(f"<span style='color:#888; font-size:12px;'>{row['company']}</span>", unsafe_allow_html=True)
                 c3.markdown(f"<span style='color:#e0e0e0;'>{fmt_price(row['price'])}</span> <span style='color:{chg_col}; font-size:11px;'>{arrow}{abs(chg):.1f}%</span>", unsafe_allow_html=True)
                 c4.markdown(f"<span style='color:{color}; font-weight:700; font-size:18px;'>{s:.0f}</span>", unsafe_allow_html=True)
                 c5.markdown(f"<span style='color:{color}; font-size:11px;'>{row['signal']}</span>", unsafe_allow_html=True)
-                c6.markdown(f"<span style='color:#888; font-size:11px;'>MTF: {row['mtf']}</span>", unsafe_allow_html=True)
-                if c7.button("✕", key=f"rm_{row['ticker']}"):
+                c6.markdown(f"<span style='color:#e0e0e0; font-size:12px;'>{wp:.1f}%</span> <span style='color:#666; font-size:10px;'>win</span>", unsafe_allow_html=True)
+                c7.markdown(f"<span style='color:{ev_col}; font-size:12px;'>${ev:+.1f}</span> <span style='color:#666; font-size:10px;'>EV</span>", unsafe_allow_html=True)
+                if c8.button("✕", key=f"rm_{row['ticker']}"):
                     remove_ticker(row["ticker"])
                     st.session_state.pop("wl_results", None)
                     st.rerun()

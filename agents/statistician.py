@@ -123,7 +123,7 @@ class StatisticianAgent:
         return 1.0
 
     def _score_trend(self, ind: IndicatorBundle) -> float:
-        close = ind.ema20  # close approximation
+        close = ind.close if ind.close > 0 else ind.ema20
         points = 0
         if close > ind.ema20:
             points += 1
@@ -171,7 +171,7 @@ class StatisticianAgent:
         return 2.5
 
     def _score_pattern(self, ind: IndicatorBundle) -> float:
-        score = 5.0
+        score = 3.5  # pessimistic baseline — no detected pattern = no edge
         if ind.golden_cross:     score += 2.0
         if ind.death_cross:      score -= 2.0
         if ind.above_200_sma:    score += 1.0
@@ -192,12 +192,13 @@ class StatisticianAgent:
 
     def _win_probability(self, score: float) -> float:
         """
-        Logistic transformation: maps 0-100 score to 20%-80% win probability.
+        Logistic transformation: maps 0-100 score to 15%-85% win probability.
         Score=50 → ~45% (realistic swing trade base rate).
+        Steeper slope (-3.0) gives more differentiation in the 40-70 range.
         """
         x = (score - 50) / 25.0
-        raw = 1 / (1 + math.exp(-2.0 * x))
-        return 0.20 + (raw * 0.60)
+        raw = 1 / (1 + math.exp(-3.0 * x))
+        return 0.15 + (raw * 0.70)
 
     def _expected_value(self, win_prob: float) -> float:
         """

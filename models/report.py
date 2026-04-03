@@ -27,6 +27,8 @@ class IndicatorBundle:
     bb_squeeze: bool
     volume_spike: bool
     above_200_sma: bool
+    # Actual closing price (for trend scoring)
+    close: float = 0.0
     # Previous values for direction detection
     macd_histogram_prev: float = 0.0
     stoch_k_prev: float = 50.0

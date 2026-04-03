@@ -257,7 +257,9 @@ class CanSlimAgent:
                 raise ValueError("no inst data")
             inst_pct_display = inst_pct * 100
 
-            if inst_pct >= 0.50:
+            if inst_pct >= 0.70:
+                score, label = 90, "Strong"
+            elif inst_pct >= 0.50:
                 score, label = 75, "Pass"
             elif inst_pct >= 0.30:
                 score, label = 60, "Weak"

@@ -139,6 +139,7 @@ class AnalyzerAgent:
             bb_squeeze=bb_squeeze,
             volume_spike=volume_spike,
             above_200_sma=above_200_sma,
+            close=safe_float(close),
             macd_histogram_prev=safe_float(macd_histogram_prev),
             stoch_k_prev=safe_float(stoch_k_prev, 50.0),
             atr_5d_ago=safe_float(atr_5d_ago),
