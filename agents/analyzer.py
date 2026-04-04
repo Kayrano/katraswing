@@ -62,6 +62,12 @@ class AnalyzerAgent:
             atr = float(df["Close"].iloc[-1]) * 0.02
             atr_5d_ago = atr
 
+        # ── VWAP(20) — rolling daily ─────────────────────────────────────────
+        vwap_s = ta.vwap(df["High"], df["Low"], df["Close"], df["Volume"], length=20)
+        vwap_val = float(vwap_s.iloc[-1]) if vwap_s is not None and not vwap_s.isna().all() else 0.0
+        if np.isnan(vwap_val):
+            vwap_val = 0.0
+
         # ── ADX(14) ──────────────────────────────────────────────────────────
         adx_s = ta.adx(df["High"], df["Low"], df["Close"], length=14)
         adx_val = float(adx_s.iloc[-1]) if adx_s is not None and not adx_s.isna().all() else 0.0
@@ -190,4 +196,5 @@ class AnalyzerAgent:
             rsi_divergence_bullish=rsi_divergence_bullish,
             volatility_percentile=volatility_percentile,
             adx=adx_val,
+            vwap=vwap_val,
         )

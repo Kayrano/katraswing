@@ -38,6 +38,7 @@ class IndicatorBundle:
     rsi_divergence_bullish: bool = False  # price lower low + RSI higher low
     volatility_percentile: float = 50.0  # ATR rank vs its own 252-bar history (0-100)
     adx: float = 0.0                     # Average Directional Index (14) — trend strength
+    vwap: float = 0.0                    # Rolling 20-day VWAP
 
 
 @dataclass

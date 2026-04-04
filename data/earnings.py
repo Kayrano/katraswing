@@ -110,6 +110,85 @@ def get_earnings_risk(ticker: str) -> dict:
     return result
 
 
+def get_earnings_history(ticker: str, price_df=None, n: int = 6) -> list[dict]:
+    """
+    Returns last n historical earnings events with EPS beat/miss and 1-day price reaction.
+    Each item: { date, eps_estimate, eps_actual, surprise_pct, beat, price_reaction_pct }
+    """
+    import pandas as pd
+    import numpy as np
+
+    results = []
+    try:
+        t = yf.Ticker(ticker)
+        ed = t.earnings_dates
+        if ed is None or ed.empty:
+            return []
+
+        today = pd.Timestamp.now(tz="UTC")
+        past = ed[ed.index < today].copy()
+        if past.empty:
+            return []
+
+        past = past.sort_index(ascending=False).head(n)
+
+        # Fetch price history for reaction calc if not provided
+        if price_df is None:
+            try:
+                raw = t.history(period="2y", interval="1d", auto_adjust=True)
+                price_df = raw[["Close"]].dropna() if not raw.empty else None
+                if price_df is not None and price_df.index.tz is not None:
+                    price_df.index = price_df.index.tz_localize(None)
+            except Exception:
+                price_df = None
+        else:
+            price_df = price_df[["Close"]].copy()
+            if hasattr(price_df.index, "tz") and price_df.index.tz is not None:
+                price_df.index = price_df.index.tz_localize(None)
+
+        for ts, row in past.iterrows():
+            eps_est = row.get("EPS Estimate")
+            eps_act = row.get("Reported EPS")
+            surprise = row.get("Surprise(%)")
+
+            def _f(v):
+                try:
+                    f = float(v)
+                    return None if np.isnan(f) else f
+                except Exception:
+                    return None
+
+            eps_est   = _f(eps_est)
+            eps_act   = _f(eps_act)
+            surprise  = _f(surprise)
+            beat      = (eps_act > eps_est) if (eps_act is not None and eps_est is not None) else None
+
+            # 1-day price reaction: prev close → day-of close
+            reaction = None
+            if price_df is not None:
+                earn_date = ts.tz_localize(None).normalize() if ts.tzinfo else ts.normalize()
+                idx = price_df.index.searchsorted(earn_date)
+                if 0 < idx < len(price_df):
+                    c_after  = float(price_df["Close"].iloc[idx])
+                    c_before = float(price_df["Close"].iloc[idx - 1])
+                    if c_before > 0:
+                        reaction = round((c_after - c_before) / c_before * 100, 2)
+
+            results.append({
+                "date":               ts.strftime("%b %d '%y") if hasattr(ts, "strftime") else str(ts)[:10],
+                "eps_estimate":       eps_est,
+                "eps_actual":         eps_act,
+                "surprise_pct":       surprise,
+                "beat":               beat,
+                "price_reaction_pct": reaction,
+            })
+
+    except Exception:
+        pass
+
+    return results
+
+
 def get_news(ticker: str, max_items: int = 5) -> list[dict]:
     """
     Returns recent news headlines for the ticker.

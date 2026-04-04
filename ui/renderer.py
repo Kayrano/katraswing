@@ -324,6 +324,15 @@ def render_candlestick_chart(report: ReportData) -> None:
         fig.add_trace(go.Scatter(x=df.index, y=ema50, name="EMA50",
                                   line=dict(color="#ff8800", width=1.5)))
 
+    # VWAP (20-day rolling)
+    vwap_s = ta.vwap(df["High"], df["Low"], df["Close"], df["Volume"], length=20)
+    if vwap_s is not None and not vwap_s.isna().all():
+        fig.add_trace(go.Scatter(
+            x=df.index, y=vwap_s, name="VWAP(20)",
+            line=dict(color="#cc88ff", width=1.5, dash="dot"),
+            opacity=0.85,
+        ))
+
     # Support / Resistance zones
     price_now = float(df["Close"].iloc[-1])
     sr_levels = _find_sr_levels(df)
@@ -720,6 +729,98 @@ def render_earnings_risk(ticker: str) -> None:
                     f"<span style='color:#555; font-size:11px;'>{pub}{date}</span>",
                     unsafe_allow_html=True,
                 )
+
+
+def render_earnings_history(report) -> None:
+    """Historical earnings reactions: EPS beat/miss + 1-day price move."""
+    from data.earnings import get_earnings_history
+
+    history = get_earnings_history(report.ticker, price_df=report.df)
+    if not history:
+        return
+
+    beats  = [h for h in history if h["beat"] is True]
+    misses = [h for h in history if h["beat"] is False]
+    beat_rate = len(beats) / len(history) * 100 if history else 0
+
+    reactions = [h["price_reaction_pct"] for h in history if h["price_reaction_pct"] is not None]
+    avg_move   = sum(abs(r) for r in reactions) / len(reactions) if reactions else None
+
+    st.markdown("#### Earnings History")
+
+    # Summary KPIs
+    k1, k2, k3 = st.columns(3)
+    k1.markdown(f"""
+    <div style="background:#1a1a2e; padding:10px; border-radius:8px; text-align:center;">
+        <div style="color:#666; font-size:11px;">BEAT RATE</div>
+        <div style="font-size:20px; font-weight:700;
+                    color:{'#00c851' if beat_rate >= 60 else '#ffbb33' if beat_rate >= 40 else '#ff4444'};">
+            {beat_rate:.0f}%
+        </div>
+        <div style="color:#555; font-size:10px;">last {len(history)} qtrs</div>
+    </div>""", unsafe_allow_html=True)
+
+    k2.markdown(f"""
+    <div style="background:#1a1a2e; padding:10px; border-radius:8px; text-align:center;">
+        <div style="color:#666; font-size:11px;">AVG MOVE</div>
+        <div style="font-size:20px; font-weight:700; color:#e0e0e0;">
+            {"±" + f"{avg_move:.1f}%" if avg_move is not None else "N/A"}
+        </div>
+        <div style="color:#555; font-size:10px;">day of earnings</div>
+    </div>""", unsafe_allow_html=True)
+
+    avg_beat_r  = sum(h["price_reaction_pct"] for h in beats  if h["price_reaction_pct"] is not None)
+    avg_miss_r  = sum(h["price_reaction_pct"] for h in misses if h["price_reaction_pct"] is not None)
+    n_beat_r    = sum(1 for h in beats  if h["price_reaction_pct"] is not None)
+    n_miss_r    = sum(1 for h in misses if h["price_reaction_pct"] is not None)
+    beat_avg_s  = f"{avg_beat_r/n_beat_r:+.1f}%" if n_beat_r else "N/A"
+    miss_avg_s  = f"{avg_miss_r/n_miss_r:+.1f}%" if n_miss_r else "N/A"
+
+    k3.markdown(f"""
+    <div style="background:#1a1a2e; padding:10px; border-radius:8px; text-align:center;">
+        <div style="color:#666; font-size:11px;">BEAT / MISS REACTION</div>
+        <div style="font-size:14px; font-weight:700; color:#00c851;">Beat: {beat_avg_s}</div>
+        <div style="font-size:14px; font-weight:700; color:#ff4444;">Miss: {miss_avg_s}</div>
+    </div>""", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+
+    # Per-quarter rows
+    for h in history:
+        beat_val = h["beat"]
+        if beat_val is True:
+            badge_color, badge_text = "#00c851", "BEAT"
+        elif beat_val is False:
+            badge_color, badge_text = "#ff4444", "MISS"
+        else:
+            badge_color, badge_text = "#888888", "N/A"
+
+        react = h["price_reaction_pct"]
+        if react is not None:
+            r_color = "#00c851" if react >= 0 else "#ff4444"
+            react_s = f"{react:+.1f}%"
+        else:
+            r_color, react_s = "#888888", "—"
+
+        eps_e = f"{h['eps_estimate']:+.2f}" if h["eps_estimate"] is not None else "—"
+        eps_a = f"{h['eps_actual']:+.2f}"   if h["eps_actual"]   is not None else "—"
+        surp  = f"{h['surprise_pct']:+.1f}%" if h["surprise_pct"] is not None else ""
+
+        st.markdown(f"""
+        <div style="display:flex; align-items:center; gap:16px; padding:5px 0;
+                    border-bottom:1px solid #1e1e2e; font-size:13px; color:#e0e0e0;">
+            <span style="min-width:70px; color:#888;">{h['date']}</span>
+            <span style="min-width:44px; font-weight:700; color:{badge_color};
+                         background:{badge_color}22; border-radius:4px; padding:1px 6px;
+                         font-size:11px;">{badge_text}</span>
+            <span style="min-width:120px; color:#aaa;">
+                Est: <b style="color:#e0e0e0;">{eps_e}</b>
+                &nbsp;Act: <b style="color:#e0e0e0;">{eps_a}</b>
+                <span style="color:#666; font-size:11px;">{surp}</span>
+            </span>
+            <span style="color:{r_color}; font-weight:700;">{react_s}</span>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 # ── Position Sizing Renderer ──────────────────────────────────────────────────

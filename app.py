@@ -58,8 +58,8 @@ with tab_analyzer:
         render_header, render_score_panel, render_trade_setup,
         render_candlestick_chart, render_macd_chart, render_rsi_chart,
         render_volume_chart, render_indicator_breakdown, render_mtf_panel,
-        render_earnings_risk, render_position_sizing, render_chart_patterns,
-        render_export_buttons, render_filter_notes,
+        render_earnings_risk, render_earnings_history, render_position_sizing,
+        render_chart_patterns, render_export_buttons, render_filter_notes,
     )
 
     col_input, col_btn = st.columns([4, 1])
@@ -153,6 +153,7 @@ with tab_analyzer:
 
         st.markdown("---")
         render_earnings_risk(report.ticker)
+        render_earnings_history(report)
 
         st.markdown("---")
         ts = report.trade_setup

@@ -78,6 +78,20 @@ def obv(close: pd.Series, volume: pd.Series) -> pd.Series:
     return result
 
 
+def vwap(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    length: int = 20,
+) -> pd.Series:
+    """Rolling VWAP over `length` bars — suitable for daily swing-trade charts."""
+    typical = (high + low + close) / 3
+    result = (typical * volume).rolling(length).sum() / volume.rolling(length).sum()
+    result.name = f"VWAP_{length}"
+    return result
+
+
 def adx(
     high: pd.Series,
     low: pd.Series,
