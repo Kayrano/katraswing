@@ -110,10 +110,26 @@ def render_score_panel(report: ReportData) -> None:
     )
     st.plotly_chart(fig, width="stretch")
 
+    regime = getattr(report.score, "regime", "NEUTRAL")
+    regime_colors = {
+        "TRENDING":      ("#00c851", "#0a2e18"),
+        "CONSOLIDATING": ("#f0a500", "#2e2200"),
+        "EXTENDED":      ("#ff8800", "#2e1800"),
+        "VOLATILE":      ("#ff4444", "#2e0808"),
+        "NEUTRAL":       ("#888888", "#1e1e1e"),
+    }
+    reg_fg, reg_bg = regime_colors.get(regime, ("#888888", "#1e1e1e"))
+
     st.markdown(f"""
     <div style="text-align:center; background:{th['panel_bg']}; padding:12px; border-radius:8px;
                 border:1px solid {color}; margin-top:-10px;">
         <span style="font-size:22px; font-weight:700; color:{color};">{label}</span>
+        &nbsp;
+        <span style="font-size:11px; font-weight:700; color:{reg_fg};
+                     background:{reg_bg}; border:1px solid {reg_fg};
+                     border-radius:4px; padding:2px 7px; vertical-align:middle;">
+            {regime}
+        </span>
         <br/>
         <span style="color:{th['text_muted']}; font-size:13px;">
             Win Probability: <b style="color:{th['font_color']};">{win_prob*100:.1f}%</b>
@@ -1151,3 +1167,24 @@ def render_canslim_panel(report: ReportData) -> None:
         "</div>",
         unsafe_allow_html=True,
     )
+
+
+def render_filter_notes(report: ReportData) -> None:
+    """Show macro filter warnings (SPY, VIX, earnings) if any were triggered."""
+    notes = getattr(report, "filter_notes", [])
+    if not notes:
+        return
+
+    rows = "".join(
+        f"<div style='padding:4px 0; border-bottom:1px solid #2d1800; font-size:13px;'>"
+        f"⚠ {note}</div>"
+        for note in notes
+    )
+    st.markdown(f"""
+    <div style="background:#1e1000; border:1px solid #f0a500; border-radius:8px;
+                padding:12px 16px; margin-top:12px;">
+        <div style="font-size:12px; font-weight:700; color:#f0a500;
+                    margin-bottom:6px; letter-spacing:0.5px;">MACRO FILTERS APPLIED</div>
+        <div style="color:#e0c080;">{rows}</div>
+    </div>
+    """, unsafe_allow_html=True)

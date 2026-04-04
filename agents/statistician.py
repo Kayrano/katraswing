@@ -55,13 +55,35 @@ class StatisticianAgent:
         win_prob = self._win_probability(total_score)
         ev = self._expected_value(win_prob)
 
+        regime = self._classify_regime(indicators)
+
         return ScoreResult(
             total_score=total_score,
             signal_label=signal_label,
             component_scores=components,
             win_probability=round(win_prob, 3),
             expected_value=round(ev, 2),
+            regime=regime,
         )
+
+    def _classify_regime(self, ind: IndicatorBundle) -> str:
+        """Classify the current market regime from indicator state."""
+        # EXTENDED: RSI in extreme territory
+        if ind.rsi > 72 or ind.rsi < 28:
+            return "EXTENDED"
+        # CONSOLIDATING: Bollinger squeeze or ATR clearly contracting
+        atr_contracting = (ind.atr_5d_ago > 0 and ind.atr < ind.atr_5d_ago * 0.85)
+        if ind.bb_squeeze or atr_contracting:
+            return "CONSOLIDATING"
+        # TRENDING: EMAs aligned AND ATR expanding
+        atr_expanding = (ind.atr_5d_ago > 0 and ind.atr > ind.atr_5d_ago * 1.05)
+        ema_diverged = (ind.ema20 != ind.ema50)
+        if ema_diverged and atr_expanding:
+            return "TRENDING"
+        # VOLATILE: ATR spiking without a clear trend
+        if ind.atr_5d_ago > 0 and ind.atr > ind.atr_5d_ago * 1.20:
+            return "VOLATILE"
+        return "NEUTRAL"
 
     # ── Sub-scorers (each returns 0.0 – 10.0) ────────────────────────────────
 

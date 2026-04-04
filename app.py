@@ -1,4 +1,4 @@
-"""
+﻿"""
 KATRASWING — Swing Trade Analyzer
 Main Streamlit entry point with 4 tabs:
   1. Analyzer        — single-stock analysis + MTF
@@ -59,7 +59,7 @@ with tab_analyzer:
         render_candlestick_chart, render_macd_chart, render_rsi_chart,
         render_volume_chart, render_indicator_breakdown, render_mtf_panel,
         render_earnings_risk, render_position_sizing, render_chart_patterns,
-        render_export_buttons,
+        render_export_buttons, render_filter_notes,
     )
 
     col_input, col_btn = st.columns([4, 1])
@@ -124,6 +124,8 @@ with tab_analyzer:
         with col_trade:
             st.markdown("### Trade Setup")
             render_trade_setup(report)
+
+        render_filter_notes(report)
 
         st.markdown("---")
         render_mtf_panel(report)

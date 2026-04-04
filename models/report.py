@@ -71,6 +71,7 @@ class ScoreResult:
     component_scores: ComponentScores
     win_probability: float
     expected_value: float
+    regime: str = "NEUTRAL"   # TRENDING | CONSOLIDATING | EXTENDED | VOLATILE | NEUTRAL
 
 
 @dataclass
