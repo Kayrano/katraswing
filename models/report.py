@@ -34,6 +34,8 @@ class IndicatorBundle:
     stoch_k_prev: float = 50.0
     atr_5d_ago: float = 0.0
     obv_10d_ago: float = 0.0    # OBV 10 days ago — used for trend direction
+    rsi_divergence_bearish: bool = False  # price higher high + RSI lower high
+    rsi_divergence_bullish: bool = False  # price lower low + RSI higher low
 
 
 @dataclass
@@ -116,3 +118,4 @@ class ReportData:
     mtf: Optional[MTFResult] = None
     canslim: Optional[CanSlimResult] = None
     generated_at: datetime = field(default_factory=datetime.now)
+    filter_notes: list = field(default_factory=list)

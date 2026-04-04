@@ -188,6 +188,9 @@ class StatisticianAgent:
         if ind.obv_10d_ago != 0:
             if ind.obv > ind.obv_10d_ago:   score += 0.5
             elif ind.obv < ind.obv_10d_ago: score -= 0.5
+        # RSI divergence: price/momentum disagreement signals reversal
+        if ind.rsi_divergence_bullish:  score += 1.5
+        if ind.rsi_divergence_bearish:  score -= 1.5
         return max(0.0, min(10.0, score))
 
     # ── Helpers ───────────────────────────────────────────────────────────────

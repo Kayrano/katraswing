@@ -111,6 +111,28 @@ class AnalyzerAgent:
         close = float(df["Close"].iloc[-1])
         above_200_sma = (sma200 is not None) and (close > sma200)
 
+        # ── RSI Divergence (last 20 bars) ───────────────────────────────────────
+        rsi_divergence_bearish = False
+        rsi_divergence_bullish = False
+        if rsi_series is not None:
+            div_df = pd.concat([df["Close"], rsi_series], axis=1).dropna()
+            div_df.columns = ["close", "rsi"]
+            if len(div_df) >= 20:
+                rec = div_df.iloc[-10:]
+                old_half = div_df.iloc[-20:-10]
+                # Bearish: price higher high, RSI lower high
+                rec_hi = rec["close"].idxmax()
+                old_hi = old_half["close"].idxmax()
+                if (rec.loc[rec_hi, "close"] > old_half.loc[old_hi, "close"] and
+                        rec.loc[rec_hi, "rsi"] < old_half.loc[old_hi, "rsi"] - 2):
+                    rsi_divergence_bearish = True
+                # Bullish: price lower low, RSI higher low
+                rec_lo = rec["close"].idxmin()
+                old_lo = old_half["close"].idxmin()
+                if (rec.loc[rec_lo, "close"] < old_half.loc[old_lo, "close"] and
+                        rec.loc[rec_lo, "rsi"] > old_half.loc[old_lo, "rsi"] + 2):
+                    rsi_divergence_bullish = True
+
         # Handle NaN values safely
         def safe_float(val, default=0.0):
             try:
@@ -146,4 +168,6 @@ class AnalyzerAgent:
             stoch_k_prev=safe_float(stoch_k_prev, 50.0),
             atr_5d_ago=safe_float(atr_5d_ago),
             obv_10d_ago=safe_float(obv_10d_ago),
+            rsi_divergence_bearish=rsi_divergence_bearish,
+            rsi_divergence_bullish=rsi_divergence_bullish,
         )

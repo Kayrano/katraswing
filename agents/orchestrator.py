@@ -55,13 +55,21 @@ def run_analysis(query: str) -> ReportData:
         score_result.win_probability = round(statistician._win_probability(blended), 3)
         score_result.expected_value  = round(statistician._expected_value(score_result.win_probability), 2)
 
-    # ── Phase 5: Trade setup (uses blended score for direction) ───────────────
+    # ── Phase 5: Macro regime + earnings proximity filters ───────────────
+    filtered_score, filter_notes = _apply_macro_filters(ticker, score_result.total_score)
+    if filtered_score != score_result.total_score:
+        score_result.total_score     = round(filtered_score, 1)
+        score_result.signal_label    = statistician._label(filtered_score)
+        score_result.win_probability = round(statistician._win_probability(filtered_score), 3)
+        score_result.expected_value  = round(statistician._expected_value(score_result.win_probability), 2)
+
+    # ── Phase 6: Trade setup (uses filtered score for direction) ────────────
     trade_setup = trader.compute_trade_setup(df, indicators, score_result.total_score)
 
-    # ── Phase 6: Multi-timeframe analysis (weekly) ────────────────────────────
+    # ── Phase 7: Multi-timeframe analysis (weekly) ────────────────────
     mtf = _run_mtf(ticker, score_result.total_score, analyzer, statistician)
 
-    # ── Phase 7: Assemble report ──────────────────────────────────────────────
+    # ── Phase 8: Assemble report ───────────────────────────────
     return ReportData(
         ticker=ticker,
         company_name=company_name,
@@ -75,6 +83,7 @@ def run_analysis(query: str) -> ReportData:
         score=score_result,
         mtf=mtf,
         canslim=canslim,
+        filter_notes=filter_notes,
     )
 
 
@@ -155,3 +164,85 @@ def _build_mtf(
         combined_score=combined,
         weekly_indicators=weekly_ind,
     )
+
+def _apply_macro_filters(ticker: str, score: float) -> tuple:
+    """
+    Apply macro regime and earnings proximity filters to the combined score.
+    All external fetches are wrapped in try/except; failures are silent.
+    """
+    notes = []
+    is_long = score >= 50
+
+    # SPY 200-day SMA: suppress LONG signals in a bear market
+    try:
+        spy_s = yf.Ticker("SPY").history(period="1y", interval="1d", auto_adjust=True)["Close"]
+        if len(spy_s) >= 200:
+            spy_sma200 = float(spy_s.rolling(200).mean().iloc[-1])
+            spy_close  = float(spy_s.iloc[-1])
+            if spy_close < spy_sma200 and is_long:
+                score = max(35.0, score - 10.0)
+                notes.append(
+                    f"SPY {spy_close:.0f} < 200 SMA {spy_sma200:.0f} — bearish macro, LONG score −10"
+                )
+    except Exception:
+        pass
+
+    # VIX dynamic filter: elevated volatility vs its own 20-day MA
+    try:
+        vix_s = yf.Ticker("^VIX").history(period="3mo", interval="1d", auto_adjust=True)["Close"]
+        if len(vix_s) >= 20:
+            vix_ma20 = float(vix_s.rolling(20).mean().iloc[-1])
+            vix_cur  = float(vix_s.iloc[-1])
+            if vix_cur > vix_ma20 and is_long:
+                score = max(0.0, score - 5.0)
+                notes.append(
+                    f"VIX {vix_cur:.1f} > 20-day MA {vix_ma20:.1f} — elevated volatility, LONG score −5"
+                )
+    except Exception:
+        pass
+
+    # Earnings proximity penalty
+    try:
+        from datetime import date as _date
+        t = yf.Ticker(ticker)
+        earn_date = None
+
+        # Try earnings_dates (newer yfinance)
+        try:
+            edates = t.earnings_dates
+            if edates is not None and not edates.empty:
+                now_utc = pd.Timestamp.now(tz="UTC")
+                future = edates[edates.index >= now_utc]
+                if not future.empty:
+                    earn_date = future.index[-1].date()
+        except Exception:
+            pass
+
+        # Fallback: calendar
+        if earn_date is None:
+            try:
+                cal = t.calendar
+                if cal is not None and isinstance(cal, pd.DataFrame) and not cal.empty:
+                    for col in cal.columns:
+                        try:
+                            d = pd.to_datetime(cal[col].iloc[0]).date()
+                            if d >= _date.today():
+                                earn_date = d
+                                break
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+        if earn_date is not None:
+            days = (earn_date - _date.today()).days
+            if 0 <= days <= 3:
+                score = round(score * 0.70, 1)
+                notes.append(f"Earnings in {days}d — score −30%")
+            elif 4 <= days <= 7:
+                score = round(score * 0.85, 1)
+                notes.append(f"Earnings in {days}d — score −15%")
+    except Exception:
+        pass
+
+    return round(score, 1), notes
