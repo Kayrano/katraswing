@@ -245,6 +245,47 @@ def render_trade_setup(report: ReportData) -> None:
     """, unsafe_allow_html=True)
 
 
+def _find_sr_levels(
+    df: pd.DataFrame,
+    n_swing: int = 5,
+    n_levels: int = 5,
+    tolerance: float = 0.005,
+) -> list:
+    """
+    Find key support/resistance levels from swing highs and lows.
+    Returns up to n_levels price levels, ranked by number of touches.
+    """
+    import numpy as _np
+    highs  = df["High"].values
+    lows   = df["Low"].values
+    levels = []
+
+    for i in range(n_swing, len(df) - n_swing):
+        window_h = highs[i - n_swing : i + n_swing + 1]
+        window_l = lows[i  - n_swing : i + n_swing + 1]
+        if highs[i] == window_h.max():
+            levels.append(highs[i])
+        if lows[i] == window_l.min():
+            levels.append(lows[i])
+
+    if not levels:
+        return []
+
+    levels = sorted(levels)
+    clusters: list = []
+    group = [levels[0]]
+    for lvl in levels[1:]:
+        if lvl <= group[-1] * (1 + tolerance):
+            group.append(lvl)
+        else:
+            clusters.append((_np.mean(group), len(group)))
+            group = [lvl]
+    clusters.append((_np.mean(group), len(group)))
+
+    clusters.sort(key=lambda x: -x[1])
+    return [c[0] for c in clusters[:n_levels]]
+
+
 def render_candlestick_chart(report: ReportData) -> None:
     """Candlestick chart with Bollinger Bands and EMAs overlay."""
     df = report.last_90 if hasattr(report, 'last_90') else report.df.iloc[-90:]
@@ -282,6 +323,20 @@ def render_candlestick_chart(report: ReportData) -> None:
     if ema50 is not None:
         fig.add_trace(go.Scatter(x=df.index, y=ema50, name="EMA50",
                                   line=dict(color="#ff8800", width=1.5)))
+
+    # Support / Resistance zones
+    price_now = float(df["Close"].iloc[-1])
+    sr_levels = _find_sr_levels(df)
+    for lvl in sr_levels:
+        is_support = lvl < price_now
+        lvl_color  = "#44bb88" if is_support else "#bb4466"
+        label      = f"S {fmt_price(lvl)}" if is_support else f"R {fmt_price(lvl)}"
+        fig.add_hline(
+            y=lvl,
+            line_color=lvl_color, line_width=1, line_dash="dot", opacity=0.55,
+            annotation_text=label, annotation_position="left",
+            annotation_font_size=10, annotation_font_color=lvl_color,
+        )
 
     # Trade levels (only if trade exists)
     ts = report.trade_setup

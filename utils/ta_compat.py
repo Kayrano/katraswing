@@ -78,6 +78,44 @@ def obv(close: pd.Series, volume: pd.Series) -> pd.Series:
     return result
 
 
+def adx(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    length: int = 14,
+) -> pd.Series:
+    """Average Directional Index (Wilder smoothing). Returns ADX series (0-100)."""
+    prev_high  = high.shift(1)
+    prev_low   = low.shift(1)
+    prev_close = close.shift(1)
+
+    up_move   = high - prev_high
+    down_move = prev_low - low
+
+    plus_dm  = np.where((up_move > down_move) & (up_move > 0),   up_move,   0.0)
+    minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
+
+    tr = pd.concat([
+        high - low,
+        (high - prev_close).abs(),
+        (low  - prev_close).abs(),
+    ], axis=1).max(axis=1)
+
+    alpha = 1.0 / length
+    atr_s      = tr.ewm(alpha=alpha, min_periods=length, adjust=False).mean()
+    plus_dm_s  = pd.Series(plus_dm,  index=high.index).ewm(alpha=alpha, min_periods=length, adjust=False).mean()
+    minus_dm_s = pd.Series(minus_dm, index=high.index).ewm(alpha=alpha, min_periods=length, adjust=False).mean()
+
+    safe_atr   = atr_s.replace(0, np.nan)
+    plus_di    = 100 * plus_dm_s  / safe_atr
+    minus_di   = 100 * minus_dm_s / safe_atr
+
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
+    adx_line   = dx.ewm(alpha=alpha, min_periods=length, adjust=False).mean()
+    adx_line.name = f"ADX_{length}"
+    return adx_line
+
+
 def stoch(
     high: pd.Series,
     low: pd.Series,

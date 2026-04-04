@@ -160,7 +160,19 @@ class StatisticianAgent:
             if close > ind.sma200:
                 points += 1
 
-        return (points / max_points) * 10
+        base = (points / max_points) * 10
+
+        # ADX modifier: confirms whether EMA alignment reflects a real trend
+        adx = ind.adx
+        if adx >= 30:
+            return min(10.0, base * 1.15)   # strong trend — signals are reliable
+        if adx >= 25:
+            return base                      # trending — no adjustment
+        if adx >= 15:
+            return base * 0.85              # weak trend — reduce conviction
+        if adx > 0:
+            return base * 0.70              # ranging — EMA alignment is noise
+        return base                          # ADX unavailable — no adjustment
 
     def _score_volume(self, ind: IndicatorBundle) -> float:
         if ind.volume_sma20 == 0:
