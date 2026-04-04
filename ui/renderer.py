@@ -17,6 +17,14 @@ def render_header(report: ReportData) -> None:
     change_color = "#00c851" if report.price_change_pct >= 0 else "#ff4444"
     arrow = "▲" if report.price_change_pct >= 0 else "▼"
 
+    vp = getattr(report.indicators, "volatility_percentile", 50.0)
+    if vp >= 80:
+        vp_color, vp_label = "#ff4444", "HIGH VOL"
+    elif vp >= 50:
+        vp_color, vp_label = "#f0a500", "MED VOL"
+    else:
+        vp_color, vp_label = "#00c851", "LOW VOL"
+
     st.markdown(f"""
     <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
                 padding: 20px 24px; border-radius: 12px; margin-bottom: 20px;
@@ -39,6 +47,12 @@ def render_header(report: ReportData) -> None:
             Market Cap: <b style="color:#aaaaaa;">{fmt_market_cap(report.market_cap)}</b>
             &nbsp;&nbsp;|&nbsp;&nbsp;
             Generated: <b style="color:#aaaaaa;">{report.generated_at.strftime('%Y-%m-%d %H:%M')}</b>
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            <span style="font-size:11px; font-weight:700; color:{vp_color};
+                         background:{vp_color}22; border:1px solid {vp_color};
+                         border-radius:4px; padding:2px 7px;">
+                {vp_label} {vp:.0f}th pct
+            </span>
         </div>
     </div>
     """, unsafe_allow_html=True)

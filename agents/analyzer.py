@@ -62,6 +62,18 @@ class AnalyzerAgent:
             atr = float(df["Close"].iloc[-1]) * 0.02
             atr_5d_ago = atr
 
+        # ── ATR Volatility Percentile ─────────────────────────────────────────
+        if atr_s is not None and not atr_s.isna().all():
+            atr_valid = atr_s.dropna()
+            if len(atr_valid) >= 20:
+                volatility_percentile = float(
+                    np.sum(atr_valid <= atr) / len(atr_valid) * 100
+                )
+            else:
+                volatility_percentile = 50.0
+        else:
+            volatility_percentile = 50.0
+
         # ── OBV ──────────────────────────────────────────────────────────────
         obv_s = ta.obv(df["Close"], df["Volume"])
         obv = float(obv_s.iloc[-1]) if obv_s is not None and not obv_s.empty else 0.0
@@ -170,4 +182,5 @@ class AnalyzerAgent:
             obv_10d_ago=safe_float(obv_10d_ago),
             rsi_divergence_bearish=rsi_divergence_bearish,
             rsi_divergence_bullish=rsi_divergence_bullish,
+            volatility_percentile=volatility_percentile,
         )

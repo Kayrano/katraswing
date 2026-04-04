@@ -186,7 +186,7 @@ with tab_analyzer:
 # TAB 2 — WATCHLIST
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_watchlist:
-    from data.watchlist import load_watchlist, add_ticker, remove_ticker
+    from data.watchlist import load_watchlist, add_ticker, remove_ticker, load_scores, save_scores
     from agents.orchestrator import run_analysis as _run
     from utils.formatting import fmt_price, fmt_pct, score_color
 
@@ -215,18 +215,24 @@ with tab_watchlist:
         scan_clicked = st.button("🔄 Scan All", key="wl_scan", type="primary")
 
         if scan_clicked:
+            prev_scores = load_scores()
             results = []
+            new_scores = {}
             progress = st.progress(0, text="Scanning...")
             for idx, t in enumerate(tickers):
                 progress.progress((idx + 1) / len(tickers), text=f"Scanning {t}...")
                 try:
                     r = _run(t)
+                    score = r.score.total_score
+                    new_scores[r.ticker] = score
+                    prev = prev_scores.get(r.ticker)
+                    delta = round(score - prev, 1) if prev is not None else None
                     results.append({
                         "ticker":     r.ticker,
                         "company":    r.company_name[:28],
                         "price":      r.current_price,
                         "chg_pct":    r.price_change_pct,
-                        "score":      r.score.total_score,
+                        "score":      score,
                         "signal":     r.score.signal_label,
                         "direction":  r.trade_setup.direction,
                         "entry":      r.trade_setup.entry,
@@ -235,13 +241,16 @@ with tab_watchlist:
                         "win_prob":   r.score.win_probability,
                         "ev":         r.score.expected_value,
                         "mtf":        r.mtf.agreement_direction if r.mtf else "—",
+                        "delta":      delta,
                     })
                 except Exception as e:
                     results.append({"ticker": t, "company": "Error", "price": 0,
                                     "chg_pct": 0, "score": 0, "signal": str(e)[:30],
                                     "direction": "—", "entry": 0, "stop_loss": 0,
-                                    "take_profit": 0, "win_prob": 0.0, "ev": 0.0, "mtf": "—"})
+                                    "take_profit": 0, "win_prob": 0.0, "ev": 0.0,
+                                    "mtf": "—", "delta": None})
             progress.empty()
+            save_scores(new_scores)
             st.session_state["wl_results"] = results
 
         results = st.session_state.get("wl_results", [])
@@ -266,7 +275,14 @@ with tab_watchlist:
                 c1.markdown(f"<b style='color:#e0e0e0;'>{row['ticker']}</b>", unsafe_allow_html=True)
                 c2.markdown(f"<span style='color:#888; font-size:12px;'>{row['company']}</span>", unsafe_allow_html=True)
                 c3.markdown(f"<span style='color:#e0e0e0;'>{fmt_price(row['price'])}</span> <span style='color:{chg_col}; font-size:11px;'>{arrow}{abs(chg):.1f}%</span>", unsafe_allow_html=True)
-                c4.markdown(f"<span style='color:{color}; font-weight:700; font-size:18px;'>{s:.0f}</span>", unsafe_allow_html=True)
+                delta = row.get("delta")
+                if delta is not None:
+                    d_arrow = "▲" if delta >= 0 else "▼"
+                    d_color = "#00c851" if delta >= 0 else "#ff4444"
+                    delta_html = f"<span style='color:{d_color}; font-size:10px; margin-left:4px;'>{d_arrow}{abs(delta):.1f}</span>"
+                else:
+                    delta_html = ""
+                c4.markdown(f"<span style='color:{color}; font-weight:700; font-size:18px;'>{s:.0f}</span>{delta_html}", unsafe_allow_html=True)
                 c5.markdown(f"<span style='color:{color}; font-size:11px;'>{row['signal']}</span>", unsafe_allow_html=True)
                 c6.markdown(f"<span style='color:#e0e0e0; font-size:12px;'>{wp:.1f}%</span> <span style='color:#666; font-size:10px;'>win</span>", unsafe_allow_html=True)
                 c7.markdown(f"<span style='color:{ev_col}; font-size:12px;'>${ev:+.1f}</span> <span style='color:#666; font-size:10px;'>EV</span>", unsafe_allow_html=True)
