@@ -65,6 +65,7 @@ class AnalyzerAgent:
         # ── OBV ──────────────────────────────────────────────────────────────
         obv_s = ta.obv(df["Close"], df["Volume"])
         obv = float(obv_s.iloc[-1]) if obv_s is not None and not obv_s.empty else 0.0
+        obv_10d_ago = float(obv_s.iloc[-11]) if obv_s is not None and len(obv_s) >= 11 else obv
 
         # ── Stochastic(14, 3) ────────────────────────────────────────────────
         stoch_df = ta.stoch(df["High"], df["Low"], df["Close"], k=14, d=3)
@@ -144,4 +145,5 @@ class AnalyzerAgent:
             macd_histogram_prev=safe_float(macd_histogram_prev),
             stoch_k_prev=safe_float(stoch_k_prev, 50.0),
             atr_5d_ago=safe_float(atr_5d_ago),
+            obv_10d_ago=safe_float(obv_10d_ago),
         )

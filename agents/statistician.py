@@ -144,10 +144,11 @@ class StatisticianAgent:
         if ind.volume_sma20 == 0:
             return 5.0
         ratio = ind.current_volume / ind.volume_sma20
-        if ratio > 2.0:   return 9.0
-        if ratio > 1.5:   return 7.5
-        if ratio > 1.0:   return 5.0
-        if ratio > 0.75:  return 3.5
+        if ratio > 3.0:   return 9.0   # exceptional volume surge
+        if ratio > 2.0:   return 7.5   # strong breakout (research-backed threshold)
+        if ratio > 1.5:   return 5.5   # moderate above-average
+        if ratio > 1.0:   return 4.0
+        if ratio > 0.75:  return 3.0
         return 2.0
 
     def _score_atr(self, ind: IndicatorBundle) -> float:
@@ -183,6 +184,10 @@ class StatisticianAgent:
         else:                    score -= 1.0
         if ind.volume_spike:     score += 1.0
         if ind.bb_squeeze:       score += 0.5
+        # OBV trend: rising OBV = accumulation (+), falling = distribution (-)
+        if ind.obv_10d_ago != 0:
+            if ind.obv > ind.obv_10d_ago:   score += 0.5
+            elif ind.obv < ind.obv_10d_ago: score -= 0.5
         return max(0.0, min(10.0, score))
 
     # ── Helpers ───────────────────────────────────────────────────────────────
@@ -197,13 +202,13 @@ class StatisticianAgent:
 
     def _win_probability(self, score: float) -> float:
         """
-        Logistic transformation: maps 0-100 score to 15%-85% win probability.
-        Score=50 → ~45% (realistic swing trade base rate).
-        Steeper slope (-3.0) gives more differentiation in the 40-70 range.
+        Logistic transformation: maps 0-100 score to 35%-65% win probability.
+        Tighter range is more realistic for swing trades (base rate ~45-55%).
+        Gentler slope (-2.0) avoids over-confident extreme probabilities.
         """
         x = (score - 50) / 25.0
-        raw = 1 / (1 + math.exp(-3.0 * x))
-        return 0.15 + (raw * 0.70)
+        raw = 1 / (1 + math.exp(-2.0 * x))
+        return 0.35 + (raw * 0.30)
 
     def _expected_value(self, win_prob: float) -> float:
         """

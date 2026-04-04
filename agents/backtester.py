@@ -292,6 +292,7 @@ def _compute_scores_series(df: pd.DataFrame) -> list[float]:
         atr        = _safe(atr_s, i, float(df["Close"].iloc[i]) * 0.02)
         atr_5ago   = _safe(atr_s, i - 5, atr) if i >= 5 else atr
         obv        = _safe(obv_s, i, 0.0)
+        obv_10ago  = _safe(obv_s, i - 10, 0.0) if i >= 10 else 0.0
 
         stoch_k    = _safe(stoch_df.iloc[:, 0], i, 50.0) if stoch_df is not None else 50.0
         stoch_d    = _safe(stoch_df.iloc[:, 1], i, 50.0) if stoch_df is not None else 50.0
@@ -323,6 +324,7 @@ def _compute_scores_series(df: pd.DataFrame) -> list[float]:
             macd_histogram=macd_hist, bb_upper=bb_upper, bb_mid=bb_mid,
             bb_lower=bb_lower, ema20=ema20, ema50=ema50, sma200=sma200,
             atr=atr, obv=obv, stoch_k=stoch_k, stoch_d=stoch_d,
+            obv_10d_ago=obv_10ago,
             volume_sma20=v_sma, current_volume=v_cur,
             golden_cross=golden, death_cross=death,
             bb_squeeze=bb_squeeze, volume_spike=vol_spike, above_200_sma=above_200,

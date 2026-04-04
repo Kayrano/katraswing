@@ -33,6 +33,7 @@ class IndicatorBundle:
     macd_histogram_prev: float = 0.0
     stoch_k_prev: float = 50.0
     atr_5d_ago: float = 0.0
+    obv_10d_ago: float = 0.0    # OBV 10 days ago — used for trend direction
 
 
 @dataclass
