@@ -2512,3 +2512,179 @@ def render_institutional_footprint(report: ReportData) -> None:
                     f"{d['move']:+.2f}%</span>",
                     unsafe_allow_html=True,
                 )
+
+
+# ── Sector Rotation Timeline ──────────────────────────────────────────────────
+
+_ROTATION_ETFS = {
+    "Technology":    "XLK",
+    "Healthcare":    "XLV",
+    "Financials":    "XLF",
+    "Cons. Disc.":   "XLY",
+    "Cons. Staples": "XLP",
+    "Energy":        "XLE",
+    "Utilities":     "XLU",
+    "Real Estate":   "XLRE",
+    "Materials":     "XLB",
+    "Industrials":   "XLI",
+    "Comm. Svcs":    "XLC",
+}
+
+
+def render_sector_rotation() -> None:
+    """
+    4-week rolling return heatmap for all 11 GICS sector ETFs.
+    Shows which sectors are gaining/losing momentum week by week.
+    """
+    import yfinance as yf
+    import numpy as np
+
+    th = _plot_colors()
+
+    symbols = list(_ROTATION_ETFS.values())
+    try:
+        raw = yf.download(
+            symbols, period="2mo", interval="1d",
+            auto_adjust=True, progress=False, group_by="ticker",
+        )
+        # Flatten to Close-only DataFrame: index=date, columns=tickers
+        if isinstance(raw.columns, pd.MultiIndex):
+            close_df = raw["Close"] if "Close" in raw.columns.get_level_values(0) else raw.xs("Close", axis=1, level=0)
+        else:
+            close_df = raw[["Close"]].rename(columns={"Close": symbols[0]}) if len(symbols) == 1 else raw
+        close_df = close_df.dropna(how="all")
+    except Exception as e:
+        st.caption(f"Sector rotation data unavailable: {e}")
+        return
+
+    week_windows = {"1W": 5, "2W": 10, "3W": 15, "4W": 20}
+    sectors = list(_ROTATION_ETFS.keys())
+    etfs    = list(_ROTATION_ETFS.values())
+
+    z_vals  = []
+    z_text  = []
+
+    for etf in etfs:
+        col = etf if etf in close_df.columns else None
+        row_z, row_t = [], []
+        for w_label, bars in week_windows.items():
+            if col and len(close_df[col].dropna()) > bars:
+                series = close_df[col].dropna()
+                ret = (series.iloc[-1] / series.iloc[-bars - 1] - 1) * 100
+                row_z.append(round(float(ret), 2))
+                row_t.append(f"{ret:+.2f}%")
+            else:
+                row_z.append(None)
+                row_t.append("N/A")
+        z_vals.append(row_z)
+        z_text.append(row_t)
+
+    # Build heatmap
+    fig = go.Figure(go.Heatmap(
+        z=z_vals,
+        x=list(week_windows.keys()),
+        y=sectors,
+        text=z_text,
+        texttemplate="%{text}",
+        textfont=dict(size=12, color="#ffffff"),
+        colorscale=[
+            [0.0,  "#7b1515"],
+            [0.35, "#c0392b"],
+            [0.48, "#2d2d4e"],
+            [0.52, "#2d2d4e"],
+            [0.65, "#1a6e3a"],
+            [1.0,  "#0a3d1f"],
+        ],
+        zmid=0,
+        showscale=True,
+        colorbar=dict(
+            title="%",
+            thickness=12,
+            tickfont=dict(size=10, color=th["text_muted"]),
+        ),
+    ))
+    fig.update_layout(
+        paper_bgcolor=th["paper_bgcolor"],
+        plot_bgcolor=th["plot_bgcolor"],
+        font=dict(color=th["font_color"], size=12),
+        xaxis=dict(side="top", tickfont=dict(size=12)),
+        yaxis=dict(tickfont=dict(size=12)),
+        height=420,
+        margin=dict(t=30, b=10, l=120, r=60),
+    )
+    st.plotly_chart(fig, width="stretch")
+    st.caption("Returns computed from daily closes. Green = outperforming, Red = underperforming.")
+
+
+# ── Screener Results Renderer ─────────────────────────────────────────────────
+
+def render_screener_results(results: list[dict]) -> None:
+    """Render screener output as a styled, sortable table."""
+    if not results:
+        st.info("No stocks matched the selected filters.")
+        return
+
+    from utils.formatting import score_color, fmt_price
+
+    st.caption(f"{len(results)} stocks matched")
+
+    # Header
+    hc = st.columns([1, 1.2, 1, 1, 0.8, 0.8, 0.8, 0.8, 0.8])
+    for col, label in zip(hc, ["Ticker", "Signal", "Score", "Direction", "RSI", "Vol ×Avg", "Stage 2", "Trend", "1D %"]):
+        col.markdown(f"<span style='font-size:11px; color:#555; font-weight:700;'>{label}</span>", unsafe_allow_html=True)
+
+    st.markdown("<div style='border-bottom:1px solid #2d2d4e; margin:4px 0 8px 0;'></div>", unsafe_allow_html=True)
+
+    for row in results:
+        s = row["score"]
+        color = score_color(s)
+        chg = row["chg_1d"]
+        chg_col = "#00c851" if chg >= 0 else "#ff4444"
+        dir_col = "#00c851" if row["direction"] == "LONG" else "#ff4444" if row["direction"] == "SHORT" else "#888"
+        stage2_txt = "✅" if row["stage2"] else "—"
+        trend_col = "#00c851" if row["ema_trend"] == "UP" else "#ff4444" if row["ema_trend"] == "DOWN" else "#888"
+
+        rc = st.columns([1, 1.2, 1, 1, 0.8, 0.8, 0.8, 0.8, 0.8])
+        rc[0].markdown(f"<b style='color:#e0e0e0;'>{row['ticker']}</b>", unsafe_allow_html=True)
+        rc[1].markdown(f"<span style='color:{color}; font-size:12px;'>{row['signal']}</span>", unsafe_allow_html=True)
+        rc[2].markdown(f"<span style='font-size:18px; font-weight:700; color:{color};'>{s:.0f}</span>", unsafe_allow_html=True)
+        rc[3].markdown(f"<span style='color:{dir_col}; font-weight:700; font-size:13px;'>{row['direction']}</span>", unsafe_allow_html=True)
+        rc[4].markdown(f"<span style='color:#e0e0e0; font-size:13px;'>{row['rsi']:.1f}</span>", unsafe_allow_html=True)
+        rc[5].markdown(f"<span style='color:#e0e0e0; font-size:13px;'>{row['vol_ratio']:.1f}×</span>", unsafe_allow_html=True)
+        rc[6].markdown(f"<span style='font-size:14px;'>{stage2_txt}</span>", unsafe_allow_html=True)
+        rc[7].markdown(f"<span style='color:{trend_col}; font-size:12px;'>{row['ema_trend']}</span>", unsafe_allow_html=True)
+        rc[8].markdown(f"<span style='color:{chg_col}; font-size:13px;'>{chg:+.1f}%</span>", unsafe_allow_html=True)
+        st.markdown("<div style='border-bottom:1px solid #1a1a2e; margin:2px 0;'></div>", unsafe_allow_html=True)
+
+
+# ── Per-ticker Notes ──────────────────────────────────────────────────────────
+
+def render_ticker_notes(report: ReportData) -> None:
+    """Persistent trade notes per ticker — saved to notes.json."""
+    from data.notes import get_note, save_note, delete_note
+
+    ticker = report.ticker
+    existing = get_note(ticker)
+
+    st.markdown("### Trade Notes")
+
+    # Text area pre-filled with saved note
+    note_text = st.text_area(
+        label=f"Notes for {ticker}",
+        value=existing,
+        height=120,
+        placeholder="Trade thesis, key levels, observations, reminders...",
+        label_visibility="collapsed",
+        key=f"note_ta_{ticker}",
+    )
+
+    nc1, nc2 = st.columns([1, 5])
+    with nc1:
+        if st.button("💾 Save Note", key=f"note_save_{ticker}", type="primary"):
+            save_note(ticker, note_text)
+            st.success("Saved.")
+    with nc2:
+        if existing and st.button("🗑 Delete", key=f"note_del_{ticker}"):
+            delete_note(ticker)
+            st.success("Note deleted.")
+            st.rerun()

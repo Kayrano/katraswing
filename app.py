@@ -44,9 +44,9 @@ with toggle_col:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_analyzer, tab_watchlist, tab_alerts, tab_backtest, tab_heatmap, tab_compare = st.tabs([
+tab_analyzer, tab_watchlist, tab_alerts, tab_backtest, tab_heatmap, tab_screener, tab_compare = st.tabs([
     "📊 Analyzer", "👁 Watchlist", "🔔 Price Alerts", "🧪 Backtester",
-    "🌡 Sector Heatmap", "⚖ Compare",
+    "🌡 Sector Heatmap", "🔍 Screener", "⚖ Compare",
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -63,6 +63,7 @@ with tab_analyzer:
         render_radar_chart, render_setup_checklist, render_relative_strength,
         render_ai_narrative, render_valuation_history, render_estimate_revisions,
         render_weinstein_stage, render_institutional_footprint,
+        render_ticker_notes,
     )
 
     col_input, col_btn = st.columns([4, 1])
@@ -186,6 +187,9 @@ with tab_analyzer:
         ts = report.trade_setup
         if ts.direction != "NO TRADE":
             render_position_sizing(ts.entry, ts.stop_loss, ts.take_profit)
+
+        st.markdown("---")
+        render_ticker_notes(report)
 
         st.markdown("---")
         render_export_buttons(report)
@@ -529,9 +533,66 @@ with tab_heatmap:
         </div>
         """, unsafe_allow_html=True)
 
+    # ── Sector Rotation Timeline (always visible — fast ETF fetch) ────────────
+    from ui.renderer import render_sector_rotation
+    st.markdown("---")
+    st.markdown("### Sector Rotation Timeline")
+    st.caption("4-week rolling returns for all 11 sector ETFs — shows where money is flowing.")
+    render_sector_rotation()
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 6 — COMPARE
+# TAB 6 — SCREENER
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_screener:
+    from data.screener import run_screener, PRESETS, SWING_UNIVERSE
+    from ui.renderer import render_screener_results
+
+    st.markdown("### Swing Screener")
+    st.caption(f"Fast scan of {len(SWING_UNIVERSE)} liquid stocks. Uses lightweight TA — for discovery, not full analysis.")
+
+    sc1, sc2, sc3 = st.columns([2, 1, 1])
+    with sc1:
+        preset = st.selectbox(
+            "Filter Preset",
+            options=list(PRESETS.keys()),
+            key="scr_preset",
+            label_visibility="visible",
+        )
+    with sc2:
+        scr_run = st.button("🔍 Run Screener", type="primary", use_container_width=True, key="scr_run")
+    with sc3:
+        st.markdown("<div style='padding-top:28px; font-size:12px; color:#555;'>~5-10 sec scan</div>", unsafe_allow_html=True)
+
+    if scr_run:
+        with st.spinner(f"Scanning {len(SWING_UNIVERSE)} stocks — **{preset}**..."):
+            try:
+                scr_results = run_screener(preset_name=preset)
+                st.session_state["scr_results"] = scr_results
+                st.session_state["scr_preset_used"] = preset
+            except Exception as e:
+                st.error(f"Screener failed: {e}")
+
+    scr_results = st.session_state.get("scr_results")
+    if scr_results is not None:
+        used = st.session_state.get("scr_preset_used", preset)
+        st.markdown(f"#### Results — {used}")
+        render_screener_results(scr_results)
+    else:
+        st.markdown("""
+        <div style="text-align:center; padding:50px 20px; color:#444;">
+            <div style="font-size:48px;">🔍</div>
+            <h3 style="color:#555;">Select a filter preset and click Run Screener</h3>
+            <p style="font-size:13px; max-width:460px; margin:10px auto; color:#444;">
+                Results show score, direction, RSI, volume ratio, Weinstein Stage 2 flag, and 1-day move.
+                Click any ticker in the Analyzer tab for a full deep-dive.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 7 — COMPARE
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_compare:
     from agents.orchestrator import run_analysis as _run_cmp
