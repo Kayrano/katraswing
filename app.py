@@ -44,9 +44,9 @@ with toggle_col:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_analyzer, tab_watchlist, tab_alerts, tab_backtest, tab_heatmap, tab_screener, tab_portfolio, tab_compare = st.tabs([
+tab_analyzer, tab_watchlist, tab_alerts, tab_backtest, tab_heatmap, tab_screener, tab_portfolio, tab_compare, tab_replay = st.tabs([
     "📊 Analyzer", "👁 Watchlist", "🔔 Price Alerts", "🧪 Backtester",
-    "🌡 Sector Heatmap", "🔍 Screener", "💼 Portfolio", "⚖ Compare",
+    "🌡 Sector Heatmap", "🔍 Screener", "💼 Portfolio", "⚖ Compare", "⏪ Replay",
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -683,6 +683,32 @@ with tab_compare:
             <h3 style="color:#555;">Enter 2–3 stocks above and click Compare</h3>
             <p style="font-size:13px; max-width:460px; margin:10px auto; color:#444;">
                 Scores, signals, trade levels, and a radar chart will appear side by side.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 9 — BAR REPLAY
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_replay:
+    from ui.renderer import render_bar_replay
+
+    st.markdown("### Bar Replay Mode")
+    st.caption("Step through history bar-by-bar. Uses the last analyzed stock — run Analyzer first.")
+
+    replay_report = st.session_state.get("last_report")
+
+    if replay_report:
+        render_bar_replay(replay_report)
+    else:
+        st.markdown("""
+        <div style="text-align:center; padding:60px 20px; color:#444;">
+            <div style="font-size:48px;">⏪</div>
+            <h3 style="color:#555;">No analysis loaded yet</h3>
+            <p style="font-size:13px; max-width:460px; margin:10px auto; color:#444;">
+                Go to the Analyzer tab, search for a stock, and click Analyze.
+                Then come back here to replay its price history bar-by-bar.
             </p>
         </div>
         """, unsafe_allow_html=True)

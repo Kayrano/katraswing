@@ -3740,3 +3740,184 @@ def render_multitf_chart(report: ReportData) -> None:
     fig.update_yaxes(gridcolor=th["grid_color"])
 
     st.plotly_chart(fig, width="stretch")
+
+
+# ── Feature 20: Bar Replay Mode ───────────────────────────────────────────────
+
+def render_bar_replay(report: ReportData) -> None:
+    """
+    Step-through historical bar replay.
+    A slider controls which bar is the 'current' bar — everything to the
+    right is hidden, simulating reading the chart in real time.
+    Displays candlestick, SMA20/50/150, EMA20, RSI, MACD, and volume
+    all truncated at the selected bar.
+    """
+    import numpy as np
+
+    df = report.df.copy()
+    n = len(df)
+
+    if n < 60:
+        st.info("Need at least 60 bars for bar replay.")
+        return
+
+    th = _plot_colors()
+
+    st.markdown("### Bar Replay Mode")
+    st.caption(
+        "Drag the slider to step through history bar-by-bar. "
+        "Indicators update to only show data available at that point in time."
+    )
+
+    # ── Slider ───────────────────────────────────────────────────────────────
+    min_bars = 50
+    replay_bar = st.slider(
+        "Current Bar (drag left to go back in time)",
+        min_value=min_bars,
+        max_value=n - 1,
+        value=n - 1,
+        step=1,
+        key=f"replay_{report.ticker}",
+        help="Bar 0 = oldest. Slide left to replay history.",
+    )
+
+    # Truncate to replay_bar + 1 bars
+    plot_df = df.iloc[: replay_bar + 1]
+    close   = plot_df["Close"].astype(float)
+    dates   = list(plot_df.index)
+    current_close = float(close.iloc[-1])
+    current_date  = str(dates[-1])[:10]
+
+    # ── KPIs at current bar ───────────────────────────────────────────────────
+    sma20_val  = float(close.rolling(20).mean().iloc[-1]) if len(close) >= 20 else None
+    sma50_val  = float(close.rolling(50).mean().iloc[-1]) if len(close) >= 50 else None
+    ema20_val  = float(close.ewm(span=20, adjust=False).mean().iloc[-1])
+    rsi_series = ta.rsi(close, 14)
+    rsi_val    = float(rsi_series.iloc[-1]) if rsi_series is not None and len(rsi_series) > 0 else 50.0
+
+    kc = st.columns(5)
+    kc[0].metric("Bar", f"{replay_bar + 1}/{n}", delta=f"{replay_bar - (n-1)} from latest")
+    kc[1].metric("Date", current_date)
+    price_delta = f"{(current_close - float(close.iloc[-2]))/float(close.iloc[-2])*100:+.2f}%" if len(close) > 1 else ""
+    kc[2].metric("Close", f"${current_close:.2f}", delta=price_delta)
+    if sma20_val:
+        vs_sma20 = (current_close - sma20_val) / sma20_val * 100
+        kc[3].metric("vs SMA20", f"${sma20_val:.2f}", delta=f"{vs_sma20:+.1f}%")
+    rsi_color = "#00c851" if rsi_val < 40 else "#ff4444" if rsi_val > 70 else "#f0a500"
+    _pbg = th["panel_bg"]
+    kc[4].markdown(
+        f"<div style='background:{_pbg}; border-radius:8px; padding:8px; text-align:center;'>"
+        f"<div style='font-size:10px; color:#888;'>RSI(14)</div>"
+        f"<div style='font-size:20px; font-weight:700; color:{rsi_color};'>{rsi_val:.1f}</div>"
+        f"</div>", unsafe_allow_html=True,
+    )
+
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+    # ── Main candlestick + overlays ───────────────────────────────────────────
+    fig_main = make_subplots(
+        rows=3, cols=1,
+        shared_xaxes=True,
+        row_heights=[0.60, 0.22, 0.18],
+        vertical_spacing=0.04,
+        subplot_titles=["", "RSI(14)", "Volume"],
+    )
+
+    # Candlestick
+    fig_main.add_trace(go.Candlestick(
+        x=dates,
+        open=plot_df["Open"].astype(float),
+        high=plot_df["High"].astype(float),
+        low=plot_df["Low"].astype(float),
+        close=close,
+        increasing_line_color="#00c851",
+        decreasing_line_color="#ff4444",
+        name="Price",
+        showlegend=False,
+    ), row=1, col=1)
+
+    # SMA/EMA overlays
+    if len(close) >= 20:
+        fig_main.add_trace(go.Scatter(
+            x=dates, y=close.rolling(20).mean(),
+            line=dict(color="#4488ff", width=1.5), name="SMA20",
+        ), row=1, col=1)
+    if len(close) >= 50:
+        fig_main.add_trace(go.Scatter(
+            x=dates, y=close.rolling(50).mean(),
+            line=dict(color="#ffbb33", width=1.5), name="SMA50",
+        ), row=1, col=1)
+    if len(close) >= 150:
+        fig_main.add_trace(go.Scatter(
+            x=dates, y=close.rolling(150).mean(),
+            line=dict(color="#cc88ff", width=1.5, dash="dot"), name="SMA150",
+        ), row=1, col=1)
+
+    ema20 = close.ewm(span=20, adjust=False).mean()
+    fig_main.add_trace(go.Scatter(
+        x=dates, y=ema20,
+        line=dict(color="#00e5ff", width=1, dash="dash"), name="EMA20",
+    ), row=1, col=1)
+
+    # Vertical "now" line at selected bar
+    fig_main.add_vline(
+        x=dates[-1], line_color="#ffffff" if not st.session_state.get("light_theme") else "#000000",
+        line_dash="dash", line_width=1, opacity=0.4,
+    )
+
+    # RSI pane
+    if rsi_series is not None and len(rsi_series) >= len(plot_df):
+        rsi_plot = rsi_series.iloc[: replay_bar + 1]
+        fig_main.add_trace(go.Scatter(
+            x=dates, y=rsi_plot,
+            line=dict(color="#f0a500", width=1.5), name="RSI",
+            showlegend=False,
+        ), row=2, col=1)
+        fig_main.add_hline(y=70, line_color="#ff4444", line_dash="dot", line_width=1, row=2, col=1)
+        fig_main.add_hline(y=30, line_color="#00c851", line_dash="dot", line_width=1, row=2, col=1)
+
+    # Volume pane
+    vol = plot_df["Volume"].astype(float)
+    vol_colors = ["#00c851" if float(plot_df["Close"].iloc[i]) >= float(plot_df["Open"].iloc[i]) else "#ff4444"
+                  for i in range(len(plot_df))]
+    fig_main.add_trace(go.Bar(
+        x=dates, y=vol, marker_color=vol_colors, name="Volume", showlegend=False,
+    ), row=3, col=1)
+
+    fig_main.update_layout(
+        paper_bgcolor=th["paper_bgcolor"],
+        plot_bgcolor=th["plot_bgcolor"],
+        font=dict(color=th["font_color"], size=11),
+        height=580,
+        margin=dict(t=10, b=10, l=20, r=20),
+        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=10), orientation="h", yanchor="bottom", y=1.01),
+        xaxis_rangeslider_visible=False,
+    )
+    fig_main.update_xaxes(gridcolor=th["grid_color"], showgrid=True)
+    fig_main.update_yaxes(gridcolor=th["grid_color"], showgrid=True)
+
+    st.plotly_chart(fig_main, width="stretch")
+
+    # ── MACD below ────────────────────────────────────────────────────────────
+    macd_line, signal_line, macd_hist = ta.macd(close)
+    if macd_line is not None and len(macd_line) > 0:
+        macd_plot  = macd_line.iloc[: replay_bar + 1]
+        sig_plot   = signal_line.iloc[: replay_bar + 1]
+        hist_plot  = macd_hist.iloc[: replay_bar + 1]
+        hist_colors = ["#00c851" if v >= 0 else "#ff4444" for v in hist_plot]
+
+        fig_macd = go.Figure()
+        fig_macd.add_trace(go.Bar(x=dates, y=hist_plot, marker_color=hist_colors, name="Histogram", showlegend=False))
+        fig_macd.add_trace(go.Scatter(x=dates, y=macd_plot, line=dict(color="#4488ff", width=1.5), name="MACD"))
+        fig_macd.add_trace(go.Scatter(x=dates, y=sig_plot, line=dict(color="#ff8800", width=1.5), name="Signal"))
+        fig_macd.add_hline(y=0, line_color="#555", line_width=1)
+        fig_macd.update_layout(
+            paper_bgcolor=th["paper_bgcolor"], plot_bgcolor=th["plot_bgcolor"],
+            font=dict(color=th["font_color"], size=10),
+            height=180, margin=dict(t=10, b=10, l=20, r=20),
+            legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=10), orientation="h"),
+            xaxis=dict(gridcolor=th["grid_color"]),
+            yaxis=dict(gridcolor=th["grid_color"], title="MACD"),
+            title=dict(text="MACD", font=dict(size=11, color=th["text_muted"])),
+        )
+        st.plotly_chart(fig_macd, width="stretch")
