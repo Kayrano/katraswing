@@ -125,7 +125,7 @@ with tab_analyzer:
             </div>
             """, unsafe_allow_html=True)
 
-        # Show score alert banners if any fired this run
+        # Score alert banners
         for _sa in st.session_state.pop("_sa_fired", []):
             _cond = "rose above" if _sa["condition"] == "above" else "fell below"
             st.success(
@@ -134,17 +134,8 @@ with tab_analyzer:
                 + (f"  · {_sa['note']}" if _sa["note"] else "")
             )
 
-        st.markdown("---")
+        # ── Always visible: header + score + trade setup ──────────────────────
         render_header(report)
-
-        # Relative strength vs SPY + sector ETF (just below header)
-        render_relative_strength(report)
-
-        st.markdown("---")
-        render_weinstein_stage(report)
-
-        st.markdown("---")
-        render_weinstein_chart(report)
 
         col_score, col_trade = st.columns([1, 1], gap="medium")
         with col_score:
@@ -155,71 +146,70 @@ with tab_analyzer:
 
         render_filter_notes(report)
 
-        st.markdown("---")
-        render_setup_checklist(report)
+        # ── Section 1: Setup Quality ──────────────────────────────────────────
+        with st.expander("📊 Setup Quality — Relative Strength · Weinstein Stage · Checklist", expanded=True):
+            render_relative_strength(report)
+            st.markdown("---")
+            render_weinstein_stage(report)
+            st.markdown("---")
+            render_weinstein_chart(report)
+            st.markdown("---")
+            render_setup_checklist(report)
 
-        st.markdown("---")
-        render_mtf_panel(report)
+        # ── Section 2: Price Charts ───────────────────────────────────────────
+        with st.expander("📈 Price Charts — Candlestick · MACD · RSI · Volume", expanded=True):
+            render_candlestick_chart(report)
+            col_macd, col_rsi = st.columns(2, gap="medium")
+            with col_macd:
+                render_macd_chart(report)
+            with col_rsi:
+                render_rsi_chart(report)
+            render_volume_chart(report)
 
-        st.markdown("---")
-        render_candlestick_chart(report)
+        # ── Section 3: Technical Analysis ─────────────────────────────────────
+        with st.expander("🔬 Technical Analysis — MTF · Indicators · Radar · Footprint · Patterns", expanded=False):
+            render_mtf_panel(report)
+            st.markdown("---")
+            render_indicator_breakdown(report)
+            st.markdown("---")
+            render_radar_chart(report)
+            st.markdown("---")
+            render_institutional_footprint(report)
+            st.markdown("---")
+            render_chart_patterns(report.df)
 
-        col_macd, col_rsi = st.columns(2, gap="medium")
-        with col_macd:
-            render_macd_chart(report)
-        with col_rsi:
-            render_rsi_chart(report)
+        # ── Section 4: Fundamentals ───────────────────────────────────────────
+        with st.expander("📋 Fundamentals — CAN SLIM · Valuation · Dividend · Peers", expanded=False):
+            from ui.renderer import render_canslim_panel
+            render_canslim_panel(report)
+            st.markdown("---")
+            render_valuation_history(report)
+            st.markdown("---")
+            render_dividend_panel(report)
+            st.markdown("---")
+            render_peer_comparison(report)
 
-        render_volume_chart(report)
+        # ── Section 5: Earnings & Events ──────────────────────────────────────
+        with st.expander("📅 Earnings & Events — Risk · History · Estimate Revisions", expanded=False):
+            render_earnings_risk(report.ticker)
+            render_earnings_history(report)
+            st.markdown("---")
+            render_estimate_revisions(report)
 
-        st.markdown("---")
-        render_institutional_footprint(report)
-
-        st.markdown("---")
-        render_chart_patterns(report.df)
-
-        st.markdown("---")
-        render_indicator_breakdown(report)
-
-        st.markdown("---")
-        render_radar_chart(report)
-
-        st.markdown("---")
-        render_ai_narrative(report)
-
-        st.markdown("---")
-        from ui.renderer import render_canslim_panel
-        render_canslim_panel(report)
-
-        st.markdown("---")
-        render_valuation_history(report)
-
-        st.markdown("---")
-        render_earnings_risk(report.ticker)
-        render_earnings_history(report)
-
-        st.markdown("---")
-        render_estimate_revisions(report)
-
-        st.markdown("---")
-        render_dividend_panel(report)
-
-        st.markdown("---")
-        render_peer_comparison(report)
-
-        st.markdown("---")
-        ts = report.trade_setup
-        if ts.direction != "NO TRADE":
-            render_position_sizing(ts.entry, ts.stop_loss, ts.take_profit)
-
-        st.markdown("---")
-        render_ticker_notes(report)
-
-        st.markdown("---")
-        render_export_buttons(report)
+        # ── Section 6: AI & Tools ─────────────────────────────────────────────
+        with st.expander("🤖 AI & Tools — Narrative · Position Sizing · Notes · Export", expanded=False):
+            render_ai_narrative(report)
+            st.markdown("---")
+            ts = report.trade_setup
+            if ts.direction != "NO TRADE":
+                render_position_sizing(ts.entry, ts.stop_loss, ts.take_profit)
+                st.markdown("---")
+            render_ticker_notes(report)
+            st.markdown("---")
+            render_export_buttons(report)
 
         st.markdown("""
-        <div style="text-align:center; margin-top:30px; color:#333; font-size:12px;">
+        <div style="text-align:center; margin-top:20px; color:#333; font-size:12px;">
             ⚠ Educational purposes only. Not financial advice.
         </div>
         """, unsafe_allow_html=True)
