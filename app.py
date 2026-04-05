@@ -179,8 +179,10 @@ with tab_analyzer:
             render_chart_patterns(report.df)
 
         # ── Section 4: Fundamentals ───────────────────────────────────────────
-        with st.expander("📋 Fundamentals — CAN SLIM · Valuation · Dividend · Peers", expanded=False):
-            from ui.renderer import render_canslim_panel
+        with st.expander("📋 Fundamentals — Quality Score · CAN SLIM · Valuation · Dividend · Peers", expanded=False):
+            from ui.renderer import render_canslim_panel, render_quality_score
+            render_quality_score(report)
+            st.markdown("---")
             render_canslim_panel(report)
             st.markdown("---")
             render_valuation_history(report)

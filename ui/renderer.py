@@ -3286,3 +3286,153 @@ def render_portfolio_tab() -> None:
             showlegend=False,
         )
         st.plotly_chart(fig, width="stretch")
+
+
+# ── Feature 17: Long-Term Quality Score ──────────────────────────────────────
+
+def _score_component(value, breakpoints: list) -> float:
+    """Map a raw value to 0-100 using linear interpolation between (raw, score) breakpoints."""
+    if value is None:
+        return 50.0
+    for i in range(len(breakpoints) - 1):
+        x0, s0 = breakpoints[i]
+        x1, s1 = breakpoints[i + 1]
+        if x0 <= value <= x1:
+            t = (value - x0) / (x1 - x0) if x1 != x0 else 0.5
+            return round(s0 + t * (s1 - s0), 1)
+    return round(breakpoints[-1][1], 1)
+
+
+def render_quality_score(report: ReportData) -> None:
+    """
+    Long-Term Quality Score — composite of profitability, margins,
+    balance sheet strength, and growth.
+    """
+    import yfinance as yf
+
+    th = _plot_colors()
+
+    st.markdown("### Long-Term Quality Score")
+    st.caption("Composite fundamental quality: profitability · margins · balance sheet · growth")
+
+    try:
+        info = yf.Ticker(report.ticker).info
+    except Exception:
+        st.warning("Could not fetch fundamental data.")
+        return
+
+    roe      = (info.get("returnOnEquity")    or 0.0) * 100
+    roa      = (info.get("returnOnAssets")    or 0.0) * 100
+    gross_m  = (info.get("grossMargins")      or 0.0) * 100
+    oper_m   = (info.get("operatingMargins")  or 0.0) * 100
+    net_m    = (info.get("profitMargins")     or 0.0) * 100
+    de_ratio = (info.get("debtToEquity")      or 0.0) / 100
+    curr_r   = info.get("currentRatio")       or 1.5
+    rev_g    = (info.get("revenueGrowth")     or 0.0) * 100
+    eps_g    = (info.get("earningsGrowth")    or 0.0) * 100
+
+    s_roe   = _score_component(roe,      [(-20,0),(0,10),(5,30),(15,60),(25,80),(40,100)])
+    s_roa   = _score_component(roa,      [(-10,0),(0,10),(3,30),(8,60),(15,85),(25,100)])
+    s_gross = _score_component(gross_m,  [(-20,0),(0,10),(20,35),(40,60),(60,82),(80,100)])
+    s_oper  = _score_component(oper_m,   [(-30,0),(0,10),(5,30),(15,60),(25,82),(40,100)])
+    s_net   = _score_component(net_m,    [(-20,0),(0,10),(3,30),(10,55),(20,80),(35,100)])
+    s_de    = _score_component(de_ratio, [(4,0),(2,20),(1,50),(0.5,75),(0,100)])
+    s_curr  = _score_component(curr_r,   [(0,0),(0.8,20),(1.2,45),(1.8,70),(2.5,90),(4,100)])
+    s_revg  = _score_component(rev_g,    [(-30,0),(-10,15),(0,30),(5,45),(15,70),(25,90),(40,100)])
+    s_epsg  = _score_component(eps_g,    [(-50,0),(-15,15),(0,30),(5,45),(20,70),(35,90),(50,100)])
+
+    profitability_score = round(s_roe * 0.4 + s_roa * 0.35 + s_net * 0.25, 1)
+    margins_score       = round(s_gross * 0.5 + s_oper * 0.5, 1)
+    balance_score       = round(s_de * 0.55 + s_curr * 0.45, 1)
+    growth_score        = round(s_revg * 0.5 + s_epsg * 0.5, 1)
+
+    composite = round(
+        profitability_score * 0.30 +
+        margins_score       * 0.25 +
+        balance_score       * 0.25 +
+        growth_score        * 0.20, 1,
+    )
+
+    if composite >= 88:
+        grade, grade_color = "A+", "#00c851"
+    elif composite >= 78:
+        grade, grade_color = "A",  "#00c851"
+    elif composite >= 68:
+        grade, grade_color = "B+", "#7ec8e3"
+    elif composite >= 58:
+        grade, grade_color = "B",  "#7ec8e3"
+    elif composite >= 48:
+        grade, grade_color = "C",  "#f0a500"
+    elif composite >= 35:
+        grade, grade_color = "D",  "#ff4444"
+    else:
+        grade, grade_color = "F",  "#cc0000"
+
+    kc = st.columns([1, 1.5, 1.5, 1.5, 1.5])
+    kc[0].markdown(
+        f"<div style='background:{th['panel_bg']}; border-radius:10px; padding:16px; text-align:center;"
+        f"border:2px solid {grade_color};'>"
+        f"<div style='font-size:11px; color:#888; font-weight:700;'>QUALITY GRADE</div>"
+        f"<div style='font-size:48px; font-weight:900; color:{grade_color};'>{grade}</div>"
+        f"<div style='font-size:13px; color:#aaa;'>{composite:.0f} / 100</div>"
+        f"</div>", unsafe_allow_html=True,
+    )
+    bucket_map = {"Profitability": 1, "Margins": 2, "Balance Sheet": 3, "Growth": 4}
+    for label, score, color in [
+        ("Profitability", profitability_score, "#4488ff"),
+        ("Margins",       margins_score,       "#00c851"),
+        ("Balance Sheet", balance_score,       "#ffbb33"),
+        ("Growth",        growth_score,        "#cc88ff"),
+    ]:
+        bar_w = int(score)
+        kc[bucket_map[label]].markdown(
+            f"<div style='background:{th['panel_bg']}; border-radius:8px; padding:12px; height:100%;"
+            f"border:1px solid {th['panel_border']};'>"
+            f"<div style='font-size:11px; color:#888; font-weight:700; margin-bottom:4px;'>{label.upper()}</div>"
+            f"<div style='font-size:26px; font-weight:700; color:{color};'>{score:.0f}</div>"
+            f"<div style='background:#1a1a2e; border-radius:4px; height:6px; margin-top:8px;'>"
+            f"<div style='background:{color}; width:{bar_w}%; height:100%; border-radius:4px;'></div>"
+            f"</div></div>", unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+    labels   = ["ROE", "ROA", "Gross Mgn", "Oper Mgn", "Net Mgn", "Low D/E", "Curr Ratio", "Rev Growth", "EPS Growth"]
+    scores_v = [s_roe, s_roa, s_gross, s_oper, s_net, s_de, s_curr, s_revg, s_epsg]
+    raw_disp = [
+        f"{roe:.1f}%", f"{roa:.1f}%", f"{gross_m:.1f}%", f"{oper_m:.1f}%", f"{net_m:.1f}%",
+        f"{de_ratio:.2f}x", f"{curr_r:.2f}x", f"{rev_g:.1f}%", f"{eps_g:.1f}%",
+    ]
+    bar_colors = ["#00c851" if s >= 70 else "#f0a500" if s >= 45 else "#ff4444" for s in scores_v]
+
+    fig = go.Figure(go.Bar(
+        x=labels, y=scores_v,
+        marker_color=bar_colors,
+        text=[f"{s:.0f}" for s in scores_v],
+        textposition="outside",
+        customdata=raw_disp,
+        hovertemplate="<b>%{x}</b><br>Score: %{y:.0f}/100<br>Value: %{customdata}<extra></extra>",
+    ))
+    fig.add_hline(y=50, line_color="#555", line_dash="dash", line_width=1, annotation_text="50 neutral")
+    fig.update_layout(
+        paper_bgcolor=th["paper_bgcolor"], plot_bgcolor=th["plot_bgcolor"],
+        font=dict(color=th["font_color"], size=11),
+        yaxis=dict(range=[0, 115], gridcolor=th["grid_color"], title="Score (0-100)"),
+        xaxis=dict(gridcolor=th["grid_color"]),
+        height=280, margin=dict(t=20, b=20, l=20, r=20), showlegend=False,
+    )
+    st.plotly_chart(fig, width="stretch")
+
+    with st.expander("Raw Fundamental Values", expanded=False):
+        col1, col2 = st.columns(2)
+        for i, (lbl, raw, s) in enumerate(zip(labels, raw_disp, scores_v)):
+            s_col = "#00c851" if s >= 70 else "#f0a500" if s >= 45 else "#ff4444"
+            html = (
+                f"<div style='display:flex; justify-content:space-between; padding:4px 8px;"
+                f"border-bottom:1px solid #1e1e2e;'>"
+                f"<span style='color:#aaa; font-size:12px;'>{lbl}</span>"
+                f"<span style='color:#e0e0e0; font-size:12px;'>{raw}</span>"
+                f"<span style='color:{s_col}; font-size:12px; font-weight:700;'>{s:.0f}</span>"
+                f"</div>"
+            )
+            (col1 if i < 5 else col2).markdown(html, unsafe_allow_html=True)
