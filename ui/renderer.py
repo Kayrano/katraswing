@@ -3607,3 +3607,89 @@ def render_dcf_estimator(report: ReportData) -> None:
         f"PV Terminal: ${pv_terminal:.2f}  ·  Sum PV CFs: ${sum(pv_cashflows):.2f}  ·  "
         f"Total Intrinsic: ${intrinsic_value:.2f}  ·  Discount rate: {discount}%"
     )
+
+
+# ── Feature 16: 4-Pane Multi-Timeframe Chart ──────────────────────────────────
+
+def render_multitf_chart(report: ReportData) -> None:
+    """
+    2x2 grid of candlestick charts across 4 timeframes:
+      Top-left:  Daily (1Y)     Top-right: Weekly (2Y)
+      Bot-left:  Monthly (5Y)   Bot-right: Hourly (60D)
+    Each pane shows SMA20 and SMA50 overlays.
+    """
+    import yfinance as yf
+
+    th = _plot_colors()
+    ticker = report.ticker
+
+    st.markdown("### Multi-Timeframe Chart (4-Pane)")
+    st.caption("Daily · Weekly · Monthly · Hourly — SMA20 (blue) and SMA50 (yellow) overlaid on each pane")
+
+    with st.spinner("Fetching multi-timeframe data..."):
+        try:
+            t = yf.Ticker(ticker)
+            df_d = t.history(period="1y",  interval="1d")
+            df_w = t.history(period="2y",  interval="1wk")
+            df_m = t.history(period="5y",  interval="1mo")
+            df_h = t.history(period="60d", interval="1h")
+        except Exception as e:
+            st.error(f"Could not fetch multi-TF data: {e}")
+            return
+
+    if df_d is None or len(df_d) < 5:
+        st.warning("Not enough data for multi-TF chart.")
+        return
+
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=["Daily (1Y)", "Weekly (2Y)", "Monthly (5Y)", "Hourly (60D)"],
+        vertical_spacing=0.10,
+        horizontal_spacing=0.06,
+    )
+
+    def _add_pane(df, row, col, name):
+        if df is None or len(df) < 5:
+            return
+        fig.add_trace(go.Candlestick(
+            x=df.index,
+            open=df["Open"], high=df["High"],
+            low=df["Low"],  close=df["Close"],
+            increasing_line_color="#00c851",
+            decreasing_line_color="#ff4444",
+            name=name, showlegend=False,
+        ), row=row, col=col)
+        close = df["Close"]
+        if len(df) >= 20:
+            sma20 = close.rolling(20).mean()
+            fig.add_trace(go.Scatter(
+                x=df.index, y=sma20,
+                line=dict(color="#4488ff", width=1),
+                name="SMA20", showlegend=False, hoverinfo="skip",
+            ), row=row, col=col)
+        if len(df) >= 50:
+            sma50 = close.rolling(50).mean()
+            fig.add_trace(go.Scatter(
+                x=df.index, y=sma50,
+                line=dict(color="#ffbb33", width=1),
+                name="SMA50", showlegend=False, hoverinfo="skip",
+            ), row=row, col=col)
+
+    _add_pane(df_d, 1, 1, "Daily")
+    _add_pane(df_w, 1, 2, "Weekly")
+    _add_pane(df_m, 2, 1, "Monthly")
+    _add_pane(df_h, 2, 2, "Hourly")
+
+    fig.update_layout(
+        paper_bgcolor=th["paper_bgcolor"],
+        plot_bgcolor=th["plot_bgcolor"],
+        font=dict(color=th["font_color"], size=10),
+        height=680,
+        margin=dict(t=40, b=20, l=20, r=20),
+        showlegend=False,
+    )
+    # Disable range sliders and apply grid colors to all axes
+    fig.update_xaxes(rangeslider_visible=False, gridcolor=th["grid_color"])
+    fig.update_yaxes(gridcolor=th["grid_color"])
+
+    st.plotly_chart(fig, width="stretch")

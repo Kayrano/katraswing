@@ -157,7 +157,7 @@ with tab_analyzer:
             render_setup_checklist(report)
 
         # ── Section 2: Price Charts ───────────────────────────────────────────
-        with st.expander("📈 Price Charts — Candlestick · MACD · RSI · Volume", expanded=True):
+        with st.expander("📈 Price Charts — Candlestick · MACD · RSI · Volume · Multi-TF", expanded=True):
             render_candlestick_chart(report)
             col_macd, col_rsi = st.columns(2, gap="medium")
             with col_macd:
@@ -165,6 +165,9 @@ with tab_analyzer:
             with col_rsi:
                 render_rsi_chart(report)
             render_volume_chart(report)
+            st.markdown("---")
+            from ui.renderer import render_multitf_chart
+            render_multitf_chart(report)
 
         # ── Section 3: Technical Analysis ─────────────────────────────────────
         with st.expander("🔬 Technical Analysis — MTF · Indicators · Radar · Footprint · Patterns", expanded=False):
