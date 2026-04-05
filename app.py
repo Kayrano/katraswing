@@ -61,7 +61,7 @@ with tab_analyzer:
         render_earnings_risk, render_earnings_history, render_position_sizing,
         render_chart_patterns, render_export_buttons, render_filter_notes,
         render_radar_chart, render_setup_checklist, render_relative_strength,
-        render_ai_narrative,
+        render_ai_narrative, render_valuation_history, render_estimate_revisions,
     )
 
     col_input, col_btn = st.columns([4, 1])
@@ -166,8 +166,14 @@ with tab_analyzer:
         render_canslim_panel(report)
 
         st.markdown("---")
+        render_valuation_history(report)
+
+        st.markdown("---")
         render_earnings_risk(report.ticker)
         render_earnings_history(report)
+
+        st.markdown("---")
+        render_estimate_revisions(report)
 
         st.markdown("---")
         ts = report.trade_setup

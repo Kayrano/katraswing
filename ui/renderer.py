@@ -1862,3 +1862,397 @@ Be direct, professional, and specific. No disclaimers. Plain text only."""
         return "API key not configured. Set the <code>ANTHROPIC_API_KEY</code> environment variable or in Streamlit secrets."
     except Exception as e:
         return f"Narrative generation failed: {e}"
+
+
+# ── Valuation vs. Own History ─────────────────────────────────────────────────
+
+def render_valuation_history(report: ReportData) -> None:
+    """
+    P/E ratio vs the stock's own 2-year history.
+    Shows trailing P/E percentile + forward P/E + P/B + P/S from yfinance info,
+    then a bar chart of quarterly historical P/E built from quarterly EPS data.
+    """
+    import yfinance as yf
+    import numpy as np
+
+    ticker = report.ticker
+    current_price = report.current_price
+    th = _plot_colors()
+
+    st.markdown("### Valuation vs. Own History")
+
+    try:
+        t = yf.Ticker(ticker)
+        info = t.info or {}
+
+        pe_trailing = info.get("trailingPE")
+        pe_forward  = info.get("forwardPE")
+        pb          = info.get("priceToBook")
+        ps          = info.get("priceToSalesTrailingTwelveMonths")
+
+        # ── Historical quarterly P/E ──────────────────────────────────────────
+        historical_pe = []
+        try:
+            qe = t.quarterly_earnings
+            if qe is not None and len(qe) >= 4:
+                qe = qe.sort_index()
+                eps_col = qe.columns[0]   # first column is EPS / Earnings
+
+                # Rolling TTM: sum of 4 consecutive quarters
+                for i in range(3, len(qe)):
+                    ttm_eps = float(qe[eps_col].iloc[i - 3 : i + 1].sum())
+                    q_date  = pd.Timestamp(qe.index[i]).tz_localize(None)
+                    if ttm_eps <= 0:
+                        continue
+
+                    # Find nearest price in report.df for that date
+                    df_prices = report.df["Close"]
+                    nearest_i = df_prices.index.get_indexer([q_date], method="nearest")[0]
+                    price = float(df_prices.iloc[nearest_i])
+                    pe    = round(price / ttm_eps, 1)
+                    historical_pe.append({"date": q_date, "pe": pe})
+        except Exception:
+            pass
+
+        # If no quarterly data, fall back to trailing P/E as a single point
+        if not historical_pe and pe_trailing and pe_trailing > 0:
+            historical_pe = [{"date": pd.Timestamp.now(), "pe": round(float(pe_trailing), 1)}]
+
+        # Compute percentile of current P/E vs history
+        current_pe = pe_trailing if (pe_trailing and pe_trailing > 0) else None
+        if current_pe is None and historical_pe:
+            current_pe = historical_pe[-1]["pe"]
+
+        pe_vals = [x["pe"] for x in historical_pe if 0 < x["pe"] < 500]
+        pe_pct  = None
+        if current_pe and pe_vals:
+            pe_pct = round(sum(1 for v in pe_vals if v < current_pe) / len(pe_vals) * 100, 0)
+
+        # ── KPI badges ────────────────────────────────────────────────────────
+        kpis = []
+        if current_pe:
+            if pe_pct is not None:
+                if pe_pct >= 80:
+                    pe_color, pe_label = "#ff4444", "EXPENSIVE"
+                elif pe_pct >= 50:
+                    pe_color, pe_label = "#f0a500", "FAIR"
+                else:
+                    pe_color, pe_label = "#00c851", "CHEAP"
+            else:
+                pe_color, pe_label = "#888888", ""
+            pct_txt = f" · {pe_pct:.0f}th pct" if pe_pct is not None else ""
+            kpis.append(("P/E (TTM)", f"{current_pe:.1f}{pct_txt}", pe_color, pe_label))
+        if pe_forward and 0 < pe_forward < 500:
+            kpis.append(("P/E (Fwd)", f"{pe_forward:.1f}", "#4488ff", ""))
+        if pb and pb > 0:
+            pb_color = "#ff4444" if pb > 5 else "#f0a500" if pb > 2 else "#00c851"
+            kpis.append(("P/B", f"{pb:.2f}", pb_color, ""))
+        if ps and ps > 0:
+            ps_color = "#ff4444" if ps > 10 else "#f0a500" if ps > 3 else "#00c851"
+            kpis.append(("P/S", f"{ps:.2f}", ps_color, ""))
+
+        if not kpis:
+            st.caption("Valuation data unavailable for this ticker.")
+            return
+
+        kpi_cols = st.columns(len(kpis))
+        for col, (metric, val, color, label) in zip(kpi_cols, kpis):
+            label_html = (
+                f"<div style='font-size:10px; color:{color}; margin-top:2px;'>{label}</div>"
+                if label else ""
+            )
+            col.markdown(
+                f"<div style='background:{th['panel_bg']}; border:1px solid {color}66;"
+                f"border-radius:8px; padding:10px 12px; text-align:center;'>"
+                f"<div style='font-size:11px; color:#888; margin-bottom:4px;'>{metric}</div>"
+                f"<div style='font-size:20px; font-weight:700; color:{color};'>{val}</div>"
+                f"{label_html}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        # ── Historical P/E bar chart ──────────────────────────────────────────
+        if len(historical_pe) >= 2:
+            pe_dates  = [x["date"].strftime("%Y-%m") for x in historical_pe]
+            pe_values = [x["pe"] for x in historical_pe]
+            mean_pe   = float(np.mean([v for v in pe_values if 0 < v < 500]))
+
+            bar_colors = []
+            for v in pe_values:
+                if v > mean_pe * 1.2:
+                    bar_colors.append("#ff4444")
+                elif v < mean_pe * 0.8:
+                    bar_colors.append("#00c851")
+                else:
+                    bar_colors.append("#4488ff")
+
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                x=pe_dates,
+                y=pe_values,
+                marker_color=bar_colors,
+                name="Quarterly P/E",
+                text=[f"{v:.1f}" for v in pe_values],
+                textposition="outside",
+                textfont=dict(size=9),
+            ))
+            # Mean line
+            fig.add_hline(
+                y=mean_pe,
+                line_color="#ffbb33",
+                line_dash="dot",
+                annotation_text=f"Avg {mean_pe:.1f}",
+                annotation_font_color="#ffbb33",
+            )
+            fig.update_layout(
+                paper_bgcolor=th["paper_bgcolor"],
+                plot_bgcolor=th["plot_bgcolor"],
+                font=dict(color=th["font_color"], size=11),
+                xaxis=dict(gridcolor=th["grid_color"], tickangle=-30),
+                yaxis=dict(gridcolor=th["grid_color"], title="P/E"),
+                height=280,
+                margin=dict(t=20, b=60, l=20, r=20),
+                showlegend=False,
+            )
+            st.plotly_chart(fig, width="stretch")
+            st.caption(
+                f"Green = below average · Red = above average · "
+                f"Dotted line = {len(pe_values)}-quarter mean P/E {mean_pe:.1f}x"
+            )
+
+    except Exception as e:
+        st.caption(f"Valuation history unavailable: {e}")
+
+
+# ── Earnings Estimate Revision Tracker ────────────────────────────────────────
+
+def render_estimate_revisions(report: ReportData) -> None:
+    """
+    Analyst EPS estimate revisions: up/down counts over 7d and 30d,
+    plus the current consensus EPS estimate, growth rate, and analyst count.
+    """
+    import yfinance as yf
+
+    ticker = report.ticker
+    th = _plot_colors()
+
+    st.markdown("### Analyst Estimate Revisions")
+
+    try:
+        t = yf.Ticker(ticker)
+
+        # ── EPS Estimate table ────────────────────────────────────────────────
+        ee = None
+        try:
+            ee = t.earnings_estimate
+        except Exception:
+            pass
+
+        # ── EPS Revisions ─────────────────────────────────────────────────────
+        rev = None
+        try:
+            rev = t.eps_revisions
+        except Exception:
+            pass
+
+        # ── Analyst price targets ─────────────────────────────────────────────
+        targets = {}
+        try:
+            apt = t.analyst_price_targets
+            if apt is not None and isinstance(apt, dict):
+                targets = apt
+        except Exception:
+            pass
+
+        any_data = (ee is not None) or (rev is not None) or targets
+
+        if not any_data:
+            st.caption("Analyst estimate data unavailable for this ticker.")
+            return
+
+        # ── Price target banner ───────────────────────────────────────────────
+        if targets:
+            current = report.current_price
+            mean_t  = targets.get("mean")
+            high_t  = targets.get("high")
+            low_t   = targets.get("low")
+            n_anal  = targets.get("numberOfAnalysts")
+
+            if mean_t and mean_t > 0:
+                upside = (mean_t - current) / current * 100
+                up_color = "#00c851" if upside >= 0 else "#ff4444"
+                tc1, tc2, tc3, tc4 = st.columns(4)
+                tc1.markdown(
+                    f"<div style='background:{th['panel_bg']}; border-radius:8px; padding:10px;"
+                    f"text-align:center; border:1px solid #2d2d4e;'>"
+                    f"<div style='font-size:11px; color:#888;'>CONSENSUS TARGET</div>"
+                    f"<div style='font-size:20px; font-weight:700; color:{up_color};'>${mean_t:.2f}</div>"
+                    f"<div style='font-size:11px; color:{up_color};'>{upside:+.1f}% upside</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+                tc2.markdown(
+                    f"<div style='background:{th['panel_bg']}; border-radius:8px; padding:10px;"
+                    f"text-align:center; border:1px solid #2d2d4e;'>"
+                    f"<div style='font-size:11px; color:#888;'>HIGH TARGET</div>"
+                    f"<div style='font-size:18px; font-weight:700; color:#e0e0e0;'>${high_t:.2f}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                ) if high_t else tc2.empty()
+                tc3.markdown(
+                    f"<div style='background:{th['panel_bg']}; border-radius:8px; padding:10px;"
+                    f"text-align:center; border:1px solid #2d2d4e;'>"
+                    f"<div style='font-size:11px; color:#888;'>LOW TARGET</div>"
+                    f"<div style='font-size:18px; font-weight:700; color:#e0e0e0;'>${low_t:.2f}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                ) if low_t else tc3.empty()
+                if n_anal:
+                    tc4.markdown(
+                        f"<div style='background:{th['panel_bg']}; border-radius:8px; padding:10px;"
+                        f"text-align:center; border:1px solid #2d2d4e;'>"
+                        f"<div style='font-size:11px; color:#888;'>ANALYSTS</div>"
+                        f"<div style='font-size:20px; font-weight:700; color:#e0e0e0;'>{n_anal}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+
+        # ── EPS Revisions breakdown ───────────────────────────────────────────
+        if rev is not None and not rev.empty:
+            st.markdown("#### EPS Revisions")
+
+            period_labels = {
+                "0q": "Current Quarter",
+                "1q": "Next Quarter",
+                "0y": "Current Year",
+                "1y": "Next Year",
+            }
+
+            rev_rows = []
+            for period_key in ["0q", "1q", "0y", "1y"]:
+                if period_key not in rev.index:
+                    continue
+                row = rev.loc[period_key]
+                up7   = int(row.get("upLast7days",  0) or 0)
+                dn7   = int(row.get("downLast7days", 0) or 0)
+                up30  = int(row.get("upLast30days",  0) or 0)
+                dn30  = int(row.get("downLast30days", 0) or 0)
+                net7  = up7 - dn7
+                net30 = up30 - dn30
+                rev_rows.append({
+                    "Period":   period_labels.get(period_key, period_key),
+                    "↑ 7d":    up7,
+                    "↓ 7d":    dn7,
+                    "Net 7d":  net7,
+                    "↑ 30d":   up30,
+                    "↓ 30d":   dn30,
+                    "Net 30d": net30,
+                })
+
+            if rev_rows:
+                for rw in rev_rows:
+                    net7  = rw["Net 7d"]
+                    net30 = rw["Net 30d"]
+                    n7c   = "#00c851" if net7 > 0 else "#ff4444" if net7 < 0 else "#888"
+                    n30c  = "#00c851" if net30 > 0 else "#ff4444" if net30 < 0 else "#888"
+                    n7s   = f"+{net7}" if net7 > 0 else str(net7)
+                    n30s  = f"+{net30}" if net30 > 0 else str(net30)
+
+                    rc1, rc2, rc3, rc4, rc5, rc6, rc7 = st.columns([2, 0.8, 0.8, 1, 0.8, 0.8, 1])
+                    rc1.markdown(
+                        f"<span style='font-size:13px; color:#ccc;'>{rw['Period']}</span>",
+                        unsafe_allow_html=True,
+                    )
+                    rc2.markdown(
+                        f"<span style='color:#00c851; font-size:13px;'>↑{rw['↑ 7d']}</span>",
+                        unsafe_allow_html=True,
+                    )
+                    rc3.markdown(
+                        f"<span style='color:#ff4444; font-size:13px;'>↓{rw['↓ 7d']}</span>",
+                        unsafe_allow_html=True,
+                    )
+                    rc4.markdown(
+                        f"<span style='color:{n7c}; font-weight:700; font-size:13px;'>Net 7d: {n7s}</span>",
+                        unsafe_allow_html=True,
+                    )
+                    rc5.markdown(
+                        f"<span style='color:#00c851; font-size:13px;'>↑{rw['↑ 30d']}</span>",
+                        unsafe_allow_html=True,
+                    )
+                    rc6.markdown(
+                        f"<span style='color:#ff4444; font-size:13px;'>↓{rw['↓ 30d']}</span>",
+                        unsafe_allow_html=True,
+                    )
+                    rc7.markdown(
+                        f"<span style='color:{n30c}; font-weight:700; font-size:13px;'>Net 30d: {n30s}</span>",
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(
+                        "<div style='border-bottom:1px solid #1e1e2e; margin:3px 0;'></div>",
+                        unsafe_allow_html=True,
+                    )
+
+        # ── EPS estimate table ────────────────────────────────────────────────
+        if ee is not None and not ee.empty:
+            st.markdown("#### EPS Estimates")
+
+            period_labels_ee = {
+                "0q": "Current Quarter",
+                "1q": "Next Quarter",
+                "0y": "Current Year",
+                "1y": "Next Year",
+            }
+
+            for period_key in ["0q", "1q", "0y", "1y"]:
+                if period_key not in ee.index:
+                    continue
+                row = ee.loc[period_key]
+
+                avg_eps    = row.get("avg")
+                low_eps    = row.get("low")
+                high_eps   = row.get("high")
+                n_analysts = row.get("numberOfAnalysts")
+                yago_eps   = row.get("yearAgoEps")
+                growth     = row.get("growth")
+
+                if avg_eps is None:
+                    continue
+
+                label = period_labels_ee.get(period_key, period_key)
+                gr_color = "#00c851" if (growth and growth > 0) else "#ff4444"
+                gr_txt   = f"{growth*100:+.1f}% YoY" if growth else ""
+
+                ec1, ec2, ec3, ec4, ec5 = st.columns([2, 1.2, 1.2, 1.2, 1.2])
+                ec1.markdown(
+                    f"<span style='font-size:13px; color:#ccc; font-weight:600;'>{label}</span>",
+                    unsafe_allow_html=True,
+                )
+                ec2.markdown(
+                    f"<span style='font-size:12px; color:#888;'>Avg</span> "
+                    f"<span style='font-weight:700; color:#e0e0e0;'>${avg_eps:.2f}</span>",
+                    unsafe_allow_html=True,
+                )
+                ec3.markdown(
+                    f"<span style='font-size:12px; color:#888;'>Range</span> "
+                    f"<span style='color:#e0e0e0; font-size:12px;'>${low_eps:.2f}–${high_eps:.2f}</span>"
+                    if (low_eps is not None and high_eps is not None) else "",
+                    unsafe_allow_html=True,
+                )
+                ec4.markdown(
+                    f"<span style='color:{gr_color}; font-size:12px; font-weight:700;'>{gr_txt}</span>",
+                    unsafe_allow_html=True,
+                )
+                ec5.markdown(
+                    f"<span style='font-size:12px; color:#555;'>{int(n_analysts)} analysts</span>"
+                    if n_analysts else "",
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    "<div style='border-bottom:1px solid #1e1e2e; margin:3px 0;'></div>",
+                    unsafe_allow_html=True,
+                )
+
+    except Exception as e:
+        st.caption(f"Analyst estimate data unavailable: {e}")
