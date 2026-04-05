@@ -62,6 +62,7 @@ with tab_analyzer:
         render_chart_patterns, render_export_buttons, render_filter_notes,
         render_radar_chart, render_setup_checklist, render_relative_strength,
         render_ai_narrative, render_valuation_history, render_estimate_revisions,
+        render_weinstein_stage, render_institutional_footprint,
     )
 
     col_input, col_btn = st.columns([4, 1])
@@ -123,6 +124,9 @@ with tab_analyzer:
         # Relative strength vs SPY + sector ETF (just below header)
         render_relative_strength(report)
 
+        st.markdown("---")
+        render_weinstein_stage(report)
+
         col_score, col_trade = st.columns([1, 1], gap="medium")
         with col_score:
             render_score_panel(report)
@@ -148,6 +152,9 @@ with tab_analyzer:
             render_rsi_chart(report)
 
         render_volume_chart(report)
+
+        st.markdown("---")
+        render_institutional_footprint(report)
 
         st.markdown("---")
         render_chart_patterns(report.df)

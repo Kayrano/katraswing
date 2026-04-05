@@ -2256,3 +2256,259 @@ def render_estimate_revisions(report: ReportData) -> None:
 
     except Exception as e:
         st.caption(f"Analyst estimate data unavailable: {e}")
+
+
+# ── Weinstein Stage Badge ─────────────────────────────────────────────────────
+
+def _compute_weinstein_stage(df: pd.DataFrame) -> dict:
+    """
+    Classify the stock into one of Stan Weinstein's 4 stages using daily OHLCV.
+
+    SMA150 (≈ 30-week SMA) is the key moving average.
+    Stage 2 (ADVANCING) — best for swing longs.
+    Stage 4 (DECLINING) — best for swing shorts / avoidance.
+    """
+    import numpy as np
+
+    if len(df) < 160:
+        return {"stage": 0, "label": "N/A", "description": "Not enough data (< 160 bars)"}
+
+    close  = df["Close"].values
+    volume = df["Volume"].values
+
+    # SMA150 (Weinstein's 30-week benchmark)
+    sma150 = pd.Series(close).rolling(150).mean().values
+
+    current_close   = close[-1]
+    sma150_now      = sma150[-1]
+    sma150_4w_ago   = sma150[-21]   # ~4 trading weeks back
+    sma150_8w_ago   = sma150[-41]   # ~8 weeks back (check longer slope)
+
+    if any(v != v for v in [sma150_now, sma150_4w_ago, sma150_8w_ago]):  # NaN check
+        return {"stage": 0, "label": "N/A", "description": "Insufficient history for SMA150"}
+
+    price_above_sma  = current_close > sma150_now
+    sma_rising_4w    = sma150_now > sma150_4w_ago   # short slope
+    sma_rising_8w    = sma150_now > sma150_8w_ago   # longer slope
+
+    # OBV trend: compare current OBV to 20-bar-ago OBV
+    obv = np.zeros(len(close))
+    for i in range(1, len(close)):
+        if close[i] > close[i - 1]:
+            obv[i] = obv[i - 1] + volume[i]
+        elif close[i] < close[i - 1]:
+            obv[i] = obv[i - 1] - volume[i]
+        else:
+            obv[i] = obv[i - 1]
+    obv_rising = obv[-1] > obv[-21]
+
+    # Stage classification
+    if price_above_sma and sma_rising_4w:
+        if obv_rising:
+            stage, label = 2, "STAGE 2 — ADVANCING"
+            description = "Price above rising SMA150 with volume confirmation. Weinstein's ideal BUY zone."
+            color = "#00c851"
+        else:
+            stage, label = 2, "STAGE 2 — ADVANCING"
+            description = "Price above rising SMA150. OBV lagging — watch for volume confirmation."
+            color = "#4488ff"
+
+    elif price_above_sma and not sma_rising_4w:
+        stage, label = 3, "STAGE 3 — TOPPING"
+        description = "Price near highs but SMA150 flattening. Distribution risk — reduce exposure."
+        color = "#f0a500"
+
+    elif not price_above_sma and sma_rising_8w:
+        # SMA was rising but price fell below it — early Stage 3/4 transition or Stage 1 breakout attempt
+        stage, label = 1, "STAGE 1 — BASING"
+        description = "Price below SMA150 but SMA still rising. Possible base forming — wait for breakout."
+        color = "#ffbb33"
+
+    else:
+        # Price below SMA, SMA declining
+        stage, label = 4, "STAGE 4 — DECLINING"
+        description = "Price below falling SMA150. Weinstein's AVOID zone for longs. Suitable for shorts."
+        color = "#ff4444"
+
+    return {
+        "stage": stage,
+        "label": label,
+        "description": description,
+        "color": color,
+        "price_above_sma": price_above_sma,
+        "sma_rising": sma_rising_4w,
+        "obv_rising": obv_rising,
+        "sma150": round(float(sma150_now), 2),
+    }
+
+
+def render_weinstein_stage(report: ReportData) -> None:
+    """Weinstein Stage badge with explanation and key levels."""
+    w = _compute_weinstein_stage(report.df)
+
+    if w["stage"] == 0:
+        return
+
+    stage   = w["stage"]
+    label   = w["label"]
+    desc    = w["description"]
+    color   = w["color"]
+    sma150  = w["sma150"]
+
+    stage_icons = {1: "🔄", 2: "📈", 3: "⚠", 4: "📉"}
+    icon = stage_icons.get(stage, "")
+
+    c1, c2 = st.columns([1, 3], gap="medium")
+    with c1:
+        st.markdown(
+            f"<div style='background:#1a1a2e; border:2px solid {color}; border-radius:10px;"
+            f"padding:16px 12px; text-align:center;'>"
+            f"<div style='font-size:28px; line-height:1;'>{icon}</div>"
+            f"<div style='font-size:11px; color:#888; margin-top:6px;'>WEINSTEIN</div>"
+            f"<div style='font-size:13px; font-weight:800; color:{color}; margin-top:4px;'>"
+            f"STAGE {stage}</div>"
+            f"<div style='font-size:10px; color:#555; margin-top:4px;'>SMA150: ${sma150:.2f}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            f"<div style='background:#1a1a2e; border:1px solid {color}44; border-radius:10px;"
+            f"padding:16px 18px;'>"
+            f"<div style='font-size:15px; font-weight:700; color:{color}; margin-bottom:8px;'>"
+            f"{label}</div>"
+            f"<div style='font-size:13px; color:#cccccc; line-height:1.5;'>{desc}</div>"
+            f"<div style='margin-top:10px; font-size:12px; color:#555;'>"
+            f"Price {'above' if w['price_above_sma'] else 'below'} SMA150 &nbsp;·&nbsp; "
+            f"SMA150 {'rising' if w['sma_rising'] else 'declining/flat'} &nbsp;·&nbsp; "
+            f"OBV {'rising' if w['obv_rising'] else 'falling'}"
+            f"</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+
+# ── Institutional Footprint (Volume Anomaly) ──────────────────────────────────
+
+def render_institutional_footprint(report: ReportData) -> None:
+    """
+    IBD-style Accumulation/Distribution rating.
+    Counts high-volume up days vs high-volume down days over the last 25 sessions
+    to detect institutional buying (accumulation) vs selling (distribution).
+    """
+    import numpy as np
+
+    df = report.df
+    if len(df) < 60:
+        return
+
+    close  = df["Close"].values
+    open_  = df["Open"].values
+    volume = df["Volume"].values
+
+    # 50-day volume average for threshold
+    vol_sma50 = pd.Series(volume).rolling(50).mean().values
+
+    # Scan last 25 sessions (≈ 5 trading weeks)
+    window = 25
+    accum_days = []
+    dist_days  = []
+
+    for i in range(len(df) - window, len(df)):
+        if vol_sma50[i] <= 0 or vol_sma50[i] != vol_sma50[i]:  # zero or NaN
+            continue
+        vol_ratio = volume[i] / vol_sma50[i]
+        if vol_ratio < 1.4:   # only flag meaningful volume spikes (≥ 1.4× avg)
+            continue
+        price_up = close[i] >= open_[i]
+        if price_up:
+            accum_days.append({
+                "date": str(df.index[i].date()),
+                "ratio": round(vol_ratio, 1),
+                "move":  round((close[i] - open_[i]) / open_[i] * 100, 2),
+            })
+        else:
+            dist_days.append({
+                "date": str(df.index[i].date()),
+                "ratio": round(vol_ratio, 1),
+                "move":  round((close[i] - open_[i]) / open_[i] * 100, 2),
+            })
+
+    n_acc  = len(accum_days)
+    n_dist = len(dist_days)
+    net    = n_acc - n_dist
+
+    # IBD-style A–E rating
+    if net >= 3:
+        rating, rating_color, rating_label = "A", "#00c851", "ACCUMULATION"
+    elif net >= 1:
+        rating, rating_color, rating_label = "B", "#4488ff", "MILD ACCUMULATION"
+    elif net == 0:
+        rating, rating_color, rating_label = "C", "#888888", "NEUTRAL"
+    elif net >= -2:
+        rating, rating_color, rating_label = "D", "#f0a500", "MILD DISTRIBUTION"
+    else:
+        rating, rating_color, rating_label = "E", "#ff4444", "DISTRIBUTION"
+
+    st.markdown("### Institutional Footprint")
+
+    rc1, rc2, rc3, rc4 = st.columns([1, 1, 1, 2])
+    rc1.markdown(
+        f"<div style='background:#1a1a2e; border:2px solid {rating_color}; border-radius:10px;"
+        f"padding:14px; text-align:center;'>"
+        f"<div style='font-size:11px; color:#888; margin-bottom:4px;'>IBD RATING</div>"
+        f"<div style='font-size:40px; font-weight:900; color:{rating_color};'>{rating}</div>"
+        f"<div style='font-size:11px; color:{rating_color}; margin-top:4px;'>{rating_label}</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    rc2.markdown(
+        f"<div style='background:#0a1a0a; border:1px solid #00c85144; border-radius:10px;"
+        f"padding:14px; text-align:center;'>"
+        f"<div style='font-size:11px; color:#888; margin-bottom:4px;'>ACCUM DAYS</div>"
+        f"<div style='font-size:28px; font-weight:700; color:#00c851;'>{n_acc}</div>"
+        f"<div style='font-size:10px; color:#555;'>last 25 sessions</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    rc3.markdown(
+        f"<div style='background:#1a0a0a; border:1px solid #ff444444; border-radius:10px;"
+        f"padding:14px; text-align:center;'>"
+        f"<div style='font-size:11px; color:#888; margin-bottom:4px;'>DIST DAYS</div>"
+        f"<div style='font-size:28px; font-weight:700; color:#ff4444;'>{n_dist}</div>"
+        f"<div style='font-size:10px; color:#555;'>last 25 sessions</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    with rc4:
+        st.markdown(
+            f"<div style='background:#1a1a2e; border:1px solid #2d2d4e; border-radius:10px;"
+            f"padding:14px;'>"
+            f"<div style='font-size:11px; color:#888; margin-bottom:6px;'>HOW TO READ</div>"
+            f"<div style='font-size:12px; color:#aaa; line-height:1.6;'>"
+            f"High-volume up/down days (≥1.4× avg) signal institutional activity. "
+            f"Net {net:+d} over 25 sessions → <b style='color:{rating_color};'>{rating_label}</b>."
+            f"</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+    # Detail rows (most recent anomaly days)
+    if accum_days or dist_days:
+        with st.expander("View volume anomaly days", expanded=False):
+            all_days = (
+                [{"type": "ACCUM", "color": "#00c851", **d} for d in accum_days] +
+                [{"type": "DIST",  "color": "#ff4444", **d} for d in dist_days]
+            )
+            all_days.sort(key=lambda x: x["date"], reverse=True)
+            for d in all_days[:10]:
+                st.markdown(
+                    f"<span style='color:{d['color']}; font-weight:700; min-width:50px;"
+                    f"display:inline-block;'>{d['type']}</span>"
+                    f"<span style='color:#888; font-size:12px; margin-left:8px;'>{d['date']}</span>"
+                    f"<span style='color:#e0e0e0; font-size:12px; margin-left:12px;'>"
+                    f"{d['ratio']}× avg vol</span>"
+                    f"<span style='color:{d['color']}; font-size:12px; margin-left:12px;'>"
+                    f"{d['move']:+.2f}%</span>",
+                    unsafe_allow_html=True,
+                )
