@@ -60,7 +60,8 @@ with tab_analyzer:
         render_volume_chart, render_indicator_breakdown, render_mtf_panel,
         render_earnings_risk, render_earnings_history, render_position_sizing,
         render_chart_patterns, render_export_buttons, render_filter_notes,
-        render_radar_chart,
+        render_radar_chart, render_setup_checklist, render_relative_strength,
+        render_ai_narrative,
     )
 
     col_input, col_btn = st.columns([4, 1])
@@ -119,6 +120,9 @@ with tab_analyzer:
         st.markdown("---")
         render_header(report)
 
+        # Relative strength vs SPY + sector ETF (just below header)
+        render_relative_strength(report)
+
         col_score, col_trade = st.columns([1, 1], gap="medium")
         with col_score:
             render_score_panel(report)
@@ -127,6 +131,9 @@ with tab_analyzer:
             render_trade_setup(report)
 
         render_filter_notes(report)
+
+        st.markdown("---")
+        render_setup_checklist(report)
 
         st.markdown("---")
         render_mtf_panel(report)
@@ -150,6 +157,9 @@ with tab_analyzer:
 
         st.markdown("---")
         render_radar_chart(report)
+
+        st.markdown("---")
+        render_ai_narrative(report)
 
         st.markdown("---")
         from ui.renderer import render_canslim_panel

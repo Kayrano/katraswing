@@ -1467,3 +1467,398 @@ def render_filter_notes(report: ReportData) -> None:
         <div style="color:#e0c080;">{rows}</div>
     </div>
     """, unsafe_allow_html=True)
+
+
+# ── Trade Setup Checklist ─────────────────────────────────────────────────────
+
+def render_setup_checklist(report: ReportData) -> None:
+    """
+    Swing trade quality checklist — evaluates 10 preconditions from existing
+    indicator data and shows pass/fail for each with a summary grade.
+    """
+    ind = report.indicators
+    score = report.score.total_score
+    ts = report.trade_setup
+    direction = ts.direction
+    is_long = direction == "LONG"
+    is_short = direction == "SHORT"
+    regime = getattr(report.score, "regime", "NEUTRAL")
+    mtf_dir = report.mtf.agreement_direction if report.mtf else "UNKNOWN"
+
+    def _check(label: str, passed: bool, detail: str) -> dict:
+        return {"label": label, "passed": passed, "detail": detail}
+
+    checks = []
+
+    # 1. Score threshold
+    threshold = 65 if is_long else 35
+    if is_long:
+        score_ok = score >= threshold
+        score_detail = f"Score {score:.0f} ≥ 65 required for LONG"
+    elif is_short:
+        score_ok = score <= threshold
+        score_detail = f"Score {score:.0f} ≤ 35 required for SHORT"
+    else:
+        score_ok = False
+        score_detail = "NO TRADE — no directional signal"
+    checks.append(_check("Score threshold met", score_ok, score_detail))
+
+    # 2. RSI zone
+    rsi = ind.rsi
+    if is_long:
+        rsi_ok = 30 <= rsi <= 65
+        rsi_detail = f"RSI {rsi:.1f} — ideal long zone: 30–65"
+    elif is_short:
+        rsi_ok = 35 <= rsi <= 70
+        rsi_detail = f"RSI {rsi:.1f} — ideal short zone: 35–70"
+    else:
+        rsi_ok = 40 <= rsi <= 60
+        rsi_detail = f"RSI {rsi:.1f}"
+    checks.append(_check("RSI in ideal zone", rsi_ok, rsi_detail))
+
+    # 3. MACD momentum
+    hist = ind.macd_histogram
+    hist_prev = ind.macd_histogram_prev
+    if is_long:
+        macd_ok = hist > 0 and hist >= hist_prev
+        macd_detail = f"MACD hist {hist:.3f} — positive and rising for LONG"
+    elif is_short:
+        macd_ok = hist < 0 and hist <= hist_prev
+        macd_detail = f"MACD hist {hist:.3f} — negative and falling for SHORT"
+    else:
+        macd_ok = False
+        macd_detail = f"MACD hist {hist:.3f}"
+    checks.append(_check("MACD momentum aligned", macd_ok, macd_detail))
+
+    # 4. EMA alignment
+    ema_aligned = ind.ema20 > ind.ema50 if is_long else ind.ema20 < ind.ema50
+    ema_detail = (
+        f"EMA20 {ind.ema20:.2f} {'>' if is_long else '<'} EMA50 {ind.ema50:.2f}"
+    )
+    checks.append(_check("EMA20/50 trend aligned", ema_aligned, ema_detail))
+
+    # 5. Above/below SMA200
+    if ind.sma200 is not None:
+        price_proxy = ind.close if ind.close > 0 else ind.ema20
+        sma200_ok = price_proxy > ind.sma200 if is_long else price_proxy < ind.sma200
+        sma200_detail = f"Price {price_proxy:.2f} vs SMA200 {ind.sma200:.2f}"
+    else:
+        sma200_ok = True  # can't penalize if data unavailable
+        sma200_detail = "SMA200 unavailable (< 200 bars)"
+    checks.append(_check("Price on correct side of SMA200", sma200_ok, sma200_detail))
+
+    # 6. Volume confirmation
+    if ind.volume_sma20 > 0:
+        vol_ratio = ind.current_volume / ind.volume_sma20
+        vol_ok = vol_ratio >= 1.0
+        vol_detail = f"Volume ratio {vol_ratio:.2f}× 20-day avg (need ≥ 1.0×)"
+    else:
+        vol_ok = True
+        vol_detail = "Volume SMA unavailable"
+    checks.append(_check("Volume at or above average", vol_ok, vol_detail))
+
+    # 7. Stochastic not exhausted
+    k = ind.stoch_k
+    if is_long:
+        stoch_ok = k < 80
+        stoch_detail = f"Stoch %K {k:.1f} — below 80 (not overbought)"
+    elif is_short:
+        stoch_ok = k > 20
+        stoch_detail = f"Stoch %K {k:.1f} — above 20 (not oversold)"
+    else:
+        stoch_ok = 20 < k < 80
+        stoch_detail = f"Stoch %K {k:.1f}"
+    checks.append(_check("Stochastic not exhausted", stoch_ok, stoch_detail))
+
+    # 8. Market regime suitable
+    good_regimes = {"TRENDING", "NEUTRAL", "CONSOLIDATING"}
+    regime_ok = regime in good_regimes
+    regime_detail = f"Regime: {regime} — {'OK' if regime_ok else 'caution in EXTENDED/VOLATILE'}"
+    checks.append(_check("Market regime suitable", regime_ok, regime_detail))
+
+    # 9. Multi-timeframe agreement
+    if is_long:
+        mtf_ok = mtf_dir == "BULLISH"
+    elif is_short:
+        mtf_ok = mtf_dir == "BEARISH"
+    else:
+        mtf_ok = False
+    mtf_detail = f"Daily + Weekly alignment: {mtf_dir}"
+    checks.append(_check("MTF timeframes agree", mtf_ok, mtf_detail))
+
+    # 10. Positive expected value
+    ev = report.score.expected_value
+    ev_ok = ev > 0
+    ev_detail = f"EV ${ev:+.2f} per $100 risked at 1:2 R:R"
+    checks.append(_check("Positive expected value (EV > 0)", ev_ok, ev_detail))
+
+    # ── Render ────────────────────────────────────────────────────────────────
+    passed_count = sum(1 for c in checks if c["passed"])
+    total_count = len(checks)
+    grade_pct = passed_count / total_count
+
+    if grade_pct >= 0.8:
+        grade_color, grade_label = "#00c851", "STRONG SETUP"
+    elif grade_pct >= 0.6:
+        grade_color, grade_label = "#4488ff", "GOOD SETUP"
+    elif grade_pct >= 0.4:
+        grade_color, grade_label = "#f0a500", "WEAK SETUP"
+    else:
+        grade_color, grade_label = "#ff4444", "POOR SETUP"
+
+    st.markdown("### Trade Setup Checklist")
+
+    hc1, hc2 = st.columns([3, 1])
+    with hc1:
+        st.markdown(
+            f"<div style='font-size:13px; color:#888; padding-top:10px;'>"
+            f"{passed_count} of {total_count} conditions met</div>",
+            unsafe_allow_html=True,
+        )
+    with hc2:
+        st.markdown(
+            f"<div style='text-align:right; font-size:15px; font-weight:700; color:{grade_color};"
+            f"background:{grade_color}22; border:1px solid {grade_color}; border-radius:6px;"
+            f"padding:6px 12px;'>{grade_label}</div>",
+            unsafe_allow_html=True,
+        )
+
+    for c in checks:
+        icon = "✅" if c["passed"] else "❌"
+        row_bg = "#0a1a0a" if c["passed"] else "#1a0a0a"
+        label_color = "#cccccc"
+        detail_color = "#666666"
+        st.markdown(
+            f"<div style='display:flex; align-items:center; gap:12px; padding:7px 12px;"
+            f"border-bottom:1px solid #1e1e2e; background:{row_bg}; border-radius:4px; margin:2px 0;'>"
+            f"<div style='font-size:16px; min-width:24px;'>{icon}</div>"
+            f"<div style='min-width:240px; font-size:13px; font-weight:600; color:{label_color};'>"
+            f"{c['label']}</div>"
+            f"<div style='font-size:12px; color:{detail_color}; flex:1;'>{c['detail']}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+
+# ── Relative Strength Panel ───────────────────────────────────────────────────
+
+_SECTOR_ETFS = {
+    "Technology":             "XLK",
+    "Health Care":            "XLV",
+    "Healthcare":             "XLV",
+    "Financials":             "XLF",
+    "Financial Services":     "XLF",
+    "Consumer Discretionary": "XLY",
+    "Consumer Staples":       "XLP",
+    "Energy":                 "XLE",
+    "Utilities":              "XLU",
+    "Real Estate":            "XLRE",
+    "Materials":              "XLB",
+    "Industrials":            "XLI",
+    "Communication Services": "XLC",
+    "Basic Materials":        "XLB",
+}
+
+
+def render_relative_strength(report: ReportData) -> None:
+    """
+    Compare the stock's price returns vs. SPY and its sector ETF
+    over 1-month, 3-month, and 6-month windows.
+    """
+    import yfinance as yf
+    import numpy as np
+
+    ticker = report.ticker
+    sector = report.sector
+    sector_etf = _SECTOR_ETFS.get(sector)
+
+    symbols = [ticker, "SPY"]
+    labels = [ticker, "S&P 500 (SPY)"]
+    if sector_etf:
+        symbols.append(sector_etf)
+        labels.append(f"{sector} ({sector_etf})")
+
+    periods = {"1M": 21, "3M": 63, "6M": 126}
+
+    try:
+        raw = yf.download(
+            symbols, period="7mo", interval="1d", auto_adjust=True, progress=False,
+        )["Close"]
+        if isinstance(raw.columns, pd.MultiIndex):
+            raw.columns = raw.columns.get_level_values(0)
+        raw = raw.dropna(how="all")
+    except Exception as e:
+        st.caption(f"Relative strength data unavailable: {e}")
+        return
+
+    rows = []
+    for sym, lbl in zip(symbols, labels):
+        if sym not in raw.columns:
+            continue
+        series = raw[sym].dropna()
+        row = {"Symbol": lbl}
+        for p_label, p_bars in periods.items():
+            if len(series) >= p_bars + 1:
+                ret = (series.iloc[-1] / series.iloc[-p_bars] - 1) * 100
+                row[p_label] = round(float(ret), 2)
+            else:
+                row[p_label] = None
+        rows.append(row)
+
+    if not rows:
+        return
+
+    st.markdown("### Relative Strength vs. Market & Sector")
+
+    th = _plot_colors()
+    period_labels = list(periods.keys())
+
+    # ── Bar chart ──────────────────────────────────────────────────────────────
+    palette = ["#4488ff", "#888888", "#f0a500"]
+    fig = go.Figure()
+    for i, row in enumerate(rows):
+        vals = [row.get(p) for p in period_labels]
+        colors_bar = [
+            "#00c851" if (v is not None and v >= 0) else "#ff4444"
+            for v in vals
+        ]
+        fig.add_trace(go.Bar(
+            name=row["Symbol"],
+            x=period_labels,
+            y=vals,
+            marker_color=palette[i % len(palette)],
+            text=[f"{v:+.1f}%" if v is not None else "N/A" for v in vals],
+            textposition="outside",
+            textfont=dict(size=10),
+        ))
+
+    fig.add_hline(y=0, line_color="#555555", line_width=1)
+    fig.update_layout(
+        barmode="group",
+        paper_bgcolor=th["paper_bgcolor"],
+        plot_bgcolor=th["plot_bgcolor"],
+        font=dict(color=th["font_color"], size=11),
+        xaxis=dict(gridcolor=th["grid_color"]),
+        yaxis=dict(gridcolor=th["grid_color"], title="Return %"),
+        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=11)),
+        height=300,
+        margin=dict(t=20, b=10, l=10, r=20),
+    )
+    st.plotly_chart(fig, width="stretch")
+
+    # ── Summary table ─────────────────────────────────────────────────────────
+    # Compute RS (stock return minus benchmark return) for each period
+    stock_row = rows[0]
+    spy_row = next((r for r in rows if "SPY" in r["Symbol"]), None)
+
+    cols = st.columns(len(period_labels))
+    for col, p in zip(cols, period_labels):
+        stock_ret = stock_row.get(p)
+        spy_ret = spy_row.get(p) if spy_row else None
+        if stock_ret is not None and spy_ret is not None:
+            rs = stock_ret - spy_ret
+            rs_color = "#00c851" if rs >= 0 else "#ff4444"
+            rs_sign = "+" if rs >= 0 else ""
+            col.markdown(
+                f"<div style='text-align:center; background:#1a1a2e; border-radius:8px;"
+                f"padding:10px; border:1px solid #2d2d4e;'>"
+                f"<div style='font-size:11px; color:#888; margin-bottom:4px;'>{p} vs SPY</div>"
+                f"<div style='font-size:20px; font-weight:700; color:{rs_color};'>"
+                f"{rs_sign}{rs:.1f}%</div>"
+                f"<div style='font-size:10px; color:#555; margin-top:2px;'>"
+                f"{ticker} {stock_ret:+.1f}% · SPY {spy_ret:+.1f}%</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+
+# ── AI Narrative ──────────────────────────────────────────────────────────────
+
+def render_ai_narrative(report: ReportData) -> None:
+    """
+    On-demand AI narrative: calls Claude claude-haiku-4-5 to write a concise
+    swing trade analysis summary from the current indicators and score.
+    Shows a button — only fetches when clicked.
+    """
+    st.markdown("### AI Setup Narrative")
+
+    key = f"narrative_{report.ticker}_{report.score.total_score:.0f}"
+
+    if key not in st.session_state:
+        if st.button("Generate AI Analysis", key=f"btn_narr_{report.ticker}", type="secondary"):
+            with st.spinner("Generating narrative..."):
+                narrative = _generate_narrative(report)
+            st.session_state[key] = narrative
+            st.rerun()
+    else:
+        narrative = st.session_state[key]
+        th = _plot_colors()
+        font_col = th["font_color"]
+        panel_bg = th["panel_bg"]
+        st.markdown(
+            f"<div style='background:{panel_bg}; border:1px solid #2d2d4e;"
+            f"border-radius:10px; padding:18px 22px; font-size:14px; line-height:1.7;"
+            f"color:{font_col};'>{narrative}</div>",
+            unsafe_allow_html=True,
+        )
+        if st.button("Regenerate", key=f"btn_regen_{report.ticker}", type="secondary"):
+            del st.session_state[key]
+            st.rerun()
+
+
+def _generate_narrative(report: ReportData) -> str:
+    """Call Anthropic API to generate a concise trade narrative."""
+    try:
+        import anthropic
+    except ImportError:
+        return (
+            "Anthropic SDK not installed. Run <code>pip install anthropic</code> "
+            "and add <code>anthropic</code> to requirements.txt to enable this feature."
+        )
+
+    ind = report.indicators
+    ts = report.trade_setup
+    cs = report.score.component_scores
+
+    prompt = f"""You are a professional swing trader writing a concise analysis for {report.ticker} ({report.company_name}).
+
+Key data:
+- Trade score: {report.score.total_score:.0f}/100 ({report.score.signal_label})
+- Direction: {ts.direction}
+- Market regime: {getattr(report.score, 'regime', 'NEUTRAL')}
+- Win probability: {report.score.win_probability*100:.1f}%
+- Expected value: ${report.score.expected_value:+.2f} per $100 risked
+
+Entry/Exit levels:
+- Entry: ${ts.entry:.2f}, Stop Loss: ${ts.stop_loss:.2f} ({ts.stop_pct:.1f}%), Take Profit: ${ts.take_profit:.2f} ({ts.target_pct:.1f}%)
+
+Component scores (0–10):
+- RSI: {cs.rsi:.1f} (RSI={ind.rsi:.1f})
+- MACD: {cs.macd:.1f} (hist={'rising' if ind.macd_histogram > ind.macd_histogram_prev else 'falling'})
+- Bollinger: {cs.bollinger:.1f}
+- Trend: {cs.trend:.1f} (EMA20={ind.ema20:.2f}, EMA50={ind.ema50:.2f})
+- Volume: {cs.volume:.1f} (ratio={ind.current_volume/ind.volume_sma20:.2f}x avg)
+- Stochastic: {cs.stochastic:.1f} (%K={ind.stoch_k:.1f})
+- Pattern: {cs.pattern:.1f} (golden={'yes' if ind.golden_cross else 'no'}, above200={'yes' if ind.above_200_sma else 'no'})
+
+MTF: {report.mtf.agreement_direction if report.mtf else 'N/A'} (daily {report.mtf.daily_score:.0f}, weekly {report.mtf.weekly_score:.0f})
+
+Write a 3-paragraph analysis (120–180 words total):
+1. What the overall setup looks like and why (1-2 sentences)
+2. The 2-3 strongest signals driving the score — both bullish and bearish factors
+3. Key risk factors and what to watch
+
+Be direct, professional, and specific. No disclaimers. Plain text only."""
+
+    try:
+        client = anthropic.Anthropic()
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return message.content[0].text
+    except anthropic.AuthenticationError:
+        return "API key not configured. Set the <code>ANTHROPIC_API_KEY</code> environment variable or in Streamlit secrets."
+    except Exception as e:
+        return f"Narrative generation failed: {e}"
