@@ -3436,3 +3436,174 @@ def render_quality_score(report: ReportData) -> None:
                 f"</div>"
             )
             (col1 if i < 5 else col2).markdown(html, unsafe_allow_html=True)
+
+
+# ── Feature 18: DCF Fair Value Estimator ─────────────────────────────────────
+
+def render_dcf_estimator(report: ReportData) -> None:
+    """
+    Interactive 2-stage DCF (Discounted Cash Flow) fair value estimator.
+    Stage 1: years 1-5 at user-set growth rate.
+    Stage 2: years 6-10 at lower terminal growth rate.
+    Discounts back at WACC to get intrinsic value per share.
+    """
+    import yfinance as yf
+    import numpy as np
+
+    th = _plot_colors()
+
+    st.markdown("### DCF Fair Value Estimator")
+    st.caption("2-stage discounted cash flow model — tweak assumptions with the sliders")
+
+    try:
+        info = yf.Ticker(report.ticker).info
+    except Exception:
+        st.warning("Could not fetch data for DCF.")
+        return
+
+    # ── Base inputs from yfinance ─────────────────────────────────────────────
+    fcf_raw        = info.get("freeCashflow") or info.get("operatingCashflow") or 0
+    shares_raw     = info.get("sharesOutstanding") or info.get("impliedSharesOutstanding") or 1
+    current_price  = report.current_price or 1
+
+    # If FCF is negative or zero, fall back to EPS-based approximation
+    eps = info.get("trailingEps") or 0
+    if fcf_raw <= 0 and eps > 0:
+        fcf_per_share_base = eps
+        base_label = "EPS (FCF unavailable)"
+    elif fcf_raw > 0:
+        fcf_per_share_base = fcf_raw / max(shares_raw, 1)
+        base_label = "Free Cash Flow / Share"
+    else:
+        st.info("No positive FCF or EPS data — DCF not available for this stock.")
+        return
+
+    # ── Assumption sliders ────────────────────────────────────────────────────
+    dc1, dc2, dc3, dc4 = st.columns(4)
+    with dc1:
+        stage1_g = st.slider("Stage 1 Growth % (Yr 1-5)", min_value=-10, max_value=50, value=10, step=1, key="dcf_g1")
+    with dc2:
+        stage2_g = st.slider("Stage 2 Growth % (Yr 6-10)", min_value=-5, max_value=30, value=5, step=1, key="dcf_g2")
+    with dc3:
+        discount = st.slider("Discount Rate % (WACC)", min_value=5, max_value=20, value=10, step=1, key="dcf_disc")
+    with dc4:
+        terminal_g = st.slider("Terminal Growth %", min_value=0, max_value=5, value=2, step=1, key="dcf_term")
+
+    # ── DCF Calculation ───────────────────────────────────────────────────────
+    r = discount / 100
+    g1 = stage1_g / 100
+    g2 = stage2_g / 100
+    gt = terminal_g / 100
+
+    cf = fcf_per_share_base
+    pv_cashflows = []
+    years = []
+    cf_values = []
+
+    for yr in range(1, 11):
+        g = g1 if yr <= 5 else g2
+        cf = cf * (1 + g)
+        pv = cf / ((1 + r) ** yr)
+        pv_cashflows.append(pv)
+        years.append(f"Y{yr}")
+        cf_values.append(cf)
+
+    # Terminal value (Gordon Growth Model on Y10 CF)
+    if r > gt:
+        terminal_value = cf_values[-1] * (1 + gt) / (r - gt)
+        pv_terminal = terminal_value / ((1 + r) ** 10)
+    else:
+        pv_terminal = 0.0
+
+    intrinsic_value = sum(pv_cashflows) + pv_terminal
+    margin_of_safety = (intrinsic_value - current_price) / current_price * 100 if current_price > 0 else 0
+
+    if intrinsic_value > current_price * 1.15:
+        verdict, verdict_color = "UNDERVALUED", "#00c851"
+    elif intrinsic_value < current_price * 0.85:
+        verdict, verdict_color = "OVERVALUED", "#ff4444"
+    else:
+        verdict, verdict_color = "FAIRLY VALUED", "#f0a500"
+
+    # ── KPI Row ───────────────────────────────────────────────────────────────
+    kc = st.columns(4)
+    kc[0].markdown(
+        f"<div style='background:{th['panel_bg']}; border-radius:8px; padding:14px; text-align:center;"
+        f"border:2px solid {verdict_color};'>"
+        f"<div style='font-size:11px; color:#888;'>INTRINSIC VALUE</div>"
+        f"<div style='font-size:28px; font-weight:700; color:{verdict_color};'>${intrinsic_value:.2f}</div>"
+        f"<div style='font-size:11px; color:{verdict_color}; font-weight:700;'>{verdict}</div>"
+        f"</div>", unsafe_allow_html=True,
+    )
+    kc[1].markdown(
+        f"<div style='background:{th['panel_bg']}; border-radius:8px; padding:14px; text-align:center;"
+        f"border:1px solid {th['panel_border']};'>"
+        f"<div style='font-size:11px; color:#888;'>CURRENT PRICE</div>"
+        f"<div style='font-size:24px; font-weight:700; color:#e0e0e0;'>${current_price:.2f}</div>"
+        f"</div>", unsafe_allow_html=True,
+    )
+    mos_col = "#00c851" if margin_of_safety > 15 else "#ff4444" if margin_of_safety < -15 else "#f0a500"
+    kc[2].markdown(
+        f"<div style='background:{th['panel_bg']}; border-radius:8px; padding:14px; text-align:center;"
+        f"border:1px solid {th['panel_border']};'>"
+        f"<div style='font-size:11px; color:#888;'>MARGIN OF SAFETY</div>"
+        f"<div style='font-size:24px; font-weight:700; color:{mos_col};'>{margin_of_safety:+.1f}%</div>"
+        f"</div>", unsafe_allow_html=True,
+    )
+    kc[3].markdown(
+        f"<div style='background:{th['panel_bg']}; border-radius:8px; padding:14px; text-align:center;"
+        f"border:1px solid {th['panel_border']};'>"
+        f"<div style='font-size:11px; color:#888;'>BASE ({base_label[:18]})</div>"
+        f"<div style='font-size:24px; font-weight:700; color:#aaa;'>${fcf_per_share_base:.2f}</div>"
+        f"</div>", unsafe_allow_html=True,
+    )
+
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+    # ── Waterfall / bar chart of PV cash flows ────────────────────────────────
+    bar_colors_dcf = ["#4488ff"] * 10 + ["#ffbb33"]
+    bar_x = years + ["Terminal"]
+    bar_y = pv_cashflows + [pv_terminal]
+
+    fig = go.Figure(go.Bar(
+        x=bar_x, y=bar_y,
+        marker_color=bar_colors_dcf,
+        text=[f"${v:.2f}" for v in bar_y],
+        textposition="outside",
+        hovertemplate="<b>%{x}</b><br>PV: $%{y:.2f}<extra></extra>",
+    ))
+
+    # Cumulative line
+    cumulative = []
+    running = 0.0
+    for v in bar_y:
+        running += v
+        cumulative.append(running)
+
+    fig.add_trace(go.Scatter(
+        x=bar_x, y=cumulative,
+        name="Cumulative PV",
+        line=dict(color="#00c851", width=2, dash="dot"),
+        yaxis="y2",
+        hovertemplate="Cumulative: $%{y:.2f}<extra></extra>",
+    ))
+
+    fig.add_hline(y=current_price, line_color="#ff8888", line_dash="dash",
+                  line_width=1.5, annotation_text=f"Current ${current_price:.2f}")
+
+    fig.update_layout(
+        paper_bgcolor=th["paper_bgcolor"], plot_bgcolor=th["plot_bgcolor"],
+        font=dict(color=th["font_color"], size=11),
+        yaxis=dict(gridcolor=th["grid_color"], title="PV per Share ($)"),
+        yaxis2=dict(overlaying="y", side="right", title="Cumulative PV",
+                    gridcolor="rgba(0,0,0,0)", showgrid=False),
+        xaxis=dict(gridcolor=th["grid_color"]),
+        height=310, margin=dict(t=20, b=20, l=20, r=60),
+        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=10)),
+        barmode="group",
+    )
+    st.plotly_chart(fig, width="stretch")
+    st.caption(
+        f"PV Terminal: ${pv_terminal:.2f}  ·  Sum PV CFs: ${sum(pv_cashflows):.2f}  ·  "
+        f"Total Intrinsic: ${intrinsic_value:.2f}  ·  Discount rate: {discount}%"
+    )

@@ -199,7 +199,10 @@ with tab_analyzer:
             render_estimate_revisions(report)
 
         # ── Section 6: AI & Tools ─────────────────────────────────────────────
-        with st.expander("🤖 AI & Tools — Narrative · Position Sizing · Notes · Export", expanded=False):
+        with st.expander("🤖 AI & Tools — Narrative · DCF · Position Sizing · Notes · Export", expanded=False):
+            from ui.renderer import render_dcf_estimator
+            render_dcf_estimator(report)
+            st.markdown("---")
             render_ai_narrative(report)
             st.markdown("---")
             ts = report.trade_setup
