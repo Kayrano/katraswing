@@ -44,9 +44,9 @@ with toggle_col:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_analyzer, tab_watchlist, tab_alerts, tab_backtest, tab_heatmap, tab_screener, tab_compare = st.tabs([
+tab_analyzer, tab_watchlist, tab_alerts, tab_backtest, tab_heatmap, tab_screener, tab_portfolio, tab_compare = st.tabs([
     "📊 Analyzer", "👁 Watchlist", "🔔 Price Alerts", "🧪 Backtester",
-    "🌡 Sector Heatmap", "🔍 Screener", "⚖ Compare",
+    "🌡 Sector Heatmap", "🔍 Screener", "💼 Portfolio", "⚖ Compare",
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -63,7 +63,8 @@ with tab_analyzer:
         render_radar_chart, render_setup_checklist, render_relative_strength,
         render_ai_narrative, render_valuation_history, render_estimate_revisions,
         render_weinstein_stage, render_institutional_footprint,
-        render_ticker_notes,
+        render_ticker_notes, render_weinstein_chart, render_dividend_panel,
+        render_peer_comparison,
     )
 
     col_input, col_btn = st.columns([4, 1])
@@ -82,6 +83,11 @@ with tab_analyzer:
             try:
                 report = run_analysis(query.strip())
                 st.session_state["last_report"] = report
+                # Check score alerts for this ticker
+                from data.score_alerts import check_score_alerts
+                _sa_fired = check_score_alerts(report.ticker, report.score.total_score)
+                if _sa_fired:
+                    st.session_state["_sa_fired"] = _sa_fired
             except ValueError as e:
                 st.error(str(e))
                 st.stop()
@@ -119,6 +125,15 @@ with tab_analyzer:
             </div>
             """, unsafe_allow_html=True)
 
+        # Show score alert banners if any fired this run
+        for _sa in st.session_state.pop("_sa_fired", []):
+            _cond = "rose above" if _sa["condition"] == "above" else "fell below"
+            st.success(
+                f"Score Alert: **{_sa['ticker']}** score {_cond} {_sa['threshold']:.0f} "
+                f"— current score: **{_sa['score']:.0f}**"
+                + (f"  · {_sa['note']}" if _sa["note"] else "")
+            )
+
         st.markdown("---")
         render_header(report)
 
@@ -127,6 +142,9 @@ with tab_analyzer:
 
         st.markdown("---")
         render_weinstein_stage(report)
+
+        st.markdown("---")
+        render_weinstein_chart(report)
 
         col_score, col_trade = st.columns([1, 1], gap="medium")
         with col_score:
@@ -182,6 +200,12 @@ with tab_analyzer:
 
         st.markdown("---")
         render_estimate_revisions(report)
+
+        st.markdown("---")
+        render_dividend_panel(report)
+
+        st.markdown("---")
+        render_peer_comparison(report)
 
         st.markdown("---")
         ts = report.trade_setup
@@ -408,6 +432,10 @@ with tab_alerts:
                         unsafe_allow_html=False,
                     )
 
+    st.markdown("---")
+    from ui.renderer import render_score_alerts_panel
+    render_score_alerts_panel()
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 4 — BACKTESTER
@@ -592,7 +620,15 @@ with tab_screener:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 7 — COMPARE
+# TAB 7 — PORTFOLIO
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_portfolio:
+    from ui.renderer import render_portfolio_tab
+    render_portfolio_tab()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 8 — COMPARE
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_compare:
     from agents.orchestrator import run_analysis as _run_cmp

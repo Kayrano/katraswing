@@ -2680,11 +2680,609 @@ def render_ticker_notes(report: ReportData) -> None:
 
     nc1, nc2 = st.columns([1, 5])
     with nc1:
-        if st.button("💾 Save Note", key=f"note_save_{ticker}", type="primary"):
+        if st.button("Save Note", key=f"note_save_{ticker}", type="primary"):
             save_note(ticker, note_text)
             st.success("Saved.")
     with nc2:
-        if existing and st.button("🗑 Delete", key=f"note_del_{ticker}"):
+        if existing and st.button("Delete", key=f"note_del_{ticker}"):
             delete_note(ticker)
             st.success("Note deleted.")
             st.rerun()
+
+
+# ── Feature 15: Weinstein Stage Chart ────────────────────────────────────────
+
+def render_weinstein_chart(report: ReportData) -> None:
+    """
+    Price vs SMA150 line chart showing Weinstein stage structure over time.
+    Green fill = price above SMA150 (Stage 2 territory).
+    Red fill = price below SMA150 (Stage 4 territory).
+    """
+    import numpy as np
+
+    df = report.df
+    if len(df) < 155:
+        st.caption("Not enough data for SMA150 chart (need 155+ bars).")
+        return
+
+    th = _plot_colors()
+    plot_df = df.iloc[-400:] if len(df) > 400 else df
+    close   = plot_df["Close"].values.astype(float)
+    sma150  = pd.Series(df["Close"]).rolling(150).mean().iloc[-len(plot_df):].values
+    dates   = list(plot_df.index)
+
+    # Build two masked fill series (above / below SMA)
+    price_above = np.where(close >= sma150, close, sma150)
+    price_below = np.where(close <= sma150, close, sma150)
+
+    fig = go.Figure()
+
+    # Green fill: price above SMA150
+    fig.add_trace(go.Scatter(
+        x=dates, y=price_above,
+        fill=None, mode="lines", line=dict(width=0),
+        showlegend=False, hoverinfo="skip",
+    ))
+    fig.add_trace(go.Scatter(
+        x=dates, y=sma150,
+        fill="tonexty",
+        fillcolor="rgba(0,200,81,0.12)",
+        mode="lines", line=dict(width=0),
+        name="Above SMA150", hoverinfo="skip",
+    ))
+
+    # Red fill: price below SMA150
+    fig.add_trace(go.Scatter(
+        x=dates, y=sma150,
+        fill=None, mode="lines", line=dict(width=0),
+        showlegend=False, hoverinfo="skip",
+    ))
+    fig.add_trace(go.Scatter(
+        x=dates, y=price_below,
+        fill="tonexty",
+        fillcolor="rgba(255,68,68,0.12)",
+        mode="lines", line=dict(width=0),
+        name="Below SMA150", hoverinfo="skip",
+    ))
+
+    # SMA150 line
+    fig.add_trace(go.Scatter(
+        x=dates, y=sma150,
+        name="SMA150 (30W)",
+        line=dict(color="#ffbb33", width=2, dash="dash"),
+    ))
+
+    # Price line
+    fig.add_trace(go.Scatter(
+        x=dates, y=close,
+        name=report.ticker,
+        line=dict(color="#4488ff", width=2),
+    ))
+
+    # Determine current stage for annotation
+    w = _compute_weinstein_stage(df)
+    stage_color = w.get("color", "#888888")
+    stage_label = w.get("label", "N/A")
+
+    fig.add_annotation(
+        x=dates[-1], y=float(close[-1]),
+        text=f" {stage_label}",
+        showarrow=False,
+        font=dict(size=11, color=stage_color),
+        xanchor="left",
+    )
+
+    fig.update_layout(
+        paper_bgcolor=th["paper_bgcolor"],
+        plot_bgcolor=th["plot_bgcolor"],
+        font=dict(color=th["font_color"], size=11),
+        xaxis=dict(gridcolor=th["grid_color"], showgrid=False),
+        yaxis=dict(gridcolor=th["grid_color"], title="Price"),
+        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=10)),
+        height=320,
+        margin=dict(t=20, b=20, l=20, r=80),
+        title=dict(
+            text=f"{report.ticker} — Price vs SMA150 (Weinstein Stage Structure)",
+            font=dict(size=12, color=th["text_muted"]),
+        ),
+    )
+    st.plotly_chart(fig, width="stretch")
+
+
+# ── Feature 13: Dividend / Income Panel ──────────────────────────────────────
+
+def render_dividend_panel(report: ReportData) -> None:
+    """
+    Dividend yield, rate, payout ratio, ex-dividend date, and
+    a bar chart of the last 5 years of dividend history.
+    """
+    import yfinance as yf
+
+    ticker = report.ticker
+    th = _plot_colors()
+
+    st.markdown("### Dividend & Income")
+
+    try:
+        t = yf.Ticker(ticker)
+        info = t.info or {}
+
+        div_rate   = info.get("dividendRate")
+        div_yield  = info.get("dividendYield")
+        payout     = info.get("payoutRatio")
+        ex_date    = info.get("exDividendDate")
+        freq       = info.get("dividendFrequency")   # 4 = quarterly
+
+        # Historical dividends
+        divs = t.dividends
+        if divs is not None and not divs.empty:
+            divs.index = pd.to_datetime(divs.index).tz_localize(None)
+
+        if (not div_rate or div_rate == 0) and (divs is None or divs.empty):
+            st.caption(f"{ticker} does not pay a dividend.")
+            return
+
+        # ── KPI badges ────────────────────────────────────────────────────────
+        kpis = []
+        if div_yield:
+            yld_pct = div_yield * 100
+            yld_col = "#00c851" if yld_pct >= 3 else "#4488ff" if yld_pct >= 1 else "#888"
+            kpis.append(("Annual Yield", f"{yld_pct:.2f}%", yld_col))
+        if div_rate:
+            kpis.append(("Annual Dividend", f"${div_rate:.2f}", "#e0e0e0"))
+        if payout and payout > 0:
+            pay_col = "#ff4444" if payout > 0.9 else "#f0a500" if payout > 0.6 else "#00c851"
+            kpis.append(("Payout Ratio", f"{payout*100:.0f}%", pay_col))
+        if ex_date:
+            try:
+                import datetime as _dt
+                ex_str = _dt.datetime.fromtimestamp(ex_date).strftime("%Y-%m-%d")
+                kpis.append(("Ex-Div Date", ex_str, "#888"))
+            except Exception:
+                pass
+
+        if kpis:
+            cols = st.columns(len(kpis))
+            for col, (label, val, color) in zip(cols, kpis):
+                col.markdown(
+                    f"<div style='background:{th['panel_bg']}; border:1px solid {color}44;"
+                    f"border-radius:8px; padding:10px 12px; text-align:center;'>"
+                    f"<div style='font-size:11px; color:#888; margin-bottom:4px;'>{label}</div>"
+                    f"<div style='font-size:18px; font-weight:700; color:{color};'>{val}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+        # ── Dividend history chart ─────────────────────────────────────────────
+        if divs is not None and not divs.empty:
+            # Annual totals (sum dividends per year)
+            divs_df = divs.to_frame(name="div")
+            divs_df["year"] = divs_df.index.year
+            annual = divs_df.groupby("year")["div"].sum().tail(8)
+
+            if len(annual) >= 2:
+                years = [str(y) for y in annual.index]
+                vals  = list(annual.values)
+                # Color: rising = green, flat/falling = orange
+                bar_colors = []
+                for i, v in enumerate(vals):
+                    if i == 0:
+                        bar_colors.append("#4488ff")
+                    elif v >= vals[i - 1]:
+                        bar_colors.append("#00c851")
+                    else:
+                        bar_colors.append("#f0a500")
+
+                fig = go.Figure(go.Bar(
+                    x=years, y=vals,
+                    marker_color=bar_colors,
+                    text=[f"${v:.2f}" for v in vals],
+                    textposition="outside",
+                    textfont=dict(size=10),
+                ))
+                fig.update_layout(
+                    paper_bgcolor=th["paper_bgcolor"],
+                    plot_bgcolor=th["plot_bgcolor"],
+                    font=dict(color=th["font_color"], size=11),
+                    xaxis=dict(gridcolor=th["grid_color"]),
+                    yaxis=dict(gridcolor=th["grid_color"], title="Annual Dividend ($)"),
+                    height=240,
+                    margin=dict(t=10, b=10, l=20, r=20),
+                    showlegend=False,
+                )
+                st.plotly_chart(fig, width="stretch")
+
+                # 5-year dividend growth rate
+                if len(annual) >= 5:
+                    old = float(annual.iloc[-5])
+                    new = float(annual.iloc[-1])
+                    if old > 0:
+                        cagr = ((new / old) ** (1 / 4) - 1) * 100
+                        cagr_col = "#00c851" if cagr >= 0 else "#ff4444"
+                        st.caption(
+                            f"5-year dividend CAGR: "
+                            f"<span style='color:{cagr_col}; font-weight:700;'>{cagr:+.1f}%/yr</span>",
+                            unsafe_allow_html=True,
+                        )
+
+    except Exception as e:
+        st.caption(f"Dividend data unavailable: {e}")
+
+
+# ── Feature 12: Peer Comparison Auto-Table ────────────────────────────────────
+
+# Curated peer groups by sector (5-6 per group)
+_PEER_MAP = {
+    "Technology":             ["AAPL", "MSFT", "NVDA", "AMD", "AVGO", "QCOM", "ORCL"],
+    "Communication":          ["GOOGL", "META", "NFLX", "DIS", "SNAP", "PINS"],
+    "Consumer Discretionary": ["AMZN", "TSLA", "HD", "NKE", "MCD", "SBUX", "TGT"],
+    "Consumer Staples":       ["WMT", "COST", "KO", "PEP", "PG", "CL"],
+    "Healthcare":             ["UNH", "JNJ", "LLY", "ABBV", "MRK", "PFE", "TMO"],
+    "Financials":             ["JPM", "GS", "MS", "BAC", "V", "MA", "AXP"],
+    "Industrials":            ["CAT", "BA", "GE", "HON", "RTX", "LMT", "UNP"],
+    "Energy":                 ["XOM", "CVX", "COP", "SLB", "EOG", "OXY"],
+    "Materials":              ["LIN", "APD", "NEM", "FCX", "NUE", "ALB"],
+    "Real Estate":            ["AMT", "PLD", "CCI", "EQIX", "PSA", "SPG"],
+    "Utilities":              ["NEE", "DUK", "SO", "AEP", "EXC", "XEL"],
+}
+
+
+def render_peer_comparison(report: ReportData) -> None:
+    """
+    Auto-table of 5 sector peers: price, P/E, revenue growth, market cap.
+    Uses yfinance info (batch) — silent fallback per ticker on error.
+    """
+    import yfinance as yf
+
+    ticker = report.ticker
+    sector = report.sector
+    th = _plot_colors()
+
+    # Find peer list
+    peer_list = None
+    for key, peers in _PEER_MAP.items():
+        if key.lower() in sector.lower() or sector.lower() in key.lower():
+            peer_list = [p for p in peers if p != ticker][:5]
+            break
+
+    if not peer_list:
+        st.caption(f"No peer group configured for sector: {sector}")
+        return
+
+    st.markdown("### Peer Comparison")
+    st.caption(f"Sector: {sector} — comparing {ticker} vs {', '.join(peer_list)}")
+
+    all_tickers = [ticker] + peer_list
+
+    rows = []
+    with st.spinner("Fetching peer data..."):
+        for sym in all_tickers:
+            try:
+                info = yf.Ticker(sym).info or {}
+                pe   = info.get("trailingPE")
+                fpe  = info.get("forwardPE")
+                rev_growth = info.get("revenueGrowth")   # YoY decimal
+                mcap = info.get("marketCap")
+                price = info.get("currentPrice") or info.get("regularMarketPrice")
+                name  = info.get("shortName", sym)[:20]
+                rows.append({
+                    "ticker":   sym,
+                    "name":     name,
+                    "price":    price,
+                    "pe":       pe,
+                    "fpe":      fpe,
+                    "rev_gr":   rev_growth,
+                    "mcap":     mcap,
+                    "is_self":  sym == ticker,
+                })
+            except Exception:
+                rows.append({"ticker": sym, "name": sym, "price": None, "pe": None,
+                             "fpe": None, "rev_gr": None, "mcap": None, "is_self": sym == ticker})
+
+    if not rows:
+        return
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    hcols = st.columns([1.2, 2, 1.2, 1, 1, 1.2, 1.5])
+    for col, label in zip(hcols, ["Ticker", "Company", "Price", "P/E (TTM)", "P/E (Fwd)", "Rev Growth", "Market Cap"]):
+        col.markdown(f"<span style='font-size:11px; color:#555; font-weight:700;'>{label}</span>", unsafe_allow_html=True)
+    st.markdown("<div style='border-bottom:1px solid #2d2d4e; margin:4px 0 8px 0;'></div>", unsafe_allow_html=True)
+
+    for r in rows:
+        is_self = r["is_self"]
+        row_style = "font-weight:700; color:#4488ff;" if is_self else "color:#cccccc;"
+
+        pe_txt  = f"{r['pe']:.1f}x"  if r["pe"]  and 0 < r["pe"]  < 500 else "—"
+        fpe_txt = f"{r['fpe']:.1f}x" if r["fpe"] and 0 < r["fpe"] < 500 else "—"
+        if r["rev_gr"] is not None:
+            gr_val = r["rev_gr"] * 100
+            gr_col = "#00c851" if gr_val >= 0 else "#ff4444"
+            gr_txt = f"<span style='color:{gr_col};'>{gr_val:+.1f}%</span>"
+        else:
+            gr_txt = "—"
+        if r["mcap"]:
+            mc = r["mcap"]
+            if mc >= 1e12:
+                mc_txt = f"${mc/1e12:.1f}T"
+            elif mc >= 1e9:
+                mc_txt = f"${mc/1e9:.1f}B"
+            else:
+                mc_txt = f"${mc/1e6:.0f}M"
+        else:
+            mc_txt = "—"
+        price_txt = f"${r['price']:.2f}" if r["price"] else "—"
+
+        rc = st.columns([1.2, 2, 1.2, 1, 1, 1.2, 1.5])
+        rc[0].markdown(f"<span style='{row_style}'>{r['ticker']}</span>", unsafe_allow_html=True)
+        rc[1].markdown(f"<span style='font-size:12px; color:#888;'>{r['name']}</span>", unsafe_allow_html=True)
+        rc[2].markdown(f"<span style='font-size:13px; {row_style}'>{price_txt}</span>", unsafe_allow_html=True)
+        rc[3].markdown(f"<span style='font-size:13px; color:#e0e0e0;'>{pe_txt}</span>", unsafe_allow_html=True)
+        rc[4].markdown(f"<span style='font-size:13px; color:#e0e0e0;'>{fpe_txt}</span>", unsafe_allow_html=True)
+        rc[5].markdown(gr_txt, unsafe_allow_html=True)
+        rc[6].markdown(f"<span style='font-size:12px; color:#888;'>{mc_txt}</span>", unsafe_allow_html=True)
+        st.markdown("<div style='border-bottom:1px solid #1a1a2e; margin:2px 0;'></div>", unsafe_allow_html=True)
+
+
+# ── Feature 14: Score-Condition Alerts Panel ─────────────────────────────────
+
+def render_score_alerts_panel() -> None:
+    """
+    UI for creating and managing score-based alerts.
+    Rendered inside the Price Alerts tab as a second section.
+    """
+    from data.score_alerts import (
+        load_score_alerts, add_score_alert, remove_score_alert,
+    )
+
+    st.markdown("### Score Alerts")
+    st.caption("Get notified when a stock's Katraswing score crosses a threshold — checked each time you analyze it.")
+
+    with st.expander("Set New Score Alert", expanded=False):
+        sa1, sa2, sa3, sa4 = st.columns([1.5, 1.5, 1.5, 1])
+        with sa1:
+            sa_ticker = st.text_input("Ticker", placeholder="AAPL", key="sa_ticker")
+        with sa2:
+            sa_thresh = st.number_input("Score Threshold", min_value=0, max_value=100,
+                                        value=70, step=5, key="sa_thresh")
+        with sa3:
+            sa_cond = st.selectbox("Condition", ["above", "below"], key="sa_cond")
+        with sa4:
+            sa_note = st.text_input("Note (optional)", key="sa_note")
+
+        if st.button("Create Score Alert", key="sa_create", type="primary"):
+            if sa_ticker.strip():
+                add_score_alert(sa_ticker.strip().upper(), float(sa_thresh), sa_cond, sa_note)
+                st.success(f"Alert created: {sa_ticker.upper()} score {sa_cond} {sa_thresh}")
+                st.rerun()
+            else:
+                st.warning("Please enter a ticker.")
+
+    alerts = load_score_alerts()
+    if not alerts:
+        st.info("No score alerts set.")
+        return
+
+    active  = [a for a in alerts if not a.triggered]
+    fired   = [a for a in alerts if a.triggered]
+
+    if active:
+        st.markdown("#### Active Score Alerts")
+        for idx, a in enumerate(alerts):
+            if a.triggered:
+                continue
+            real_idx = alerts.index(a)
+            cond_col = "#00c851" if a.condition == "above" else "#ff4444"
+            bc1, bc2, bc3, bc4, bc5 = st.columns([1, 1.5, 1.2, 2, 0.6])
+            bc1.markdown(f"<b style='color:#e0e0e0;'>{a.ticker}</b>", unsafe_allow_html=True)
+            bc2.markdown(f"<span style='color:{cond_col};'>score {a.condition} {a.threshold:.0f}</span>", unsafe_allow_html=True)
+            bc3.markdown(f"<span style='color:#666; font-size:12px;'>Set {a.created_at[:10]}</span>", unsafe_allow_html=True)
+            bc4.markdown(f"<span style='color:#888; font-size:12px;'>{a.note}</span>", unsafe_allow_html=True)
+            if bc5.button("x", key=f"del_sa_{real_idx}"):
+                remove_score_alert(real_idx)
+                st.rerun()
+            st.markdown("<div style='border-bottom:1px solid #1e1e2e; margin:2px 0;'></div>", unsafe_allow_html=True)
+
+    if fired:
+        with st.expander(f"Triggered Score Alerts ({len(fired)})", expanded=False):
+            for a in fired:
+                st.markdown(
+                    f"**{a.ticker}** — score {a.condition} {a.threshold:.0f} "
+                    f"→ triggered at score **{a.triggered_score}** on {(a.triggered_at or '')[:10]}"
+                    + (f" · _{a.note}_" if a.note else ""),
+                )
+
+
+# ── Feature 11: Portfolio rendering (inline helpers) ─────────────────────────
+
+def render_portfolio_tab() -> None:
+    """
+    Full portfolio risk tab: add positions, live P&L, risk metrics.
+    Called as the entire content of the Portfolio tab.
+    """
+    import yfinance as yf
+    import numpy as np
+    from data.portfolio import load_positions, add_position, remove_position
+    from utils.formatting import fmt_price, score_color
+
+    th = _plot_colors()
+
+    st.markdown("### My Positions")
+    st.caption("Track your open swing trades. Live P&L fetched from yfinance on each load.")
+
+    # ── Add position form ─────────────────────────────────────────────────────
+    with st.expander("Add / Update Position", expanded=False):
+        pf1, pf2, pf3 = st.columns(3)
+        with pf1:
+            pf_ticker = st.text_input("Ticker", placeholder="AAPL", key="pf_ticker")
+            pf_dir    = st.selectbox("Direction", ["LONG", "SHORT"], key="pf_dir")
+        with pf2:
+            pf_entry  = st.number_input("Entry Price ($)", min_value=0.01, step=0.5, key="pf_entry")
+            pf_shares = st.number_input("Shares / Contracts", min_value=0.01, step=1.0, value=1.0, key="pf_shares")
+        with pf3:
+            pf_sl = st.number_input("Stop Loss ($, 0 = none)", min_value=0.0, step=0.5, key="pf_sl")
+            pf_tp = st.number_input("Take Profit ($, 0 = none)", min_value=0.0, step=0.5, key="pf_tp")
+        pf_notes = st.text_input("Notes (optional)", key="pf_notes")
+
+        if st.button("Save Position", key="pf_save", type="primary"):
+            if pf_ticker.strip() and pf_entry > 0:
+                add_position(
+                    ticker=pf_ticker.strip().upper(),
+                    entry_price=pf_entry,
+                    shares=pf_shares,
+                    direction=pf_dir,
+                    stop_loss=pf_sl if pf_sl > 0 else None,
+                    take_profit=pf_tp if pf_tp > 0 else None,
+                    notes=pf_notes,
+                )
+                st.success(f"Position saved: {pf_ticker.upper()} {pf_dir}")
+                st.rerun()
+            else:
+                st.warning("Please enter a ticker and entry price.")
+
+    positions = load_positions()
+    if not positions:
+        st.info("No positions tracked. Add one above.")
+        return
+
+    # ── Fetch live prices ─────────────────────────────────────────────────────
+    tickers_needed = [p.ticker for p in positions]
+    live_prices: dict = {}
+    with st.spinner("Fetching live prices..."):
+        for t in tickers_needed:
+            try:
+                fi = yf.Ticker(t).fast_info
+                price = getattr(fi, "last_price", None)
+                if price:
+                    live_prices[t] = float(price)
+            except Exception:
+                pass
+
+    # ── Portfolio-level metrics ───────────────────────────────────────────────
+    total_cost   = 0.0
+    total_value  = 0.0
+    total_pnl    = 0.0
+    max_risk     = 0.0   # loss if all stop-losses hit
+    rows_data    = []
+
+    for pos in positions:
+        cur = live_prices.get(pos.ticker)
+        cost = pos.entry_price * pos.shares
+        total_cost += cost
+
+        if cur:
+            if pos.direction == "LONG":
+                pnl_pct = (cur - pos.entry_price) / pos.entry_price * 100
+                pnl_abs = (cur - pos.entry_price) * pos.shares
+                cur_val  = cur * pos.shares
+            else:  # SHORT
+                pnl_pct = (pos.entry_price - cur) / pos.entry_price * 100
+                pnl_abs = (pos.entry_price - cur) * pos.shares
+                cur_val  = pos.entry_price * pos.shares  # cost-based for shorts
+            total_value += cur_val
+            total_pnl   += pnl_abs
+        else:
+            pnl_pct = 0.0
+            pnl_abs = 0.0
+            cur_val  = cost
+
+        # Max risk from stop loss
+        if pos.stop_loss and cur:
+            if pos.direction == "LONG":
+                risk = max(0, (cur - pos.stop_loss) * pos.shares)
+            else:
+                risk = max(0, (pos.stop_loss - cur) * pos.shares)
+            max_risk += risk
+
+        rows_data.append({
+            "pos": pos, "cur": cur, "pnl_pct": pnl_pct,
+            "pnl_abs": pnl_abs, "cur_val": cur_val,
+        })
+
+    # Portfolio summary KPIs
+    total_ret_pct = (total_pnl / total_cost * 100) if total_cost > 0 else 0
+    pnl_color = "#00c851" if total_pnl >= 0 else "#ff4444"
+    risk_color = "#ff4444" if max_risk > total_cost * 0.1 else "#f0a500"
+
+    kc = st.columns(4)
+    kc[0].markdown(
+        f"<div style='background:{th['panel_bg']}; border-radius:8px; padding:12px; text-align:center;"
+        f"border:1px solid #2d2d4e;'>"
+        f"<div style='font-size:11px; color:#888;'>POSITIONS</div>"
+        f"<div style='font-size:24px; font-weight:700; color:#e0e0e0;'>{len(positions)}</div>"
+        f"</div>", unsafe_allow_html=True,
+    )
+    kc[1].markdown(
+        f"<div style='background:{th['panel_bg']}; border-radius:8px; padding:12px; text-align:center;"
+        f"border:1px solid #2d2d4e;'>"
+        f"<div style='font-size:11px; color:#888;'>TOTAL COST</div>"
+        f"<div style='font-size:18px; font-weight:700; color:#e0e0e0;'>${total_cost:,.0f}</div>"
+        f"</div>", unsafe_allow_html=True,
+    )
+    kc[2].markdown(
+        f"<div style='background:{th['panel_bg']}; border-radius:8px; padding:12px; text-align:center;"
+        f"border:1px solid {pnl_color}44;'>"
+        f"<div style='font-size:11px; color:#888;'>TOTAL P&L</div>"
+        f"<div style='font-size:18px; font-weight:700; color:{pnl_color};'>${total_pnl:+,.0f}</div>"
+        f"<div style='font-size:11px; color:{pnl_color};'>{total_ret_pct:+.1f}%</div>"
+        f"</div>", unsafe_allow_html=True,
+    )
+    kc[3].markdown(
+        f"<div style='background:{th['panel_bg']}; border-radius:8px; padding:12px; text-align:center;"
+        f"border:1px solid {risk_color}44;'>"
+        f"<div style='font-size:11px; color:#888;'>MAX SL RISK</div>"
+        f"<div style='font-size:18px; font-weight:700; color:{risk_color};'>${max_risk:,.0f}</div>"
+        f"<div style='font-size:11px; color:#555;'>if all stops hit</div>"
+        f"</div>", unsafe_allow_html=True,
+    )
+
+    st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+
+    # ── Position rows ─────────────────────────────────────────────────────────
+    hdr = st.columns([1.2, 1, 0.8, 1, 1.2, 1.2, 1.2, 1, 0.6])
+    for col, lbl in zip(hdr, ["Ticker", "Direction", "Shares", "Entry", "Current", "P&L $", "P&L %", "SL / TP", "Del"]):
+        col.markdown(f"<span style='font-size:11px; color:#555; font-weight:700;'>{lbl}</span>", unsafe_allow_html=True)
+    st.markdown("<div style='border-bottom:1px solid #2d2d4e; margin:4px 0 8px 0;'></div>", unsafe_allow_html=True)
+
+    for rd in rows_data:
+        pos    = rd["pos"]
+        pnl_c  = "#00c851" if rd["pnl_abs"] >= 0 else "#ff4444"
+        dir_c  = "#00c851" if pos.direction == "LONG" else "#ff4444"
+        cur_s  = fmt_price(rd["cur"]) if rd["cur"] else "—"
+        sl_s   = fmt_price(pos.stop_loss)   if pos.stop_loss   else "—"
+        tp_s   = fmt_price(pos.take_profit) if pos.take_profit else "—"
+
+        rc = st.columns([1.2, 1, 0.8, 1, 1.2, 1.2, 1.2, 1, 0.6])
+        rc[0].markdown(f"<b style='color:#e0e0e0;'>{pos.ticker}</b>", unsafe_allow_html=True)
+        rc[1].markdown(f"<span style='color:{dir_c}; font-weight:700;'>{pos.direction}</span>", unsafe_allow_html=True)
+        rc[2].markdown(f"<span style='color:#aaa;'>{pos.shares:.1f}</span>", unsafe_allow_html=True)
+        rc[3].markdown(f"<span style='color:#aaa;'>{fmt_price(pos.entry_price)}</span>", unsafe_allow_html=True)
+        rc[4].markdown(f"<span style='color:#e0e0e0; font-weight:600;'>{cur_s}</span>", unsafe_allow_html=True)
+        rc[5].markdown(f"<span style='color:{pnl_c}; font-weight:700;'>${rd['pnl_abs']:+,.2f}</span>", unsafe_allow_html=True)
+        rc[6].markdown(f"<span style='color:{pnl_c};'>{rd['pnl_pct']:+.1f}%</span>", unsafe_allow_html=True)
+        rc[7].markdown(f"<span style='color:#ff4444; font-size:11px;'>{sl_s}</span> / <span style='color:#00c851; font-size:11px;'>{tp_s}</span>", unsafe_allow_html=True)
+        if rc[8].button("x", key=f"del_pos_{pos.ticker}"):
+            remove_position(pos.ticker)
+            st.rerun()
+        st.markdown("<div style='border-bottom:1px solid #1a1a2e; margin:2px 0;'></div>", unsafe_allow_html=True)
+
+    # ── P&L breakdown bar chart ───────────────────────────────────────────────
+    if len(rows_data) >= 2:
+        fig = go.Figure(go.Bar(
+            x=[rd["pos"].ticker for rd in rows_data],
+            y=[rd["pnl_pct"] for rd in rows_data],
+            marker_color=["#00c851" if rd["pnl_pct"] >= 0 else "#ff4444" for rd in rows_data],
+            text=[f"{rd['pnl_pct']:+.1f}%" for rd in rows_data],
+            textposition="outside",
+        ))
+        fig.add_hline(y=0, line_color="#555", line_width=1)
+        fig.update_layout(
+            paper_bgcolor=th["paper_bgcolor"],
+            plot_bgcolor=th["plot_bgcolor"],
+            font=dict(color=th["font_color"], size=11),
+            yaxis=dict(gridcolor=th["grid_color"], title="P&L %"),
+            xaxis=dict(gridcolor=th["grid_color"]),
+            height=220,
+            margin=dict(t=10, b=10, l=20, r=20),
+            showlegend=False,
+        )
+        st.plotly_chart(fig, width="stretch")
