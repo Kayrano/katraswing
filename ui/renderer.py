@@ -1036,58 +1036,105 @@ def render_sector_heatmap(scan_results: dict, sector_avgs: list[dict]) -> None:
 
 # ── Theme CSS ─────────────────────────────────────────────────────────────────
 
+_MOBILE_CSS = """
+    /* ── Mobile-Responsive overrides (≤768px) ────────────────────────────── */
+    @media (max-width: 768px) {
+        /* Tabs: horizontal scroll, no wrap */
+        .stTabs [data-baseweb="tab-list"] {
+            overflow-x: auto !important;
+            flex-wrap: nowrap !important;
+            -webkit-overflow-scrolling: touch;
+        }
+        .stTabs [data-baseweb="tab"] {
+            min-width: 72px !important;
+            font-size: 11px !important;
+            padding: 6px 8px !important;
+        }
+        /* Reduce outer padding */
+        .block-container {
+            padding-left: 0.6rem !important;
+            padding-right: 0.6rem !important;
+            padding-top: 0.6rem !important;
+        }
+        /* Stack columns that are too narrow on mobile */
+        [data-testid="column"] {
+            min-width: min(120px, 100%) !important;
+        }
+        /* Tighten expander header */
+        [data-testid="stExpander"] summary {
+            font-size: 13px !important;
+            padding: 8px 10px !important;
+        }
+        /* Shrink KPI numbers so they don't overflow */
+        h1 { font-size: 22px !important; }
+        h2 { font-size: 18px !important; }
+        h3 { font-size: 15px !important; }
+        /* Plotly charts: allow horizontal scroll on very small screens */
+        [data-testid="stPlotlyChart"] > div {
+            overflow-x: auto !important;
+        }
+        /* Input and button full-width on mobile */
+        .stTextInput, .stButton { width: 100% !important; }
+        /* Sidebar toggle always shown, collapsed by default (already set in page_config) */
+        [data-testid="stSidebar"] { width: 260px !important; }
+    }
+"""
+
+
 def get_theme_css(is_light: bool = False) -> str:
-    """Return CSS string for dark (default) or light theme."""
+    """Return CSS string for dark (default) or light theme, with mobile overrides."""
     if is_light:
-        return """
+        return f"""
 <style>
-    body, .stApp { background-color: #f0f2f6 !important; color: #1a1a2e !important; }
+    body, .stApp {{ background-color: #f0f2f6 !important; color: #1a1a2e !important; }}
     .stTextInput > div > input, .stNumberInput > div > input,
-    .stSelectbox > div > div {
+    .stSelectbox > div > div {{
         background-color: #ffffff !important;
         color: #1a1a2e !important;
         border: 1px solid #b0b8d0 !important;
         border-radius: 8px !important;
-    }
-    .stButton > button {
+    }}
+    .stButton > button {{
         background: linear-gradient(135deg, #3a7bd5, #2a5fbf) !important;
         color: #ffffff !important; border: 1px solid #2a5fbf !important;
         border-radius: 8px !important; font-size: 14px !important; font-weight: 600 !important;
-    }
-    .stButton > button:hover { background: linear-gradient(135deg, #4a8be5, #3a6fcf) !important; }
-    .stTabs [data-baseweb="tab"] { color: #444 !important; font-size: 14px; font-weight: 600; }
-    .stTabs [aria-selected="true"] { color: #2a5fbf !important; border-bottom: 2px solid #2a5fbf !important; }
-    .block-container { padding-top: 1.2rem; }
-    hr { border-color: #c8cfe0; }
-    [data-testid="stDataFrame"] { background: #ffffff; }
-    .stMarkdown p { color: #1a1a2e !important; }
-    .stCaption { color: #555 !important; }
-    [data-testid="stToggle"] label { color: #1a1a2e !important; }
+    }}
+    .stButton > button:hover {{ background: linear-gradient(135deg, #4a8be5, #3a6fcf) !important; }}
+    .stTabs [data-baseweb="tab"] {{ color: #444 !important; font-size: 14px; font-weight: 600; }}
+    .stTabs [aria-selected="true"] {{ color: #2a5fbf !important; border-bottom: 2px solid #2a5fbf !important; }}
+    .block-container {{ padding-top: 1.2rem; }}
+    hr {{ border-color: #c8cfe0; }}
+    [data-testid="stDataFrame"] {{ background: #ffffff; }}
+    .stMarkdown p {{ color: #1a1a2e !important; }}
+    .stCaption {{ color: #555 !important; }}
+    [data-testid="stToggle"] label {{ color: #1a1a2e !important; }}
+    {_MOBILE_CSS}
 </style>
 """
     else:
-        return """
+        return f"""
 <style>
-    body, .stApp { background-color: #0d0d1a; color: #e0e0e0; }
+    body, .stApp {{ background-color: #0d0d1a; color: #e0e0e0; }}
     .stTextInput > div > input, .stNumberInput > div > input,
-    .stSelectbox > div > div {
+    .stSelectbox > div > div {{
         background-color: #1a1a2e !important;
         color: #e0e0e0 !important;
         border: 1px solid #3d3d5e !important;
         border-radius: 8px !important;
-    }
-    .stButton > button {
+    }}
+    .stButton > button {{
         background: linear-gradient(135deg, #1a3a6e, #0d2a4e);
         color: #e0e0e0; border: 1px solid #3d5a8e;
         border-radius: 8px; font-size: 14px; font-weight: 600;
         transition: all 0.2s;
-    }
-    .stButton > button:hover { background: linear-gradient(135deg, #2a4a8e, #1a3a6e); }
-    .stTabs [data-baseweb="tab"] { color: #aaaaaa; font-size: 14px; font-weight: 600; }
-    .stTabs [aria-selected="true"] { color: #4488ff !important; border-bottom: 2px solid #4488ff; }
-    .block-container { padding-top: 1.2rem; }
-    hr { border-color: #2d2d4e; }
-    [data-testid="stDataFrame"] { background: #1a1a2e; }
+    }}
+    .stButton > button:hover {{ background: linear-gradient(135deg, #2a4a8e, #1a3a6e); }}
+    .stTabs [data-baseweb="tab"] {{ color: #aaaaaa; font-size: 14px; font-weight: 600; }}
+    .stTabs [aria-selected="true"] {{ color: #4488ff !important; border-bottom: 2px solid #4488ff; }}
+    .block-container {{ padding-top: 1.2rem; }}
+    hr {{ border-color: #2d2d4e; }}
+    [data-testid="stDataFrame"] {{ background: #1a1a2e; }}
+    {_MOBILE_CSS}
 </style>
 """
 
