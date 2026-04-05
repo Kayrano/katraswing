@@ -60,6 +60,7 @@ with tab_analyzer:
         render_volume_chart, render_indicator_breakdown, render_mtf_panel,
         render_earnings_risk, render_earnings_history, render_position_sizing,
         render_chart_patterns, render_export_buttons, render_filter_notes,
+        render_radar_chart,
     )
 
     col_input, col_btn = st.columns([4, 1])
@@ -146,6 +147,9 @@ with tab_analyzer:
 
         st.markdown("---")
         render_indicator_breakdown(report)
+
+        st.markdown("---")
+        render_radar_chart(report)
 
         st.markdown("---")
         from ui.renderer import render_canslim_panel

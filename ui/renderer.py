@@ -667,6 +667,49 @@ def render_backtest_results(result) -> None:
         )
         st.plotly_chart(fig, width="stretch")
 
+    # ── Performance by regime ─────────────────────────────────────────────────
+    if result.trades:
+        regime_order = ["TRENDING", "CONSOLIDATING", "EXTENDED", "VOLATILE", "NEUTRAL"]
+        regime_colors = {
+            "TRENDING":      "#00c851",
+            "CONSOLIDATING": "#f0a500",
+            "EXTENDED":      "#ff8800",
+            "VOLATILE":      "#ff4444",
+            "NEUTRAL":       "#888888",
+        }
+        regime_stats = {}
+        for t in result.trades:
+            r = getattr(t, "regime", "NEUTRAL")
+            if r not in regime_stats:
+                regime_stats[r] = {"wins": 0, "total": 0, "pnl": 0.0}
+            regime_stats[r]["total"] += 1
+            regime_stats[r]["pnl"] += t.pnl_pct
+            if t.outcome == "WIN":
+                regime_stats[r]["wins"] += 1
+
+        if regime_stats:
+            st.markdown("#### Performance by Market Regime")
+            regime_cols = st.columns(len(regime_stats))
+            for col, reg in zip(regime_cols, [r for r in regime_order if r in regime_stats]):
+                s = regime_stats[reg]
+                wr = s["wins"] / s["total"] * 100 if s["total"] else 0
+                avg_pnl = s["pnl"] / s["total"] if s["total"] else 0
+                fg = regime_colors.get(reg, "#888888")
+                col.markdown(f"""
+                <div style="background:#1a1a2e; padding:12px; border-radius:8px;
+                            border:1px solid {fg}; text-align:center; margin-bottom:8px;">
+                    <div style="font-size:11px; font-weight:700; color:{fg};
+                                margin-bottom:4px;">{reg}</div>
+                    <div style="font-size:20px; font-weight:700;
+                                color:{'#00c851' if wr >= 50 else '#ff4444'};">{wr:.0f}%</div>
+                    <div style="color:#666; font-size:10px;">win rate</div>
+                    <div style="font-size:13px; font-weight:600; margin-top:4px;
+                                color:{'#00c851' if avg_pnl > 0 else '#ff4444'};">
+                        {avg_pnl:+.1f}%</div>
+                    <div style="color:#555; font-size:10px;">avg PnL · {s['total']} trades</div>
+                </div>
+                """, unsafe_allow_html=True)
+
     # ── Trade log ─────────────────────────────────────────────────────────────
     if result.trades:
         st.markdown("#### Trade Log")
@@ -674,6 +717,7 @@ def render_backtest_results(result) -> None:
         for t in result.trades[-50:]:   # show last 50
             rows.append({
                 "Date":       t.entry_date,
+                "Regime":     getattr(t, "regime", "—"),
                 "Dir":        t.direction,
                 "Score":      t.score_at_entry,
                 "Entry":      f"${t.entry_price:.2f}",
@@ -1076,6 +1120,71 @@ def render_export_buttons(report: ReportData) -> None:
             mime="text/csv",
             use_container_width=True,
         )
+
+
+# ── Radar Chart (single stock) ────────────────────────────────────────────────
+
+def render_radar_chart(report: ReportData) -> None:
+    """Radar chart of component scores for a single analyzed stock."""
+    th = _plot_colors()
+    cs = report.score.component_scores
+    categories = [
+        "RSI (15%)", "MACD (15%)", "Bollinger (10%)", "Trend (20%)",
+        "Volume (10%)", "ATR (10%)", "Stochastic (10%)", "Pattern (10%)",
+    ]
+    vals = [cs.rsi, cs.macd, cs.bollinger, cs.trend,
+            cs.volume, cs.atr_momentum, cs.stochastic, cs.pattern]
+    vals_closed = vals + [vals[0]]
+    cats_closed = categories + [categories[0]]
+
+    color = score_color(report.score.total_score)
+
+    fig = go.Figure()
+    # Benchmark ring at 5.0 (neutral)
+    fig.add_trace(go.Scatterpolar(
+        r=[5.0] * (len(categories) + 1),
+        theta=cats_closed,
+        mode="lines",
+        line=dict(color="#444466", width=1, dash="dot"),
+        name="Neutral (5)",
+        opacity=0.5,
+    ))
+    fig.add_trace(go.Scatterpolar(
+        r=vals_closed,
+        theta=cats_closed,
+        fill="toself",
+        fillcolor=f"{color}22",
+        line=dict(color=color, width=2),
+        name=report.ticker,
+        opacity=0.9,
+    ))
+
+    fig.update_layout(
+        polar=dict(
+            bgcolor=th["panel_bg"],
+            radialaxis=dict(
+                range=[0, 10],
+                tickvals=[2, 4, 6, 8, 10],
+                tickfont=dict(size=9, color=th["text_muted"]),
+                gridcolor=th["grid_color"],
+            ),
+            angularaxis=dict(
+                gridcolor=th["grid_color"],
+                tickfont=dict(size=10, color=th["font_color"]),
+            ),
+        ),
+        paper_bgcolor=th["paper_bgcolor"],
+        font=dict(color=th["font_color"], size=11),
+        showlegend=True,
+        legend=dict(font=dict(size=10, color=th["text_muted"]), bgcolor="rgba(0,0,0,0)"),
+        height=380,
+        margin=dict(t=50, b=30, l=60, r=60),
+        title=dict(
+            text=f"{report.ticker} — Component Score Radar",
+            font=dict(size=13, color=th["text_muted"]),
+        ),
+    )
+    st.plotly_chart(fig, width="stretch")
 
 
 # ── Comparison Mode ───────────────────────────────────────────────────────────

@@ -29,6 +29,7 @@ class BacktestTrade:
     pnl_pct: float          # % gain/loss on the trade
     bars_held: int
     score_at_entry: float
+    regime: str = "NEUTRAL"  # market regime at entry
 
 
 @dataclass
@@ -104,7 +105,7 @@ def run_backtest(
         )
 
     # ── Compute all indicators on full series (causal — no look-ahead bias) ──
-    scores = _compute_scores_series(df)
+    scores, regimes = _compute_scores_series(df)
 
     stat = StatisticianAgent()
     atr_series = ta.atr(df["High"], df["Low"], df["Close"], length=14)
@@ -150,6 +151,7 @@ def run_backtest(
             trade_direction = direction
             entry_idx = i
             entry_score = score
+            entry_regime = regimes[i]
 
         else:
             # Check exit: next bar's high/low vs SL/TP
@@ -203,6 +205,7 @@ def run_backtest(
                     pnl_pct=round(pnl_pct, 2),
                     bars_held=bars_held,
                     score_at_entry=round(entry_score, 1),
+                    regime=entry_regime,
                 ))
                 in_trade = False
 
@@ -244,13 +247,14 @@ def run_backtest(
     )
 
 
-def _compute_scores_series(df: pd.DataFrame) -> list[float]:
+def _compute_scores_series(df: pd.DataFrame) -> tuple:
     """
-    Compute a trade score for every row in df using causal indicator values.
-    Builds a single StatisticianAgent and scores each bar's indicator snapshot.
+    Compute a trade score and market regime for every row in df.
+    Returns (scores, regimes) — both lists of length len(df).
     """
     stat = StatisticianAgent()
     scores = []
+    regimes = []
 
     # Pre-compute all indicator series on full df (causal, no look-ahead)
     rsi_s     = ta.rsi(df["Close"], length=14)
@@ -332,6 +336,8 @@ def _compute_scores_series(df: pd.DataFrame) -> list[float]:
             atr_5d_ago=atr_5ago,
         )
 
-        scores.append(stat.score(ind).total_score)
+        result = stat.score(ind)
+        scores.append(result.total_score)
+        regimes.append(result.regime)
 
-    return scores
+    return scores, regimes
