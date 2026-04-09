@@ -3338,16 +3338,22 @@ def render_portfolio_tab() -> None:
 # ── Feature 17: Long-Term Quality Score ──────────────────────────────────────
 
 def _score_component(value, breakpoints: list) -> float:
-    """Map a raw value to 0-100 using linear interpolation between (raw, score) breakpoints."""
+    """Map a raw value to 0-100 using linear interpolation between (raw, score) breakpoints.
+    Supports both ascending and descending x breakpoints (e.g. D/E ratio where lower is better)."""
     if value is None:
         return 50.0
     for i in range(len(breakpoints) - 1):
         x0, s0 = breakpoints[i]
         x1, s1 = breakpoints[i + 1]
-        if x0 <= value <= x1:
+        lo, hi = min(x0, x1), max(x0, x1)
+        if lo <= value <= hi:
             t = (value - x0) / (x1 - x0) if x1 != x0 else 0.5
             return round(s0 + t * (s1 - s0), 1)
-    return round(breakpoints[-1][1], 1)
+    # Out of bounds: clamp to the breakpoint at the nearest extreme x
+    x_vals = [bp[0] for bp in breakpoints]
+    if value < min(x_vals):
+        return round(breakpoints[x_vals.index(min(x_vals))][1], 1)
+    return round(breakpoints[x_vals.index(max(x_vals))][1], 1)
 
 
 def render_quality_score(report: ReportData) -> None:
@@ -3899,7 +3905,10 @@ def render_bar_replay(report: ReportData) -> None:
     st.plotly_chart(fig_main, width="stretch")
 
     # ── MACD below ────────────────────────────────────────────────────────────
-    macd_line, signal_line, macd_hist = ta.macd(close)
+    macd_df = ta.macd(close)
+    macd_line   = macd_df.iloc[:, 0] if macd_df is not None and not macd_df.empty else None
+    macd_hist   = macd_df.iloc[:, 1] if macd_line is not None else None
+    signal_line = macd_df.iloc[:, 2] if macd_line is not None else None
     if macd_line is not None and len(macd_line) > 0:
         macd_plot  = macd_line.iloc[: replay_bar + 1]
         sig_plot   = signal_line.iloc[: replay_bar + 1]
