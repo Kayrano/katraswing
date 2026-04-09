@@ -64,8 +64,17 @@ with tab_analyzer:
         render_ai_narrative, render_valuation_history, render_estimate_revisions,
         render_weinstein_stage, render_institutional_footprint,
         render_ticker_notes, render_weinstein_chart, render_dividend_panel,
-        render_peer_comparison,
+        render_peer_comparison, render_live_dashboard,
     )
+
+    # ── Cached dashboard scan (runs once, refreshes every 5 min) ─────────────
+    @st.cache_data(ttl=300, show_spinner=False)
+    def _load_dashboard():
+        from data.screener import run_screener
+        from datetime import datetime
+        results = run_screener(preset_name="All (no filter)")
+        ts = datetime.now().strftime("%H:%M")
+        return results, ts
 
     col_input, col_btn = st.columns([4, 1])
     with col_input:
@@ -77,6 +86,20 @@ with tab_analyzer:
         )
     with col_btn:
         analyze_clicked = st.button("Analyze", use_container_width=True, type="primary", key="btn_analyze")
+
+    # ── Handle dashboard card click (auto-analyze) ────────────────────────────
+    _dash_trigger = st.session_state.pop("dashboard_trigger", None)
+    if _dash_trigger:
+        with st.spinner(f"Analyzing **{_dash_trigger}** — running 4-agent analysis + multi-timeframe..."):
+            try:
+                report = run_analysis(_dash_trigger)
+                st.session_state["last_report"] = report
+                from data.score_alerts import check_score_alerts
+                _sa_fired = check_score_alerts(report.ticker, report.score.total_score)
+                if _sa_fired:
+                    st.session_state["_sa_fired"] = _sa_fired
+            except Exception as e:
+                st.error(f"Analysis failed: {e}")
 
     if analyze_clicked and query.strip():
         with st.spinner(f"Analyzing **{query.strip()}** — running 4-agent analysis + multi-timeframe..."):
@@ -222,18 +245,19 @@ with tab_analyzer:
         </div>
         """, unsafe_allow_html=True)
     else:
-        st.markdown("""
-        <div style="text-align:center; padding:60px 20px; color:#444;">
-            <div style="font-size:56px;">📊</div>
-            <h3 style="color:#555;">Enter a stock name or ticker above</h3>
-            <p style="font-size:13px; max-width:460px; margin:10px auto;">
-                Type <b>Apple</b>, <b>Tesla</b>, <b>NVDA</b>, or any ticker and click Analyze.
-            </p>
-            <div style="color:#444; font-size:12px; margin-top:20px;">
-                RSI · MACD · Bollinger Bands · ATR · Stochastic · Multi-Timeframe · 1:2 R:R
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+        with st.spinner("Loading market dashboard..."):
+            try:
+                _dash_results, _dash_ts = _load_dashboard()
+                render_live_dashboard(_dash_results, _dash_ts)
+            except Exception as _e:
+                st.markdown("""
+                <div style="text-align:center; padding:40px 20px; color:#444;">
+                    <div style="font-size:48px;">📊</div>
+                    <h3 style="color:#555;">Enter a ticker above to analyze</h3>
+                    <p style="font-size:13px; color:#333;">RSI · MACD · Bollinger · ATR · Multi-TF · CAN SLIM · AI Narrative</p>
+                </div>
+                """, unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -3921,3 +3921,88 @@ def render_bar_replay(report: ReportData) -> None:
             title=dict(text="MACD", font=dict(size=11, color=th["text_muted"])),
         )
         st.plotly_chart(fig_macd, width="stretch")
+
+
+# ── Live Auto-Analyzed Dashboard ──────────────────────────────────────────────
+
+def _set_dashboard_trigger(ticker: str) -> None:
+    """Callback: stores ticker so the Analyzer tab auto-runs analysis on rerender."""
+    st.session_state["dashboard_trigger"] = ticker
+
+
+def render_live_dashboard(results: list[dict], refreshed_at: str) -> None:
+    """
+    Market dashboard shown on the Analyzer tab before any manual search.
+    Renders score cards for the top-12 stocks from the auto-scan, with
+    an Analyze button on each card that triggers the full analysis.
+    """
+    from utils.formatting import score_color, fmt_price
+
+    th = _plot_colors()
+
+    # Header
+    h1, h2 = st.columns([5, 1])
+    h1.markdown("### Live Market Dashboard")
+    h2.markdown(
+        f"<div style='text-align:right; padding-top:10px; font-size:11px; color:#555;'>"
+        f"Updated {refreshed_at}<br>Refreshes every 5 min</div>",
+        unsafe_allow_html=True,
+    )
+
+    top = sorted(results, key=lambda x: x["score"], reverse=True)[:12]
+
+    # 4-per-row grid
+    for row_start in range(0, len(top), 4):
+        row_items = top[row_start: row_start + 4]
+        cols = st.columns(4, gap="small")
+        for col, item in zip(cols, row_items):
+            s      = item["score"]
+            color  = score_color(s)
+            chg    = item["chg_1d"]
+            chg_c  = "#00c851" if chg >= 0 else "#ff4444"
+            arrow  = "▲" if chg >= 0 else "▼"
+            dir_c  = "#00c851" if item["direction"] == "LONG" else "#ff4444" if item["direction"] == "SHORT" else "#888"
+            rsi_c  = "#00c851" if item["rsi"] < 35 else "#ff4444" if item["rsi"] > 65 else "#aaa"
+            stage  = " · S2" if item["stage2"] else ""
+            pbg    = th["panel_bg"]
+            pbrd   = th["panel_border"]
+
+            col.markdown(
+                f"<div style='background:{pbg}; border:1px solid {color}44; "
+                f"border-radius:10px; padding:14px 12px 10px 12px; margin-bottom:4px;'>"
+                f"  <div style='display:flex; justify-content:space-between; align-items:flex-start;'>"
+                f"    <div>"
+                f"      <div style='font-size:18px; font-weight:800; color:#e0e0e0; line-height:1;'>{item['ticker']}</div>"
+                f"      <div style='font-size:10px; color:{color}; margin-top:2px; font-weight:600;'>{item['signal']}{stage}</div>"
+                f"    </div>"
+                f"    <div style='text-align:right;'>"
+                f"      <div style='font-size:28px; font-weight:900; color:{color}; line-height:1;'>{s:.0f}</div>"
+                f"      <div style='font-size:9px; color:#555; letter-spacing:1px;'>SCORE</div>"
+                f"    </div>"
+                f"  </div>"
+                f"  <div style='margin-top:10px; padding-top:8px; border-top:1px solid {pbrd};'>"
+                f"    <span style='font-size:14px; font-weight:700; color:#e0e0e0;'>{fmt_price(item['price'])}</span>"
+                f"    <span style='font-size:12px; color:{chg_c}; margin-left:6px;'>{arrow}{abs(chg):.1f}%</span>"
+                f"    <div style='margin-top:4px; font-size:11px;'>"
+                f"      <span style='color:{dir_c}; font-weight:700;'>{item['direction']}</span>"
+                f"      <span style='color:#555;'> · RSI </span><span style='color:{rsi_c};'>{item['rsi']:.0f}</span>"
+                f"      <span style='color:#555;'> · Vol </span><span style='color:#aaa;'>{item['vol_ratio']:.1f}x</span>"
+                f"    </div>"
+                f"  </div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            col.button(
+                "Analyze",
+                key=f"dash_{item['ticker']}",
+                use_container_width=True,
+                on_click=_set_dashboard_trigger,
+                args=(item["ticker"],),
+            )
+
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+
+    st.caption(
+        f"{len(results)} stocks scanned · Lightweight TA (RSI · EMA · SMA150 · MACD · Volume) · "
+        f"Click Analyze for the full 4-agent deep-dive"
+    )
