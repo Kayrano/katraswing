@@ -4006,3 +4006,451 @@ def render_live_dashboard(results: list[dict], refreshed_at: str) -> None:
         f"{len(results)} stocks scanned · Lightweight TA (RSI · EMA · SMA150 · MACD · Volume) · "
         f"Click Analyze for the full 4-agent deep-dive"
     )
+
+
+# ── Wall Street Analyst Panel ─────────────────────────────────────────────────
+
+# Data embedded from: "Üst Düzey Analistlerin Çeyreklik Tahmin Performansı" report
+_ANALYST_PROFILES = {
+    "Amit Daryanani": {
+        "firm": "Evercore ISI",
+        "specialty": "Technology Stocks",
+        "since": 2010,
+        "mae": 2.11,
+        "hit_rate": 100,
+        "bias": +0.47,
+        "bias_label": "Slightly Bullish",
+        "forecasts": [4300, 4200, 4300, 4500, 4600, 4500, 4600, 4700],
+        "color": "#00c851",
+    },
+    "Thomas DeMark": {
+        "firm": "DeMARK Analytics",
+        "specialty": "Technical / Proprietary Indicators",
+        "since": 1970,
+        "mae": 5.98,
+        "hit_rate": 50,
+        "bias": -4.86,
+        "bias_label": "Slightly Bearish",
+        "forecasts": [4100, 3900, 3800, 4500, 4600, 4400, 4300, 4200],
+        "color": "#4488ff",
+    },
+    "Michael Wilson": {
+        "firm": "Morgan Stanley",
+        "specialty": "Macro + Technical · S&P 500 Strategy",
+        "since": 1989,
+        "mae": 6.36,
+        "hit_rate": 50,
+        "bias": +6.36,
+        "bias_label": "Moderately Bullish",
+        "forecasts": [4300, 4500, 4600, 5000, 4800, 4700, 4900, 5000],
+        "color": "#00e5ff",
+    },
+    "Ed Yardeni": {
+        "firm": "Yardeni Research",
+        "specialty": "Fundamental Macro",
+        "since": 1977,
+        "mae": 23.51,
+        "hit_rate": 0,
+        "bias": +23.51,
+        "bias_label": "Very Bullish (Over-optimistic)",
+        "forecasts": [4500, 4600, 4800, 5200, 5500, 6000, 6500, 7000],
+        "color": "#f0a500",
+    },
+    "David Kostin": {
+        "firm": "Goldman Sachs",
+        "specialty": "Earnings-Based Fundamental",
+        "since": 1994,
+        "mae": 25.77,
+        "hit_rate": 25,
+        "bias": +25.47,
+        "bias_label": "Very Bullish (Over-optimistic)",
+        "forecasts": [4200, 4500, 4800, 5800, 6000, 6200, 6500, 6800],
+        "color": "#cc88ff",
+    },
+}
+
+_SP500_ACTUAL = [4250, 4300, 4200, 4400, 4500, 4400, 4700, 4800]
+_QUARTERS     = ["2024Q1", "2024Q2", "2024Q3", "2024Q4",
+                 "2025Q1", "2025Q2", "2025Q3", "2025Q4"]
+
+
+def render_analyst_panel(report: ReportData) -> None:
+    """
+    3-tab Wall Street analyst panel:
+      Tab 1 — Track Record scoreboard (PDF data, 8 quarters)
+      Tab 2 — S&P 500 forecast history chart + latest targets vs current
+      Tab 3 — Per-ticker analyst consensus (live from yfinance)
+    """
+    import yfinance as yf
+
+    th = _plot_colors()
+
+    st.markdown("### Wall Street Analyst Views")
+    st.caption(
+        "Track-record data from: *Üst Düzey Analistlerin Çeyreklik Tahmin Performansı* (8 quarters, 2024Q1–2025Q4) · "
+        "Per-stock consensus via yfinance"
+    )
+
+    at1, at2, at3 = st.tabs([
+        "Track Records",
+        "S&P 500 Forecasts",
+        f"{report.ticker} Consensus",
+    ])
+
+    # ── TAB 1: TRACK RECORD SCOREBOARD ───────────────────────────────────────
+    with at1:
+        st.markdown("#### Analyst Accuracy Scoreboard")
+        st.caption("MAE = Mean Absolute Error across 8 quarters.  Hit Rate = forecast within ±5% of actual S&P 500.")
+
+        sorted_analysts = sorted(_ANALYST_PROFILES.items(), key=lambda x: x[1]["mae"])
+        names   = [a[0] for a in sorted_analysts]
+        maes    = [a[1]["mae"] for a in sorted_analysts]
+        colors  = [a[1]["color"] for a in sorted_analysts]
+
+        fig_bar = go.Figure(go.Bar(
+            x=maes, y=names, orientation="h",
+            marker_color=colors,
+            text=[f"{m:.1f}%" for m in maes],
+            textposition="outside",
+            hovertemplate="<b>%{y}</b><br>MAE: %{x:.2f}%<extra></extra>",
+        ))
+        fig_bar.add_vline(x=5, line_color="#555", line_dash="dash", line_width=1,
+                          annotation_text=" 5% threshold", annotation_font_color="#555")
+        fig_bar.update_layout(
+            paper_bgcolor=th["paper_bgcolor"],
+            plot_bgcolor=th["plot_bgcolor"],
+            font=dict(color=th["font_color"], size=11),
+            xaxis=dict(title="Mean Absolute Error (%)", gridcolor=th["grid_color"]),
+            yaxis=dict(gridcolor="rgba(0,0,0,0)"),
+            height=240,
+            margin=dict(t=20, b=10, l=140, r=60),
+            showlegend=False,
+            title=dict(text="MAE — Lower is Better", font=dict(size=11, color=th["text_muted"])),
+        )
+        st.plotly_chart(fig_bar, width="stretch")
+
+        # Metric cards
+        card_cols = st.columns(len(sorted_analysts))
+        for col, (name, prof) in zip(card_cols, sorted_analysts):
+            last = name.split()[-1]
+            gc = prof["color"]
+            bs = "+" if prof["bias"] >= 0 else ""
+            pbg = th["panel_bg"]
+            col.markdown(
+                f"<div style='background:{pbg}; border:1px solid {gc}44; "
+                f"border-radius:8px; padding:10px 8px; text-align:center;'>"
+                f"<div style='font-size:13px; font-weight:800; color:{gc};'>{last}</div>"
+                f"<div style='font-size:10px; color:#555; margin-top:2px;'>{prof['firm']}</div>"
+                f"<div style='font-size:20px; font-weight:700; color:{gc}; margin-top:6px;'>"
+                f"{prof['mae']:.1f}%</div>"
+                f"<div style='font-size:9px; color:#555;'>MAE</div>"
+                f"<div style='font-size:12px; color:#aaa; margin-top:4px;'>Hit {prof['hit_rate']}%</div>"
+                f"<div style='font-size:10px; color:#666;'>Bias {bs}{prof['bias']:.1f}%</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+        with st.expander("Full Profile Table", expanded=False):
+            rows_html = ""
+            for name, prof in sorted(_ANALYST_PROFILES.items(), key=lambda x: x[1]["mae"]):
+                bs = "+" if prof["bias"] >= 0 else ""
+                bias_c = "#00c851" if prof["bias"] < 0 else "#ff4444" if abs(prof["bias"]) > 10 else "#f0a500"
+                hit_c  = "#00c851" if prof["hit_rate"] >= 75 else "#f0a500" if prof["hit_rate"] >= 25 else "#ff4444"
+                rows_html += (
+                    f"<tr>"
+                    f"<td style='padding:6px 8px; color:#e0e0e0; font-weight:700;'>{name}</td>"
+                    f"<td style='padding:6px 8px; color:#888; font-size:11px;'>{prof['firm']}</td>"
+                    f"<td style='padding:6px 8px; color:#888; font-size:11px;'>{prof['specialty']}</td>"
+                    f"<td style='padding:6px 8px; color:#888; font-size:11px;'>Since {prof['since']}</td>"
+                    f"<td style='padding:6px 8px; color:{prof['color']}; font-weight:700;'>{prof['mae']:.1f}%</td>"
+                    f"<td style='padding:6px 8px; color:{hit_c}; font-weight:700;'>{prof['hit_rate']}%</td>"
+                    f"<td style='padding:6px 8px; color:{bias_c};'>{bs}{prof['bias']:.1f}%</td>"
+                    f"<td style='padding:6px 8px; color:#888; font-size:11px;'>{prof['bias_label']}</td>"
+                    f"</tr>"
+                )
+            st.markdown(
+                "<table style='width:100%; border-collapse:collapse; font-size:12px;'>"
+                "<tr style='border-bottom:1px solid #2d2d4e;'>"
+                "<th style='padding:6px 8px; color:#555; text-align:left;'>Analyst</th>"
+                "<th style='padding:6px 8px; color:#555; text-align:left;'>Firm</th>"
+                "<th style='padding:6px 8px; color:#555; text-align:left;'>Specialty</th>"
+                "<th style='padding:6px 8px; color:#555; text-align:left;'>Career</th>"
+                "<th style='padding:6px 8px; color:#555;'>MAE</th>"
+                "<th style='padding:6px 8px; color:#555;'>Hit Rate</th>"
+                "<th style='padding:6px 8px; color:#555;'>Bias</th>"
+                "<th style='padding:6px 8px; color:#555; text-align:left;'>Direction</th>"
+                f"</tr>{rows_html}</table>",
+                unsafe_allow_html=True,
+            )
+
+    # ── TAB 2: S&P 500 FORECAST HISTORY ──────────────────────────────────────
+    with at2:
+        st.markdown("#### S&P 500 Quarterly Forecasts vs Actual  *(8-Quarter Study)*")
+
+        spx_current = None
+        try:
+            spx_current = float(yf.Ticker("^GSPC").fast_info.last_price)
+        except Exception:
+            pass
+
+        fig_lines = go.Figure()
+
+        for name, prof in _ANALYST_PROFILES.items():
+            fig_lines.add_trace(go.Scatter(
+                x=_QUARTERS, y=prof["forecasts"],
+                name=f"{name.split()[-1]} ({prof['firm']})",
+                line=dict(color=prof["color"], width=2, dash="dot"),
+                mode="lines+markers",
+                marker=dict(size=6),
+                hovertemplate=f"<b>{name}</b><br>%{{x}}: %{{y:,}}<extra></extra>",
+            ))
+
+        actual_lc = "#ffffff" if not st.session_state.get("light_theme") else "#111111"
+        fig_lines.add_trace(go.Scatter(
+            x=_QUARTERS, y=_SP500_ACTUAL,
+            name="Actual S&P 500",
+            line=dict(color=actual_lc, width=3),
+            mode="lines+markers",
+            marker=dict(size=9, symbol="circle"),
+            hovertemplate="<b>Actual S&P 500</b><br>%{x}: %{y:,}<extra></extra>",
+        ))
+
+        if spx_current:
+            fig_lines.add_hline(
+                y=spx_current, line_color="#4488ff",
+                line_dash="dash", line_width=1.5,
+                annotation_text=f"  Live SPX {spx_current:,.0f}",
+                annotation_font_color="#4488ff",
+            )
+
+        fig_lines.update_layout(
+            paper_bgcolor=th["paper_bgcolor"],
+            plot_bgcolor=th["plot_bgcolor"],
+            font=dict(color=th["font_color"], size=11),
+            xaxis=dict(gridcolor=th["grid_color"], title="Quarter"),
+            yaxis=dict(gridcolor=th["grid_color"], title="S&P 500 Level"),
+            height=380,
+            margin=dict(t=20, b=20, l=20, r=20),
+            legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=10),
+                        orientation="h", yanchor="bottom", y=1.02),
+        )
+        st.plotly_chart(fig_lines, width="stretch")
+
+        if spx_current:
+            st.markdown("#### Latest Targets vs Current SPX Level")
+            tc_cols = st.columns(len(_ANALYST_PROFILES))
+            for col, (name, prof) in zip(
+                tc_cols,
+                sorted(_ANALYST_PROFILES.items(), key=lambda x: x[1]["mae"])
+            ):
+                latest = prof["forecasts"][-1]
+                pct = (latest - spx_current) / spx_current * 100
+                dc = "#00c851" if pct >= 0 else "#ff4444"
+                ds = "+" if pct >= 0 else ""
+                last = name.split()[-1]
+                gc = prof["color"]
+                pbg = th["panel_bg"]
+                col.markdown(
+                    f"<div style='background:{pbg}; border:1px solid {gc}44; "
+                    f"border-radius:8px; padding:10px; text-align:center;'>"
+                    f"<div style='font-size:12px; font-weight:700; color:{gc};'>{last}</div>"
+                    f"<div style='font-size:18px; font-weight:700; color:#e0e0e0; margin-top:4px;'>"
+                    f"{latest:,}</div>"
+                    f"<div style='font-size:11px; color:{dc}; margin-top:2px;'>{ds}{pct:.1f}% vs now</div>"
+                    f"<div style='font-size:9px; color:#555; margin-top:3px;'>2025Q4 · MAE {prof['mae']:.1f}%</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        st.caption("Source: *Üst Düzey Analistlerin Çeyreklik Tahmin Performansı* — some values are representative.")
+
+    # ── TAB 3: PER-TICKER ANALYST CONSENSUS ──────────────────────────────────
+    with at3:
+        st.markdown(f"#### Wall Street Consensus — {report.ticker}")
+        st.caption("Live from yfinance — broad analyst community covering this stock")
+
+        try:
+            yft = yf.Ticker(report.ticker)
+
+            # Price targets
+            tgt = {}
+            try:
+                tgt = yft.analyst_price_targets or {}
+            except Exception:
+                pass
+
+            mean_t   = tgt.get("mean")
+            low_t    = tgt.get("low")
+            high_t   = tgt.get("high")
+            median_t = tgt.get("median")
+            cur_p    = report.current_price
+
+            if mean_t:
+                pt_cols = st.columns(4)
+                for i, (lbl, val) in enumerate([
+                    ("Mean Target", mean_t),
+                    ("Median",      median_t),
+                    ("Low Target",  low_t),
+                    ("High Target", high_t),
+                ]):
+                    if val:
+                        diff = (val - cur_p) / cur_p * 100
+                        dc = "#00c851" if diff >= 0 else "#ff4444"
+                        ds = "+" if diff >= 0 else ""
+                        pbg = th["panel_bg"]
+                        pb  = th["panel_border"]
+                        pt_cols[i].markdown(
+                            f"<div style='background:{pbg}; border-radius:8px; padding:10px; "
+                            f"text-align:center; border:1px solid {pb};'>"
+                            f"<div style='font-size:10px; color:#888; font-weight:700;'>{lbl.upper()}</div>"
+                            f"<div style='font-size:20px; font-weight:700; color:#e0e0e0; margin-top:4px;'>"
+                            f"${val:.2f}</div>"
+                            f"<div style='font-size:11px; color:{dc}; margin-top:2px;'>{ds}{diff:.1f}%</div>"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
+
+                if low_t and high_t:
+                    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+                    fig_rng = go.Figure()
+                    fig_rng.add_trace(go.Scatter(
+                        x=[low_t, high_t], y=["Range", "Range"],
+                        mode="lines", line=dict(color="#4488ff", width=10),
+                        name="Target Range", hoverinfo="skip",
+                    ))
+                    fig_rng.add_trace(go.Scatter(
+                        x=[cur_p], y=["Range"], mode="markers",
+                        marker=dict(color="#ffffff", size=14, symbol="diamond",
+                                    line=dict(color="#4488ff", width=2)),
+                        name=f"Current ${cur_p:.2f}",
+                    ))
+                    if mean_t:
+                        fig_rng.add_trace(go.Scatter(
+                            x=[mean_t], y=["Range"], mode="markers",
+                            marker=dict(color="#00c851", size=14, symbol="star"),
+                            name=f"Mean ${mean_t:.2f}",
+                        ))
+                    fig_rng.update_layout(
+                        paper_bgcolor=th["paper_bgcolor"],
+                        plot_bgcolor=th["plot_bgcolor"],
+                        font=dict(color=th["font_color"], size=11),
+                        height=110, margin=dict(t=10, b=10, l=10, r=10),
+                        xaxis=dict(gridcolor=th["grid_color"], title="Price ($)"),
+                        yaxis=dict(visible=False),
+                        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=10),
+                                    orientation="h", yanchor="bottom", y=1.02),
+                    )
+                    st.plotly_chart(fig_rng, width="stretch")
+
+            # Recommendations donut + bars
+            reco = None
+            try:
+                reco = yft.recommendations_summary
+            except Exception:
+                pass
+
+            if reco is not None and len(reco) > 0:
+                st.markdown("#### Analyst Recommendation Breakdown")
+                row0 = reco.iloc[0]
+                sb = int(row0.get("strongBuy",  0))
+                b  = int(row0.get("buy",         0))
+                h  = int(row0.get("hold",        0))
+                s  = int(row0.get("sell",        0))
+                ss = int(row0.get("strongSell", 0))
+                total = sb + b + h + s + ss
+
+                if total > 0:
+                    rc1, rc2 = st.columns([1, 1])
+                    with rc1:
+                        bull_pct = (sb + b) / total * 100
+                        bc = "#00c851" if bull_pct >= 60 else "#f0a500" if bull_pct >= 40 else "#ff4444"
+                        fig_d = go.Figure(go.Pie(
+                            labels=["Strong Buy", "Buy", "Hold", "Sell", "Strong Sell"],
+                            values=[sb, b, h, s, ss], hole=0.55,
+                            marker_colors=["#00c851", "#44cc77", "#f0a500", "#ff7744", "#ff4444"],
+                            textinfo="label+percent",
+                            textfont=dict(size=10, color=th["font_color"]),
+                            hovertemplate="%{label}: %{value} analysts<extra></extra>",
+                        ))
+                        fig_d.update_layout(
+                            paper_bgcolor=th["paper_bgcolor"],
+                            font=dict(color=th["font_color"], size=10),
+                            height=250, margin=dict(t=0, b=0, l=0, r=0),
+                            showlegend=False,
+                            annotations=[dict(
+                                text=f"<b>{bull_pct:.0f}%</b><br>Bullish",
+                                x=0.5, y=0.5, font_size=13,
+                                font_color=bc, showarrow=False,
+                            )],
+                        )
+                        st.plotly_chart(fig_d, width="stretch")
+
+                    with rc2:
+                        for lbl, cnt, lc in [
+                            ("Strong Buy",  sb,  "#00c851"),
+                            ("Buy",         b,   "#44cc77"),
+                            ("Hold",        h,   "#f0a500"),
+                            ("Sell",        s,   "#ff7744"),
+                            ("Strong Sell", ss,  "#ff4444"),
+                        ]:
+                            pct = cnt / total * 100 if total > 0 else 0
+                            st.markdown(
+                                f"<div style='display:flex; align-items:center; margin-bottom:6px;'>"
+                                f"<span style='color:#888; font-size:11px; width:90px;'>{lbl}</span>"
+                                f"<div style='flex:1; background:#1a1a2e; border-radius:4px; height:12px; margin:0 8px;'>"
+                                f"<div style='background:{lc}; width:{pct:.0f}%; height:100%; border-radius:4px;'></div>"
+                                f"</div>"
+                                f"<span style='color:{lc}; font-size:11px; width:28px; text-align:right;'>{cnt}</span>"
+                                f"</div>",
+                                unsafe_allow_html=True,
+                            )
+                        pbg = th["panel_bg"]
+                        st.markdown(
+                            f"<div style='margin-top:6px; font-size:11px; color:#555;'>"
+                            f"Total: {total} analysts</div>",
+                            unsafe_allow_html=True,
+                        )
+
+            # Upgrades / downgrades table
+            upgrades = None
+            try:
+                upgrades = yft.upgrades_downgrades
+            except Exception:
+                pass
+
+            if upgrades is not None and len(upgrades) > 0:
+                st.markdown("#### Recent Upgrades & Downgrades")
+                recent = upgrades.head(12).reset_index()
+                date_col = recent.columns[0]
+                rows_html = ""
+                for _, row in recent.iterrows():
+                    action = str(row.get("Action", "")).lower()
+                    ac = "#00c851" if "up" in action else "#ff4444" if "down" in action else "#888"
+                    dv = str(row.get(date_col, ""))[:10]
+                    rows_html += (
+                        f"<tr style='border-bottom:1px solid #1e1e2e;'>"
+                        f"<td style='padding:5px 8px; color:#888; font-size:11px;'>{dv}</td>"
+                        f"<td style='padding:5px 8px; color:#aaa; font-size:11px;'>{row.get('Firm','—')}</td>"
+                        f"<td style='padding:5px 8px; color:{ac}; font-weight:700; font-size:11px;'>"
+                        f"{row.get('Action','—')}</td>"
+                        f"<td style='padding:5px 8px; color:#888; font-size:11px;'>"
+                        f"{row.get('FromGrade','—')} "
+                        f"<span style='color:#e0e0e0;'>→ {row.get('ToGrade','—')}</span></td>"
+                        f"</tr>"
+                    )
+                st.markdown(
+                    "<table style='width:100%; border-collapse:collapse;'>"
+                    "<tr style='border-bottom:1px solid #2d2d4e;'>"
+                    "<th style='padding:5px 8px; color:#555; font-size:11px; text-align:left;'>Date</th>"
+                    "<th style='padding:5px 8px; color:#555; font-size:11px; text-align:left;'>Firm</th>"
+                    "<th style='padding:5px 8px; color:#555; font-size:11px; text-align:left;'>Action</th>"
+                    "<th style='padding:5px 8px; color:#555; font-size:11px; text-align:left;'>Grade</th>"
+                    f"</tr>{rows_html}</table>",
+                    unsafe_allow_html=True,
+                )
+
+        except Exception as ex:
+            st.warning(f"Could not load consensus data: {ex}")

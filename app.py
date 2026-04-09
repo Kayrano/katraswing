@@ -64,7 +64,7 @@ with tab_analyzer:
         render_ai_narrative, render_valuation_history, render_estimate_revisions,
         render_weinstein_stage, render_institutional_footprint,
         render_ticker_notes, render_weinstein_chart, render_dividend_panel,
-        render_peer_comparison, render_live_dashboard,
+        render_peer_comparison, render_live_dashboard, render_analyst_panel,
     )
 
     # ── Cached dashboard scan (runs once, refreshes every 5 min) ─────────────
@@ -216,6 +216,10 @@ with tab_analyzer:
             render_dividend_panel(report)
             st.markdown("---")
             render_peer_comparison(report)
+
+        # ── Section 4b: Analyst Views ─────────────────────────────────────────
+        with st.expander("📡 Analyst Views — Track Records · S&P 500 Targets · Stock Consensus", expanded=False):
+            render_analyst_panel(report)
 
         # ── Section 5: Earnings & Events ──────────────────────────────────────
         with st.expander("📅 Earnings & Events — Risk · History · Estimate Revisions", expanded=False):
