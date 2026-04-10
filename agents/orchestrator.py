@@ -9,7 +9,7 @@ from data.fetcher import fetch_stock_data
 from agents.analyzer import AnalyzerAgent
 from agents.statistician import StatisticianAgent
 from agents.trader import TraderAgent
-from models.report import ReportData, MTFResult
+from models.report import ReportData, MTFResult, PoliticianTradesData
 
 
 def run_analysis(query: str) -> ReportData:
@@ -63,6 +63,9 @@ def run_analysis(query: str) -> ReportData:
         score_result.win_probability = round(statistician._win_probability(filtered_score), 3)
         score_result.expected_value  = round(statistician._expected_value(score_result.win_probability), 2)
 
+    # ── Phase 5b: Politician trades signal ──────────────────────────────────
+    politician_data = _apply_politician_signal(ticker, score_result, statistician, filter_notes)
+
     # ── Phase 6: Trade setup (uses filtered score for direction) ────────────
     trade_setup = trader.compute_trade_setup(df, indicators, score_result.total_score)
 
@@ -83,6 +86,7 @@ def run_analysis(query: str) -> ReportData:
         score=score_result,
         mtf=mtf,
         canslim=canslim,
+        politician=politician_data,
         filter_notes=filter_notes,
     )
 
@@ -164,6 +168,53 @@ def _build_mtf(
         combined_score=combined,
         weekly_indicators=weekly_ind,
     )
+
+def _apply_politician_signal(
+    ticker: str,
+    score_result,
+    statistician,
+    filter_notes: list,
+) -> "PoliticianTradesData | None":
+    """
+    Fetch congressional trading data for the ticker and apply a score correction.
+    Capitol Trades data has a 30-45 day disclosure delay — this is expected and noted in the UI.
+    Correction is capped at ±8 points to keep the signal as a soft confirmation, not a driver.
+    """
+    try:
+        from data.politician_trades import (
+            fetch_ticker_trades,
+            compute_politician_sentiment,
+            compute_score_correction,
+        )
+
+        trades = fetch_ticker_trades(ticker, days_back=120)
+        sentiment_data = compute_politician_sentiment(trades)
+        delta, note = compute_score_correction(sentiment_data)
+
+        if delta != 0.0:
+            new_score = round(max(0.0, min(100.0, score_result.total_score + delta)), 1)
+            score_result.total_score     = new_score
+            score_result.signal_label    = statistician._label(new_score)
+            score_result.win_probability = round(statistician._win_probability(new_score), 3)
+            score_result.expected_value  = round(statistician._expected_value(score_result.win_probability), 2)
+
+        filter_notes.append(note)
+
+        return PoliticianTradesData(
+            sentiment=sentiment_data["sentiment"],
+            buy_count=sentiment_data["buy_count"],
+            sell_count=sentiment_data["sell_count"],
+            buy_volume=sentiment_data["buy_volume"],
+            sell_volume=sentiment_data["sell_volume"],
+            top_performer_signal=sentiment_data["top_performer_signal"],
+            top_performer_trades=sentiment_data["top_performer_trades"],
+            recent_trades=trades[:30],
+            score_delta=delta,
+            delay_note=sentiment_data["delay_note"],
+        )
+    except Exception:
+        return None
+
 
 def _apply_macro_filters(ticker: str, score: float) -> tuple:
     """

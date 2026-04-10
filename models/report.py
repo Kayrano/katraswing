@@ -108,6 +108,20 @@ class CanSlimResult:
 
 
 @dataclass
+class PoliticianTradesData:
+    sentiment: float          # -1.0 (full sell) to +1.0 (full buy)
+    buy_count: int
+    sell_count: int
+    buy_volume: int           # total USD estimated
+    sell_volume: int
+    top_performer_signal: str # "BULLISH" | "BEARISH" | "NEUTRAL"
+    top_performer_trades: list # last 5 trades from known top performers
+    recent_trades: list       # all trades in window, newest first
+    score_delta: float        # correction applied to final score
+    delay_note: str           # human-readable disclosure delay explanation
+
+
+@dataclass
 class ReportData:
     ticker: str
     company_name: str
@@ -121,5 +135,6 @@ class ReportData:
     score: ScoreResult
     mtf: Optional[MTFResult] = None
     canslim: Optional[CanSlimResult] = None
+    politician: Optional[PoliticianTradesData] = None
     generated_at: datetime = field(default_factory=datetime.now)
     filter_notes: list = field(default_factory=list)

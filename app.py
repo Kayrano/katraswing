@@ -48,10 +48,10 @@ with toggle_col:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_analyzer, tab_watchlist, tab_alerts, tab_backtest, tab_heatmap, tab_screener, tab_portfolio, tab_compare, tab_replay, tab_bot, tab_settings = st.tabs([
+tab_analyzer, tab_watchlist, tab_alerts, tab_backtest, tab_heatmap, tab_screener, tab_portfolio, tab_compare, tab_replay, tab_bot, tab_politician, tab_settings = st.tabs([
     "📊 Analyzer", "👁 Watchlist", "🔔 Price Alerts", "🧪 Backtester",
     "🌡 Sector Heatmap", "🔍 Screener", "💼 Portfolio", "⚖ Compare", "⏪ Replay",
-    "🤖 Live Bot", "⚙️ Settings",
+    "🤖 Live Bot", "🏛 Congress Trades", "⚙️ Settings",
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -226,7 +226,12 @@ with tab_analyzer:
         with st.expander("📡 Analyst Views — Track Records · S&P 500 Targets · Stock Consensus", expanded=False):
             render_analyst_panel(report)
 
-        # ── Section 5: Earnings & Events ──────────────────────────────────────
+        # ── Section 5: Congress Trades ────────────────────────────────────────
+        with st.expander("🏛 Congress Trades — Politician Activity · Sentiment · Score Correction", expanded=False):
+            from ui.politician_renderer import render_politician_panel
+            render_politician_panel(report)
+
+        # ── Section 6: Earnings & Events ──────────────────────────────────────
         with st.expander("📅 Earnings & Events — Risk · History · Estimate Revisions", expanded=False):
             render_earnings_risk(report.ticker)
             render_earnings_history(report)
@@ -754,7 +759,14 @@ with tab_bot:
     render_bot_tab()
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 11 — SETTINGS
+# TAB 11 — CONGRESS TRADES
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_politician:
+    from ui.politician_renderer import render_politician_tab
+    render_politician_tab()
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 12 — SETTINGS
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_settings:
     from ui.settings_renderer import render_settings_tab
