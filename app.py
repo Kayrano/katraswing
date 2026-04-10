@@ -19,6 +19,10 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# ── Auth gate — must come before any content ──────────────────────────────────
+from ui.auth_renderer import render_auth_gate
+render_auth_gate()
+
 # ── Theme injection ───────────────────────────────────────────────────────────
 from ui.renderer import get_theme_css
 

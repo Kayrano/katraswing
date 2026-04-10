@@ -1,53 +1,70 @@
 """
 Alpaca Markets REST API wrapper.
-Reads credentials from alpaca_config.py (ClaudeTrading folder) or falls back
-to the constants below.
 
-Paper trading endpoint: https://paper-api.alpaca.markets/v2
+Credentials are resolved in this priority order:
+  1. Explicit (api_key, secret_key) arguments passed to each function.
+  2. st.session_state (set after the user saves their keys in the bot tab).
+  3. Fallback constants below (for local dev / backward compat).
 """
 
 import requests
-import sys
-import os
 from typing import Optional
 
-# ── Load credentials ───────────────────────────────────────────────────────────
-# Try to import from the ClaudeTrading config file first
-try:
-    _cfg_path = r"C:\Users\Kayra\OneDrive\Masaüstü\ClaudeTrading"
-    if _cfg_path not in sys.path:
-        sys.path.insert(0, _cfg_path)
-    from alpaca_config import ALPACA_API_KEY as _KEY, ALPACA_SECRET_KEY as _SECRET, ALPACA_BASE_URL as _BASE
-except ImportError:
-    _KEY    = "PKRDQJ3JAALM3BS7RCNRMYYXYY"
-    _SECRET = "B1GjKfqebMGQmV5mMf2TjDWM7VyEYWy7MaoV3u5j59Q5"
-    _BASE   = "https://paper-api.alpaca.markets/v2"
-
-API_KEY    = _KEY
-SECRET_KEY = _SECRET
-BASE_URL   = _BASE.rstrip("/")
-
-HEADERS = {
-    "APCA-API-KEY-ID":     API_KEY,
-    "APCA-API-SECRET-KEY": SECRET_KEY,
-    "Content-Type":        "application/json",
-}
+# ── Fallback credentials (local dev only — overridden by user keys on cloud) ──
+_FALLBACK_KEY    = "REPLACE_WITH_YOUR_KEY"
+_FALLBACK_SECRET = "REPLACE_WITH_YOUR_SECRET"
+_PAPER_BASE_URL  = "https://paper-api.alpaca.markets/v2"
+_LIVE_BASE_URL   = "https://api.alpaca.markets/v2"
 
 _TIMEOUT = 12   # seconds per request
 
 
+# ── Credential resolution ─────────────────────────────────────────────────────
+
+def _resolve(api_key: str | None, secret_key: str | None, is_paper: bool | None):
+    """Pick the best available credentials and return (key, secret, base_url)."""
+    # Try session state (user's saved keys from the bot tab)
+    if not api_key or not secret_key:
+        try:
+            import streamlit as st
+            api_key   = api_key   or st.session_state.get("alpaca_api_key")
+            secret_key = secret_key or st.session_state.get("alpaca_secret_key")
+            if is_paper is None:
+                is_paper = st.session_state.get("alpaca_is_paper", True)
+        except Exception:
+            pass
+
+    key    = api_key   or _FALLBACK_KEY
+    secret = secret_key or _FALLBACK_SECRET
+    paper  = is_paper if is_paper is not None else True
+    base   = _PAPER_BASE_URL if paper else _LIVE_BASE_URL
+    return key, secret, base.rstrip("/")
+
+
+def _headers(api_key: str | None = None, secret_key: str | None = None, is_paper: bool | None = None) -> tuple[dict, str]:
+    """Return (headers_dict, base_url)."""
+    key, secret, base = _resolve(api_key, secret_key, is_paper)
+    headers = {
+        "APCA-API-KEY-ID":     key,
+        "APCA-API-SECRET-KEY": secret,
+        "Content-Type":        "application/json",
+    }
+    return headers, base
+
+
 # ── Account ───────────────────────────────────────────────────────────────────
 
-def get_account() -> dict:
-    r = requests.get(f"{BASE_URL}/account", headers=HEADERS, timeout=_TIMEOUT)
+def get_account(api_key=None, secret_key=None, is_paper=None) -> dict:
+    h, base = _headers(api_key, secret_key, is_paper)
+    r = requests.get(f"{base}/account", headers=h, timeout=_TIMEOUT)
     r.raise_for_status()
     return r.json()
 
 
-def is_market_open() -> bool:
-    """Check live market status via Alpaca clock endpoint."""
+def is_market_open(api_key=None, secret_key=None, is_paper=None) -> bool:
     try:
-        r = requests.get(f"{BASE_URL}/clock", headers=HEADERS, timeout=_TIMEOUT)
+        h, base = _headers(api_key, secret_key, is_paper)
+        r = requests.get(f"{base}/clock", headers=h, timeout=_TIMEOUT)
         r.raise_for_status()
         return bool(r.json().get("is_open", False))
     except Exception:
@@ -56,15 +73,17 @@ def is_market_open() -> bool:
 
 # ── Positions ─────────────────────────────────────────────────────────────────
 
-def get_positions() -> list:
-    r = requests.get(f"{BASE_URL}/positions", headers=HEADERS, timeout=_TIMEOUT)
+def get_positions(api_key=None, secret_key=None, is_paper=None) -> list:
+    h, base = _headers(api_key, secret_key, is_paper)
+    r = requests.get(f"{base}/positions", headers=h, timeout=_TIMEOUT)
     r.raise_for_status()
     return r.json()
 
 
-def get_position(symbol: str) -> Optional[dict]:
+def get_position(symbol: str, api_key=None, secret_key=None, is_paper=None) -> Optional[dict]:
     try:
-        r = requests.get(f"{BASE_URL}/positions/{symbol.upper()}", headers=HEADERS, timeout=_TIMEOUT)
+        h, base = _headers(api_key, secret_key, is_paper)
+        r = requests.get(f"{base}/positions/{symbol.upper()}", headers=h, timeout=_TIMEOUT)
         if r.status_code == 404:
             return None
         r.raise_for_status()
@@ -73,14 +92,10 @@ def get_position(symbol: str) -> Optional[dict]:
         return None
 
 
-def close_position(symbol: str) -> Optional[dict]:
-    """Market-sell the entire position for a ticker."""
+def close_position(symbol: str, api_key=None, secret_key=None, is_paper=None) -> Optional[dict]:
     try:
-        r = requests.delete(
-            f"{BASE_URL}/positions/{symbol.upper()}",
-            headers=HEADERS,
-            timeout=_TIMEOUT,
-        )
+        h, base = _headers(api_key, secret_key, is_paper)
+        r = requests.delete(f"{base}/positions/{symbol.upper()}", headers=h, timeout=_TIMEOUT)
         if r.status_code in (200, 204, 207):
             return r.json() if r.content else {}
         return None
@@ -90,23 +105,23 @@ def close_position(symbol: str) -> Optional[dict]:
 
 # ── Orders ────────────────────────────────────────────────────────────────────
 
-def get_open_orders() -> list:
-    r = requests.get(f"{BASE_URL}/orders?status=open", headers=HEADERS, timeout=_TIMEOUT)
+def get_open_orders(api_key=None, secret_key=None, is_paper=None) -> list:
+    h, base = _headers(api_key, secret_key, is_paper)
+    r = requests.get(f"{base}/orders?status=open", headers=h, timeout=_TIMEOUT)
     r.raise_for_status()
     return r.json()
 
 
-def get_order(order_id: str) -> dict:
-    r = requests.get(f"{BASE_URL}/orders/{order_id}", headers=HEADERS, timeout=_TIMEOUT)
+def get_order(order_id: str, api_key=None, secret_key=None, is_paper=None) -> dict:
+    h, base = _headers(api_key, secret_key, is_paper)
+    r = requests.get(f"{base}/orders/{order_id}", headers=h, timeout=_TIMEOUT)
     r.raise_for_status()
     return r.json()
 
 
-def place_market_order(symbol: str, qty: int, side: str) -> dict:
-    """
-    Place a market order.
-    side: 'buy' | 'sell'
-    """
+def place_market_order(symbol: str, qty: int, side: str,
+                       api_key=None, secret_key=None, is_paper=None) -> dict:
+    h, base = _headers(api_key, secret_key, is_paper)
     payload = {
         "symbol":        symbol.upper(),
         "qty":           str(qty),
@@ -114,21 +129,14 @@ def place_market_order(symbol: str, qty: int, side: str) -> dict:
         "type":          "market",
         "time_in_force": "day",
     }
-    r = requests.post(f"{BASE_URL}/orders", headers=HEADERS, json=payload, timeout=_TIMEOUT)
+    r = requests.post(f"{base}/orders", headers=h, json=payload, timeout=_TIMEOUT)
     r.raise_for_status()
     return r.json()
 
 
-def place_oco_order(
-    symbol: str,
-    qty: int,
-    stop_price: float,
-    take_profit_price: float,
-) -> dict:
-    """
-    Place an OCO sell order linking a stop-loss and a take-profit.
-    When one leg triggers, the other is automatically cancelled.
-    """
+def place_oco_order(symbol: str, qty: int, stop_price: float, take_profit_price: float,
+                    api_key=None, secret_key=None, is_paper=None) -> dict:
+    h, base = _headers(api_key, secret_key, is_paper)
     payload = {
         "symbol":        symbol.upper(),
         "qty":           str(qty),
@@ -139,21 +147,23 @@ def place_oco_order(
         "stop_loss":     {"stop_price":  str(round(stop_price, 2))},
         "take_profit":   {"limit_price": str(round(take_profit_price, 2))},
     }
-    r = requests.post(f"{BASE_URL}/orders", headers=HEADERS, json=payload, timeout=_TIMEOUT)
+    r = requests.post(f"{base}/orders", headers=h, json=payload, timeout=_TIMEOUT)
     r.raise_for_status()
     return r.json()
 
 
-def cancel_order(order_id: str) -> bool:
+def cancel_order(order_id: str, api_key=None, secret_key=None, is_paper=None) -> bool:
     try:
-        r = requests.delete(f"{BASE_URL}/orders/{order_id}", headers=HEADERS, timeout=_TIMEOUT)
+        h, base = _headers(api_key, secret_key, is_paper)
+        r = requests.delete(f"{base}/orders/{order_id}", headers=h, timeout=_TIMEOUT)
         return r.status_code in (200, 204)
     except Exception:
         return False
 
 
-def cancel_all_orders() -> None:
+def cancel_all_orders(api_key=None, secret_key=None, is_paper=None) -> None:
     try:
-        requests.delete(f"{BASE_URL}/orders", headers=HEADERS, timeout=_TIMEOUT)
+        h, base = _headers(api_key, secret_key, is_paper)
+        requests.delete(f"{base}/orders", headers=h, timeout=_TIMEOUT)
     except Exception:
         pass

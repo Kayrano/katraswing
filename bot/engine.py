@@ -4,12 +4,16 @@ Katrabot — 24/7 Automated Trading Engine
 Runs as a background thread inside the Katraswing Streamlit app.
 Uses APScheduler to fire a scan cycle every SCAN_INTERVAL_MINUTES.
 
+Supports multiple concurrent users: each user_id gets its own scheduler
+and state dict.  Alpaca credentials are passed explicitly so different
+users can trade against their own accounts.
+
 Cycle logic:
   1.  Check Alpaca market clock — skip if closed.
   2.  Check daily P&L vs loss limit — halt if breached.
   3.  Fetch open positions.
   4.  Re-score held positions — exit any that drop below AVOID_THRESHOLD.
-  5.  Run Katraswing screener to find top candidates (fast, vectorized).
+  5.  Run Katraswing screener to find top candidates (fast, vectorised).
   6.  Run full run_analysis() on top N candidates.
   7.  Buy anything scoring ≥ BUY_THRESHOLD that passes all risk checks.
   8.  Place OCO (stop + take-profit) on every new position.
@@ -29,7 +33,7 @@ from bot.config import (
 from bot.logger  import init_db, log_trade, log_run, get_recent_trades
 from bot.risk_manager import (
     compute_position_size, can_open_new_position,
-    is_daily_loss_limit_hit, has_upcoming_earnings, already_in_portfolio,
+    is_daily_loss_limit_hit, has_upcoming_earnings,
 )
 from broker.alpaca import (
     get_account, get_positions, is_market_open,
@@ -42,31 +46,37 @@ logging.basicConfig(
     format="%(asctime)s  [%(levelname)s]  %(message)s",
 )
 
-# ── Module-level singleton state ───────────────────────────────────────────────
-# Using module globals so the scheduler survives Streamlit script reruns.
-_scheduler = None          # APScheduler BackgroundScheduler instance
-_lock      = threading.Lock()
+# ── Per-user singleton state ───────────────────────────────────────────────────
+# Keyed by user_id (str) so multiple users can run independent bots.
+_schedulers: dict = {}
+_states:     dict = {}
+_lock = threading.Lock()
 
-# Shared state dict — read by the UI tab (bot_renderer.py)
-state = {
-    "running":            False,
-    "status_msg":         "Bot not started.",
-    "last_run_utc":       None,
-    "daily_pnl":          0.0,
-    "total_buys_today":   0,
-    "total_sells_today":  0,
-    "last_trades":        [],   # last 10 log entries for quick display
-    "errors_this_cycle":  0,
-}
+
+def _default_state() -> dict:
+    return {
+        "running":            False,
+        "status_msg":         "Bot not started.",
+        "last_run_utc":       None,
+        "daily_pnl":          0.0,
+        "total_buys_today":   0,
+        "total_sells_today":  0,
+        "last_trades":        [],
+        "errors_this_cycle":  0,
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Public API
 # ══════════════════════════════════════════════════════════════════════════════
 
-def start_bot() -> str:
-    global _scheduler
+def start_bot(user_id: str, api_key: str, secret_key: str, is_paper: bool = True) -> str:
+    """Start the bot for a specific user with their Alpaca credentials."""
     with _lock:
+        if user_id not in _states:
+            _states[user_id] = _default_state()
+
+        state = _states[user_id]
         if state["running"]:
             return "Bot is already running."
 
@@ -78,53 +88,69 @@ def start_bot() -> str:
 
         init_db()
 
-        _scheduler = BackgroundScheduler(daemon=True, timezone="UTC")
-        _scheduler.add_job(
+        creds = {"api_key": api_key, "secret_key": secret_key, "is_paper": is_paper}
+
+        scheduler = BackgroundScheduler(daemon=True, timezone="UTC")
+        scheduler.add_job(
             _run_cycle,
             trigger=IntervalTrigger(minutes=SCAN_INTERVAL_MINUTES),
-            id="trading_cycle",
+            id=f"trading_cycle_{user_id}",
+            kwargs={"user_id": user_id, "creds": creds},
             max_instances=1,
             coalesce=True,
             misfire_grace_time=60,
         )
-        _scheduler.start()
+        scheduler.start()
+        _schedulers[user_id] = scheduler
 
         state["running"]    = True
         state["status_msg"] = f"Bot running — scanning every {SCAN_INTERVAL_MINUTES} min."
-        log.info("Katrabot started.")
+        log.info(f"Katrabot started for user {user_id[:8]}…")
 
-        # Fire first cycle immediately in a daemon thread
-        threading.Thread(target=_run_cycle, daemon=True, name="katrabot-init").start()
+        # Fire first cycle immediately
+        threading.Thread(
+            target=_run_cycle,
+            kwargs={"user_id": user_id, "creds": creds},
+            daemon=True,
+            name=f"katrabot-init-{user_id[:8]}",
+        ).start()
+
         return state["status_msg"]
 
 
-def stop_bot() -> str:
-    global _scheduler
+def stop_bot(user_id: str) -> str:
     with _lock:
-        if not state["running"]:
+        state = _states.get(user_id)
+        if not state or not state["running"]:
             return "Bot is not running."
         try:
-            if _scheduler:
-                _scheduler.shutdown(wait=False)
+            scheduler = _schedulers.pop(user_id, None)
+            if scheduler:
+                scheduler.shutdown(wait=False)
         except Exception:
             pass
-        _scheduler          = None
         state["running"]    = False
         state["status_msg"] = "Bot stopped."
-        log.info("Katrabot stopped.")
+        log.info(f"Katrabot stopped for user {user_id[:8]}…")
         return state["status_msg"]
 
 
-def get_state() -> dict:
-    return dict(state)
+def get_state(user_id: str) -> dict:
+    return dict(_states.get(user_id, _default_state()))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Core scan cycle
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _run_cycle():
-    """One full analysis + execution cycle."""
+def _run_cycle(user_id: str, creds: dict):
+    """One full analysis + execution cycle for one user."""
+    state = _states.setdefault(user_id, _default_state())
+
+    ak  = creds.get("api_key")
+    sk  = creds.get("secret_key")
+    ppr = creds.get("is_paper", True)
+
     ts               = datetime.utcnow().isoformat(timespec="seconds")
     tickers_scanned  = 0
     trades_executed  = 0
@@ -134,7 +160,7 @@ def _run_cycle():
 
     try:
         # ── 1. Market hours ───────────────────────────────────────────────────
-        market_open = is_market_open()
+        market_open = is_market_open(api_key=ak, secret_key=sk, is_paper=ppr)
         state["last_run_utc"] = ts
 
         if not market_open:
@@ -144,7 +170,7 @@ def _run_cycle():
 
         # ── 2. Daily P&L & loss-limit check ──────────────────────────────────
         try:
-            acct      = get_account()
+            acct      = get_account(api_key=ak, secret_key=sk, is_paper=ppr)
             daily_pnl = float(acct.get("equity", 0)) - float(acct.get("last_equity", 0))
             state["daily_pnl"] = daily_pnl
         except Exception as e:
@@ -160,7 +186,7 @@ def _run_cycle():
 
         # ── 3. Current positions ──────────────────────────────────────────────
         try:
-            positions = get_positions()
+            positions = get_positions(api_key=ak, secret_key=sk, is_paper=ppr)
         except Exception as e:
             errors   += 1
             notes.append(f"Positions fetch error: {e}")
@@ -178,7 +204,7 @@ def _run_cycle():
                 tickers_scanned += 1
 
                 if score < AVOID_THRESHOLD:
-                    close_position(symbol)
+                    close_position(symbol, api_key=ak, secret_key=sk, is_paper=ppr)
                     positions_closed += 1
                     state["total_sells_today"] += 1
                     log_trade(
@@ -196,7 +222,7 @@ def _run_cycle():
 
         # Refresh positions after exits
         try:
-            positions = get_positions()
+            positions = get_positions(api_key=ak, secret_key=sk, is_paper=ppr)
         except Exception:
             pass
 
@@ -220,26 +246,22 @@ def _run_cycle():
                     setup  = report.trade_setup
                     tickers_scanned += 1
 
-                    # Skip non-BUY scores
                     if score < BUY_THRESHOLD:
                         log_trade(ticker=ticker, action="SKIP", score=score,
                                   reason=f"Score {score:.1f} < {BUY_THRESHOLD}")
                         continue
 
-                    # Only take LONG direction
                     if setup.direction != "LONG":
                         log_trade(ticker=ticker, action="SKIP", score=score,
                                   reason=f"Direction: {setup.direction}")
                         continue
 
-                    # Earnings proximity check
                     has_earn, earn_days = has_upcoming_earnings(ticker)
                     if has_earn:
                         log_trade(ticker=ticker, action="SKIP", score=score,
                                   reason=f"Earnings in {earn_days}d")
                         continue
 
-                    # Position sizing
                     qty = compute_position_size(setup.entry, setup.stop_loss)
                     if qty <= 0:
                         log_trade(ticker=ticker, action="SKIP", score=score,
@@ -247,14 +269,15 @@ def _run_cycle():
                         continue
 
                     # ── Execute BUY ───────────────────────────────────────────
-                    buy_resp = place_market_order(ticker, qty, "buy")
+                    buy_resp = place_market_order(ticker, qty, "buy",
+                                                  api_key=ak, secret_key=sk, is_paper=ppr)
                     order_id = buy_resp.get("id", "")
                     log.info(f"BUY {qty}x {ticker} @ ~${setup.entry:.2f}  (score {score:.1f})")
 
-                    # Wait briefly for market order to fill, then place OCO
                     time.sleep(2)
                     try:
-                        place_oco_order(ticker, qty, setup.stop_loss, setup.take_profit)
+                        place_oco_order(ticker, qty, setup.stop_loss, setup.take_profit,
+                                        api_key=ak, secret_key=sk, is_paper=ppr)
                         log.info(f"OCO set — SL ${setup.stop_loss:.2f}  TP ${setup.take_profit:.2f}")
                     except Exception as oco_err:
                         notes.append(f"OCO failed {ticker}: {oco_err}")
@@ -272,9 +295,8 @@ def _run_cycle():
                     )
                     notes.append(f"BOUGHT {qty}x {ticker} @ ${setup.entry:.2f} (score {score:.1f})")
 
-                    # Refresh limits
                     try:
-                        positions = get_positions()
+                        positions = get_positions(api_key=ak, secret_key=sk, is_paper=ppr)
                     except Exception:
                         pass
                     can_open, no_open_reason = can_open_new_position(positions)
@@ -322,30 +344,17 @@ def _run_cycle():
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _get_top_candidates(current_positions: list) -> list:
-    """
-    Run the fast screener and return up to TOP_CANDIDATES tickers
-    that are not already held, sorted by score descending.
-    """
     try:
         from data.screener import run_screener
-        results = run_screener(preset_name="All (no filter)")
-
-        held    = {p.get("symbol", "").upper() for p in current_positions}
-        filtered = [
-            r for r in results
-            if r.get("ticker", "").upper() not in held
-        ]
-
-        # Sort by score descending
+        results  = run_screener(preset_name="All (no filter)")
+        held     = {p.get("symbol", "").upper() for p in current_positions}
+        filtered = [r for r in results if r.get("ticker", "").upper() not in held]
         filtered.sort(key=lambda x: x.get("score", 0), reverse=True)
-
         return [r["ticker"] for r in filtered[:TOP_CANDIDATES]]
-
     except Exception as e:
         log.warning(f"Screener failed, falling back to config universe: {e}")
-        # Fallback: use config universe directly
         from bot.config import WATCHLIST_EXTRAS
         from data.screener import SWING_UNIVERSE
-        held    = {p.get("symbol", "").upper() for p in current_positions}
+        held     = {p.get("symbol", "").upper() for p in current_positions}
         fallback = [t for t in (SWING_UNIVERSE + WATCHLIST_EXTRAS) if t not in held]
         return fallback[:TOP_CANDIDATES]
