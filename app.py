@@ -44,9 +44,10 @@ with toggle_col:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_analyzer, tab_watchlist, tab_alerts, tab_backtest, tab_heatmap, tab_screener, tab_portfolio, tab_compare, tab_replay = st.tabs([
+tab_analyzer, tab_watchlist, tab_alerts, tab_backtest, tab_heatmap, tab_screener, tab_portfolio, tab_compare, tab_replay, tab_bot = st.tabs([
     "📊 Analyzer", "👁 Watchlist", "🔔 Price Alerts", "🧪 Backtester",
     "🌡 Sector Heatmap", "🔍 Screener", "💼 Portfolio", "⚖ Compare", "⏪ Replay",
+    "🤖 Live Bot",
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -740,3 +741,10 @@ with tab_replay:
             </p>
         </div>
         """, unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 10 — LIVE BOT
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_bot:
+    from ui.bot_renderer import render_bot_tab
+    render_bot_tab()
