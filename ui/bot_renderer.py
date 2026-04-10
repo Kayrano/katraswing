@@ -133,7 +133,7 @@ def render_bot_tab():
 
             st.dataframe(
                 df_pos.style
-                    .applymap(_color_pnl, subset=["P&L $", "P&L %"])
+                    .map(_color_pnl, subset=["P&L $", "P&L %"])
                     .format({
                         "Entry $":   "${:.2f}",
                         "Current $": "${:.2f}",
