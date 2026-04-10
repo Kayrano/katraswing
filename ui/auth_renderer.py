@@ -9,10 +9,9 @@ app only runs for authenticated sessions.
 import streamlit as st
 from db.supabase_client import sign_in, sign_up, sign_out, load_user_keys
 
-
-# ── Session-state keys used across the app ────────────────────────────────────
-_USER_KEY          = "auth_user"          # Supabase user dict
-_TOKEN_KEY         = "auth_access_token"  # JWT for RLS-protected queries
+# ── Session-state keys ────────────────────────────────────────────────────────
+_USER_KEY          = "auth_user"
+_TOKEN_KEY         = "auth_access_token"
 _ALPACA_KEY        = "alpaca_api_key"
 _ALPACA_SECRET_KEY = "alpaca_secret_key"
 _ALPACA_IS_PAPER   = "alpaca_is_paper"
@@ -31,12 +30,22 @@ def get_access_token() -> str | None:
 
 
 def get_alpaca_creds() -> tuple[str | None, str | None, bool]:
-    """Return (api_key, secret_key, is_paper) from session state."""
     return (
         st.session_state.get(_ALPACA_KEY),
         st.session_state.get(_ALPACA_SECRET_KEY),
         st.session_state.get(_ALPACA_IS_PAPER, True),
     )
+
+
+def _do_sign_out(token: str | None = None):
+    """Clear session state and call Supabase sign-out."""
+    if token:
+        try:
+            sign_out(token)
+        except Exception:
+            pass
+    for key in [_USER_KEY, _TOKEN_KEY, _ALPACA_KEY, _ALPACA_SECRET_KEY, _ALPACA_IS_PAPER]:
+        st.session_state.pop(key, None)
 
 
 def render_auth_gate():
@@ -45,10 +54,8 @@ def render_auth_gate():
     Place this call BEFORE any other content in app.py.
     """
     if is_authenticated():
-        _render_logout_button()
-        return  # user is in — let the rest of the app render
+        return  # already in — let the rest of the app render
 
-    # ── Login / Register form ─────────────────────────────────────────────────
     _, center, _ = st.columns([1, 2, 1])
     with center:
         st.markdown("""
@@ -73,8 +80,8 @@ def render_auth_gate():
 
 def _render_login_form():
     with st.form("login_form"):
-        email    = st.text_input("Email")
-        password = st.text_input("Password", type="password")
+        email     = st.text_input("Email")
+        password  = st.text_input("Password", type="password")
         submitted = st.form_submit_button("Sign In", use_container_width=True, type="primary")
 
     if submitted:
@@ -82,16 +89,13 @@ def _render_login_form():
             st.error("Please enter your email and password.")
             return
         try:
-            res = sign_in(email.strip(), password)
+            res     = sign_in(email.strip(), password)
             user    = res.user
             session = res.session
             if user and session:
                 st.session_state[_USER_KEY]  = {"id": user.id, "email": user.email}
                 st.session_state[_TOKEN_KEY] = session.access_token
-
-                # Pre-load stored Alpaca keys (if any)
                 _load_alpaca_keys_into_session(user.id, session.access_token)
-
                 st.success("Signed in!")
                 st.rerun()
             else:
@@ -102,9 +106,8 @@ def _render_login_form():
 
 def _render_register_form():
     with st.form("register_form"):
-        email    = st.text_input("Email")
-        password = st.text_input("Password", type="password",
-                                 help="Minimum 6 characters")
+        email     = st.text_input("Email")
+        password  = st.text_input("Password", type="password", help="Minimum 6 characters")
         password2 = st.text_input("Confirm Password", type="password")
         submitted = st.form_submit_button("Create Account", use_container_width=True, type="primary")
 
@@ -128,27 +131,7 @@ def _render_register_form():
             st.error(f"Registration error: {e}")
 
 
-def _render_logout_button():
-    """Show a compact logout button in the top-right area (sidebar)."""
-    with st.sidebar:
-        user = get_current_user()
-        if user:
-            st.markdown(f"**👤 {user.get('email', '')}**")
-        if st.button("Sign Out", use_container_width=True):
-            token = get_access_token()
-            if token:
-                try:
-                    sign_out(token)
-                except Exception:
-                    pass
-            # Clear all auth state
-            for key in [_USER_KEY, _TOKEN_KEY, _ALPACA_KEY, _ALPACA_SECRET_KEY, _ALPACA_IS_PAPER]:
-                st.session_state.pop(key, None)
-            st.rerun()
-
-
 def _load_alpaca_keys_into_session(user_id: str, access_token: str):
-    """Fetch stored Alpaca keys from DB and put them in session_state."""
     try:
         data = load_user_keys(user_id, access_token)
         if data:

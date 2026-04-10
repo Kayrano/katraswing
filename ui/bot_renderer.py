@@ -14,7 +14,7 @@ from datetime import datetime
 def render_bot_tab():
     """Main entry point — renders the full 🤖 Live Bot tab."""
 
-    from ui.auth_renderer import get_current_user, get_access_token, get_alpaca_creds
+    from ui.auth_renderer import get_current_user, get_alpaca_creds
     from bot.config import (
         PORTFOLIO_SIZE, RISK_PER_TRADE_PCT, MAX_POSITIONS,
         BUY_THRESHOLD, AVOID_THRESHOLD, SCAN_INTERVAL_MINUTES,
@@ -24,26 +24,16 @@ def render_bot_tab():
     st.caption("Powered by Katraswing analysis pipeline · Executes on Alpaca Paper or Live Trading")
     st.divider()
 
-    user  = get_current_user()
-    token = get_access_token()
-
+    user = get_current_user()
     if not user:
         st.warning("Please sign in to use the Live Bot.")
         return
 
     user_id = user["id"]
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # Step 1 — API Key Setup
-    # ══════════════════════════════════════════════════════════════════════════
     api_key, secret_key, is_paper = get_alpaca_creds()
-    keys_saved = bool(api_key and secret_key)
 
-    with st.expander("🔑 Alpaca API Keys" + (" ✅" if keys_saved else " — setup required"), expanded=not keys_saved):
-        _render_key_setup(user_id, token, api_key, secret_key, is_paper)
-
-    if not keys_saved:
-        st.info("Enter your Alpaca API keys above to start the bot.")
+    if not api_key or not secret_key:
+        st.info("🔑 No Alpaca API keys found. Go to the **⚙️ Settings** tab to add your credentials, then come back here to start the bot.")
         return
 
     st.divider()
@@ -239,39 +229,3 @@ def render_bot_tab():
         "💡 This tab shows a snapshot. Refresh the page to see the latest data. "
         "Bot continues running in the background regardless of browser state."
     )
-
-
-# ── API Key Setup Form ────────────────────────────────────────────────────────
-
-def _render_key_setup(user_id: str, token: str, current_key: str, current_secret: str, current_paper: bool):
-    """Form to save Alpaca credentials to Supabase and session state."""
-    from db.supabase_client import save_user_keys
-
-    st.markdown(
-        "Enter your **[Alpaca](https://app.alpaca.markets) API credentials**. "
-        "Keys are stored securely in your account — each user has their own isolated bot."
-    )
-
-    with st.form("alpaca_keys_form"):
-        col_a, col_b = st.columns(2)
-        with col_a:
-            new_key    = st.text_input("API Key ID",    value=current_key    or "", placeholder="PKRD…")
-        with col_b:
-            new_secret = st.text_input("API Secret Key", value=current_secret or "", type="password", placeholder="B1Gj…")
-
-        new_paper = st.toggle("Paper Trading (recommended for testing)", value=current_paper if current_paper is not None else True)
-        saved = st.form_submit_button("Save Keys", use_container_width=True, type="primary")
-
-    if saved:
-        if not new_key or not new_secret:
-            st.error("Both API Key ID and Secret Key are required.")
-            return
-        try:
-            save_user_keys(user_id, token, new_key.strip(), new_secret.strip(), new_paper)
-            st.session_state["alpaca_api_key"]    = new_key.strip()
-            st.session_state["alpaca_secret_key"] = new_secret.strip()
-            st.session_state["alpaca_is_paper"]   = new_paper
-            st.success("Keys saved! You can now start the bot.")
-            st.rerun()
-        except Exception as e:
-            st.error(f"Failed to save keys: {e}")

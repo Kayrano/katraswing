@@ -48,10 +48,10 @@ with toggle_col:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_analyzer, tab_watchlist, tab_alerts, tab_backtest, tab_heatmap, tab_screener, tab_portfolio, tab_compare, tab_replay, tab_bot = st.tabs([
+tab_analyzer, tab_watchlist, tab_alerts, tab_backtest, tab_heatmap, tab_screener, tab_portfolio, tab_compare, tab_replay, tab_bot, tab_settings = st.tabs([
     "📊 Analyzer", "👁 Watchlist", "🔔 Price Alerts", "🧪 Backtester",
     "🌡 Sector Heatmap", "🔍 Screener", "💼 Portfolio", "⚖ Compare", "⏪ Replay",
-    "🤖 Live Bot",
+    "🤖 Live Bot", "⚙️ Settings",
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -752,3 +752,10 @@ with tab_replay:
 with tab_bot:
     from ui.bot_renderer import render_bot_tab
     render_bot_tab()
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 11 — SETTINGS
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab_settings:
+    from ui.settings_renderer import render_settings_tab
+    render_settings_tab()
