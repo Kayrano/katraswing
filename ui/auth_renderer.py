@@ -7,7 +7,7 @@ app only runs for authenticated sessions.
 """
 
 import streamlit as st
-from db.supabase_client import sign_in, sign_up, sign_out, load_user_keys
+from db.supabase_client import sign_in, sign_up, sign_out, load_user_keys, supabase_configured
 
 # ── Session-state keys ────────────────────────────────────────────────────────
 _USER_KEY          = "auth_user"
@@ -52,9 +52,13 @@ def render_auth_gate():
     """
     Show login/register UI and st.stop() if user is not authenticated.
     Place this call BEFORE any other content in app.py.
+    If Supabase is not configured (local dev), skips auth entirely.
     """
     if is_authenticated():
         return  # already in — let the rest of the app render
+
+    if not supabase_configured():
+        return  # no auth backend configured — run without login (local dev)
 
     _, center, _ = st.columns([1, 2, 1])
     with center:
