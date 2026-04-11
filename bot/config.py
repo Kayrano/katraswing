@@ -33,3 +33,8 @@ TOP_CANDIDATES        = 8           # Run full analysis on this many top screene
 WATCHLIST_EXTRAS = [
     "PLTR", "ARM", "MSTR", "COIN", "HOOD",
 ]
+
+# ── Alpaca Credentials ─────────────────────────────────────────────────────────
+ALPACA_API_KEY    = "PKAC5AZENFBTJ2LEKIABHWBUSD"
+ALPACA_SECRET_KEY = "FwSscEn4UfZEy6dUzvwnYRjHNgWrDHvXF89ozEPGjm1f"
+ALPACA_IS_PAPER   = True
