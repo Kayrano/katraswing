@@ -34,6 +34,20 @@ WATCHLIST_EXTRAS = [
     "PLTR", "ARM", "MSTR", "COIN", "HOOD",
 ]
 
+# ── H1 Intraday Gate ──────────────────────────────────────────────────────────
+# When True, the bot requires an H1 strategy signal to confirm every entry.
+# Daily scoring selects the candidate; H1 timing selects the entry bar.
+# Set False only as an emergency bypass (e.g. H1 data feed is down).
+H1_STRATEGY_GATE    = True
+
+# Minimum confidence (0.0 – 1.0) required from the best H1 signal.
+# Signals below this threshold suppress the trade even if daily score passes.
+H1_MIN_CONFIDENCE   = 0.50
+
+# Look-back window (calendar days) for H1 data fetch.
+# 60 days ≈ 390 H1 bars (US); sufficient warmup for all indicators.
+H1_LOOKBACK_DAYS    = 60
+
 # ── Alpaca Credentials ─────────────────────────────────────────────────────────
 ALPACA_API_KEY    = "PKAC5AZENFBTJ2LEKIABHWBUSD"
 ALPACA_SECRET_KEY = "FwSscEn4UfZEy6dUzvwnYRjHNgWrDHvXF89ozEPGjm1f"

@@ -25,6 +25,7 @@ from typing import Optional
 # ── Bot dependencies ───────────────────────────────────────────────────────────
 from bot.config import (
     SCAN_INTERVAL_MINUTES, BUY_THRESHOLD, AVOID_THRESHOLD, TOP_CANDIDATES,
+    H1_STRATEGY_GATE,
 )
 from bot.logger  import init_db, log_trade, log_run, get_recent_trades
 from bot.risk_manager import (
@@ -247,6 +248,31 @@ def _run_cycle(creds: dict):
                         log_trade(ticker=ticker, action="SKIP", score=score,
                                   reason=f"Score {score:.1f} < {BUY_THRESHOLD}")
                         continue
+
+                    # ── H1 intraday gate ──────────────────────────────────────
+                    # Daily scoring selected the stock; H1 timing selects the
+                    # entry bar.  Skipped when H1_STRATEGY_GATE=False.
+                    if H1_STRATEGY_GATE:
+                        try:
+                            from agents.hourly_strategies import run_h1_gate
+                            h1 = run_h1_gate(ticker, df_daily=report.df)
+                            if not h1.gate_pass:
+                                log_trade(
+                                    ticker=ticker, action="SKIP", score=score,
+                                    reason=f"H1 gate blocked: {h1.reason}",
+                                )
+                                notes.append(f"H1 skip {ticker}: {h1.reason[:80]}")
+                                continue
+                            notes.append(
+                                f"H1 pass {ticker}: {h1.active_strategy} "
+                                f"({h1.confidence:.0%}, ADX={h1.adx:.0f} {h1.regime})"
+                            )
+                        except Exception as h1_err:
+                            # H1 failure is non-fatal: log and skip the trade
+                            log_trade(ticker=ticker, action="SKIP", score=score,
+                                      reason=f"H1 gate error: {h1_err}")
+                            notes.append(f"H1 error {ticker}: {h1_err}")
+                            continue
 
                     if setup.direction != "LONG":
                         log_trade(ticker=ticker, action="SKIP", score=score,

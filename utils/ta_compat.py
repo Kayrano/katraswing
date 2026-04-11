@@ -147,3 +147,38 @@ def stoch(
         f"STOCHk_{k}_{d}_{d}": k_line,
         f"STOCHd_{k}_{d}_{d}": d_line,
     }, index=close.index)
+
+
+def keltner_channels(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    length: int = 20,
+    atr_mult: float = 1.5,
+) -> pd.DataFrame:
+    """
+    Keltner Channels: EMA(close, length) ± atr_mult × ATR(length).
+    Column order: KCL (lower), KCM (mid/EMA), KCU (upper)  — iloc 0, 1, 2.
+    Used for Bollinger-Keltner squeeze detection.
+    """
+    mid   = close.ewm(span=length, adjust=False).mean()
+    atr_s = atr(high, low, close, length=length)
+    upper = mid + atr_mult * atr_s
+    lower = mid - atr_mult * atr_s
+    return pd.DataFrame({
+        f"KCL_{length}_{atr_mult}": lower,
+        f"KCM_{length}_{atr_mult}": mid,
+        f"KCU_{length}_{atr_mult}": upper,
+    }, index=close.index)
+
+
+def zscore(close: pd.Series, length: int = 20) -> pd.Series:
+    """
+    Rolling Z-score: (close − rolling_mean) / rolling_std over `length` bars.
+    Returns values centred at 0; ±2 are the entry thresholds for Z-score MR.
+    """
+    mean   = close.rolling(length).mean()
+    std    = close.rolling(length).std(ddof=1)
+    result = (close - mean) / std.replace(0, np.nan)
+    result.name = f"ZSCORE_{length}"
+    return result
