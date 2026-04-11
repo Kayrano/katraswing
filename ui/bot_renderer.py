@@ -1,9 +1,6 @@
 """
 Bot monitoring tab renderer for Katraswing.
 Shows live bot status, account metrics, positions, trade log, and controls.
-
-Requires the user to be authenticated (handled by auth_renderer) and to have
-saved their Alpaca API credentials via the key-setup form shown here.
 """
 
 import streamlit as st
@@ -14,7 +11,7 @@ from datetime import datetime
 def render_bot_tab():
     """Main entry point — renders the full 🤖 Live Bot tab."""
 
-    from ui.auth_renderer import get_current_user, get_alpaca_creds
+    from ui.auth_renderer import get_alpaca_creds
     from bot.config import (
         PORTFOLIO_SIZE, RISK_PER_TRADE_PCT, MAX_POSITIONS,
         BUY_THRESHOLD, AVOID_THRESHOLD, SCAN_INTERVAL_MINUTES,
@@ -24,27 +21,21 @@ def render_bot_tab():
     st.caption("Powered by Katraswing analysis pipeline · Executes on Alpaca Paper or Live Trading")
     st.divider()
 
-    user = get_current_user()
-    if not user:
-        st.warning("Please sign in to use the Live Bot.")
-        return
-
-    user_id = user["id"]
     api_key, secret_key, is_paper = get_alpaca_creds()
 
     if not api_key or not secret_key:
-        st.info("🔑 No Alpaca API keys found. Go to the **⚙️ Settings** tab to add your credentials, then come back here to start the bot.")
+        st.info("🔑 No Alpaca API keys configured. Go to the **⚙️ Settings** tab to add your Alpaca credentials, then come back here to start the bot.")
         return
 
     st.divider()
 
     # ══════════════════════════════════════════════════════════════════════════
-    # Step 2 — Bot Controls
+    # Bot Controls
     # ══════════════════════════════════════════════════════════════════════════
     from bot.engine import start_bot, stop_bot, get_state
     from bot.logger import get_recent_trades, get_recent_runs, get_trade_summary_today
 
-    bot_state  = get_state(user_id)
+    bot_state  = get_state()
     is_running = bot_state.get("running", False)
 
     status_color = "#00cc66" if is_running else "#ff4444"
@@ -57,13 +48,13 @@ def render_bot_tab():
         with col_start:
             if st.button("▶ Start Bot", disabled=is_running,
                          use_container_width=True, type="primary"):
-                msg = start_bot(user_id, api_key, secret_key, is_paper)
+                msg = start_bot(api_key, secret_key, is_paper)
                 st.success(msg)
                 st.rerun()
         with col_stop:
             if st.button("⏹ Stop Bot", disabled=not is_running,
                          use_container_width=True):
-                msg = stop_bot(user_id)
+                msg = stop_bot()
                 st.warning(msg)
                 st.rerun()
 

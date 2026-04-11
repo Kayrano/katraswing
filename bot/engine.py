@@ -4,10 +4,6 @@ Katrabot — 24/7 Automated Trading Engine
 Runs as a background thread inside the Katraswing Streamlit app.
 Uses APScheduler to fire a scan cycle every SCAN_INTERVAL_MINUTES.
 
-Supports multiple concurrent users: each user_id gets its own scheduler
-and state dict.  Alpaca credentials are passed explicitly so different
-users can trade against their own accounts.
-
 Cycle logic:
   1.  Check Alpaca market clock — skip if closed.
   2.  Check daily P&L vs loss limit — halt if breached.
@@ -46,10 +42,9 @@ logging.basicConfig(
     format="%(asctime)s  [%(levelname)s]  %(message)s",
 )
 
-# ── Per-user singleton state ───────────────────────────────────────────────────
-# Keyed by user_id (str) so multiple users can run independent bots.
-_schedulers: dict = {}
-_states:     dict = {}
+# ── Singleton bot state ───────────────────────────────────────────────────────
+_scheduler = None
+_state:  dict = {}
 _lock = threading.Lock()
 
 
@@ -70,14 +65,14 @@ def _default_state() -> dict:
 # Public API
 # ══════════════════════════════════════════════════════════════════════════════
 
-def start_bot(user_id: str, api_key: str, secret_key: str, is_paper: bool = True) -> str:
-    """Start the bot for a specific user with their Alpaca credentials."""
+def start_bot(api_key: str, secret_key: str, is_paper: bool = True) -> str:
+    """Start the bot with the given Alpaca credentials."""
+    global _scheduler, _state
     with _lock:
-        if user_id not in _states:
-            _states[user_id] = _default_state()
+        if not _state:
+            _state.update(_default_state())
 
-        state = _states[user_id]
-        if state["running"]:
+        if _state.get("running"):
             return "Bot is already running."
 
         try:
@@ -90,62 +85,64 @@ def start_bot(user_id: str, api_key: str, secret_key: str, is_paper: bool = True
 
         creds = {"api_key": api_key, "secret_key": secret_key, "is_paper": is_paper}
 
-        scheduler = BackgroundScheduler(daemon=True, timezone="UTC")
-        scheduler.add_job(
+        _scheduler = BackgroundScheduler(daemon=True, timezone="UTC")
+        _scheduler.add_job(
             _run_cycle,
             trigger=IntervalTrigger(minutes=SCAN_INTERVAL_MINUTES),
-            id=f"trading_cycle_{user_id}",
-            kwargs={"user_id": user_id, "creds": creds},
+            id="trading_cycle",
+            kwargs={"creds": creds},
             max_instances=1,
             coalesce=True,
             misfire_grace_time=60,
         )
-        scheduler.start()
-        _schedulers[user_id] = scheduler
+        _scheduler.start()
 
-        state["running"]    = True
-        state["status_msg"] = f"Bot running — scanning every {SCAN_INTERVAL_MINUTES} min."
-        log.info(f"Katrabot started for user {user_id[:8]}…")
+        _state["running"]    = True
+        _state["status_msg"] = f"Bot running — scanning every {SCAN_INTERVAL_MINUTES} min."
+        log.info("Katrabot started.")
 
         # Fire first cycle immediately
         threading.Thread(
             target=_run_cycle,
-            kwargs={"user_id": user_id, "creds": creds},
+            kwargs={"creds": creds},
             daemon=True,
-            name=f"katrabot-init-{user_id[:8]}",
+            name="katrabot-init",
         ).start()
 
-        return state["status_msg"]
+        return _state["status_msg"]
 
 
-def stop_bot(user_id: str) -> str:
+def stop_bot() -> str:
+    global _scheduler
     with _lock:
-        state = _states.get(user_id)
-        if not state or not state["running"]:
+        if not _state.get("running"):
             return "Bot is not running."
         try:
-            scheduler = _schedulers.pop(user_id, None)
-            if scheduler:
-                scheduler.shutdown(wait=False)
+            if _scheduler:
+                _scheduler.shutdown(wait=False)
+                _scheduler = None
         except Exception:
             pass
-        state["running"]    = False
-        state["status_msg"] = "Bot stopped."
-        log.info(f"Katrabot stopped for user {user_id[:8]}…")
-        return state["status_msg"]
+        _state["running"]    = False
+        _state["status_msg"] = "Bot stopped."
+        log.info("Katrabot stopped.")
+        return _state["status_msg"]
 
 
-def get_state(user_id: str) -> dict:
-    return dict(_states.get(user_id, _default_state()))
+def get_state() -> dict:
+    return dict(_state) if _state else _default_state()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Core scan cycle
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _run_cycle(user_id: str, creds: dict):
-    """One full analysis + execution cycle for one user."""
-    state = _states.setdefault(user_id, _default_state())
+def _run_cycle(creds: dict):
+    """One full scan + execution cycle."""
+    global _state
+    if not _state:
+        _state.update(_default_state())
+    state = _state
 
     ak  = creds.get("api_key")
     sk  = creds.get("secret_key")
