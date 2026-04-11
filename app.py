@@ -47,6 +47,14 @@ with toggle_col:
     st.toggle("☀ Light", key="light_theme")
     st.markdown("</div>", unsafe_allow_html=True)
 
+# ── Auto-start bot if credentials are available and bot isn't already running ──
+from ui.auth_renderer import get_alpaca_creds
+from bot.engine import get_state, start_bot
+
+_api_key, _secret_key, _is_paper = get_alpaca_creds()
+if _api_key and _secret_key and not get_state().get("running"):
+    start_bot(_api_key, _secret_key, _is_paper)
+
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 tab_analyzer, tab_watchlist, tab_alerts, tab_backtest, tab_heatmap, tab_screener, tab_portfolio, tab_compare, tab_replay, tab_bot, tab_politician, tab_settings = st.tabs([
     "📊 Analyzer", "👁 Watchlist", "🔔 Price Alerts", "🧪 Backtester",

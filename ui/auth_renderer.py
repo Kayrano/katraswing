@@ -43,5 +43,10 @@ def get_alpaca_creds() -> tuple[str, str, bool]:
         st.session_state.get(_ALPACA_SECRET_KEY)
         or _secret("ALPACA_SECRET_KEY")
     )
-    is_paper = st.session_state.get(_ALPACA_IS_PAPER, True)
+    # is_paper: session_state override, then secrets, then default True
+    if _ALPACA_IS_PAPER in st.session_state:
+        is_paper = st.session_state[_ALPACA_IS_PAPER]
+    else:
+        secret_val = _secret("ALPACA_IS_PAPER")
+        is_paper = (secret_val.lower() != "false") if secret_val else True
     return api_key or "", secret_key or "", is_paper
