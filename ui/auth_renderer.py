@@ -58,7 +58,10 @@ def render_auth_gate():
         return  # already in — let the rest of the app render
 
     if not supabase_configured():
-        return  # no auth backend configured — run without login (local dev)
+        # No auth backend — inject a guest session so the rest of the app works normally
+        st.session_state[_USER_KEY]  = {"id": "guest", "email": "guest@local"}
+        st.session_state[_TOKEN_KEY] = ""
+        return
 
     _, center, _ = st.columns([1, 2, 1])
     with center:
