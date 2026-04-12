@@ -41,10 +41,11 @@ ADX_TRENDING    = 25
 ADX_RANGING     = 20
 
 # ── Strategy names ────────────────────────────────────────────────────────────
-TRENDING_STRATEGIES  = ["ORB_60", "SQUEEZE"]
-RANGING_STRATEGIES   = ["RSI_MR", "VWAP_PB", "ZSCORE_MR"]
-MR_STRATEGIES        = {"RSI_MR", "VWAP_PB", "ZSCORE_MR"}   # set for O(1) lookup
-ALL_STRATEGIES       = ["RSI_MR", "VWAP_PB", "ORB_60", "SQUEEZE", "ZSCORE_MR"]
+TRENDING_STRATEGIES  = ["ORB_60", "SQUEEZE", "ABSORB_BO", "TRIPLE_A"]
+RANGING_STRATEGIES   = ["RSI_MR", "VWAP_PB", "ZSCORE_MR", "VA_BOUNCE"]
+MR_STRATEGIES        = {"RSI_MR", "VWAP_PB", "ZSCORE_MR", "VA_BOUNCE"}  # set for O(1) lookup
+ALL_STRATEGIES       = ["RSI_MR", "VWAP_PB", "ORB_60", "SQUEEZE", "ZSCORE_MR",
+                         "ABSORB_BO", "TRIPLE_A", "VA_BOUNCE"]
 
 # ── Timezones ─────────────────────────────────────────────────────────────────
 _US_TZ   = ZoneInfo("America/New_York")

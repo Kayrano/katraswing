@@ -30,6 +30,9 @@ from agents.hourly_strategies import (
     orb_breakout,
     squeeze_breakout,
     zscore_mean_reversion,
+    absorption_breakout,
+    triple_a_setup,
+    value_area_bounce,
     _detect_first_kiss,
     _vwap_slope,
 )
@@ -788,3 +791,357 @@ class TestTaCompatNewFunctions:
         idx = pd.date_range("2024-01-01", periods=n, freq="h")
         z   = ta.zscore(pd.Series(values, index=idx), length=20)
         assert float(z.iloc[-1]) < 0
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TA Compat — volume_profile
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestTaCompatVolumeProfile:
+
+    def _sample_ohlcv(self, n: int = 100, seed: int = 7) -> pd.DataFrame:
+        rng    = np.random.default_rng(seed)
+        closes = 100.0 * np.exp(np.cumsum(rng.normal(0.001, 0.01, n)))
+        highs  = closes * (1 + rng.uniform(0.001, 0.005, n))
+        lows   = closes * (1 - rng.uniform(0.001, 0.005, n))
+        vols   = rng.integers(100_000, 500_000, n).astype(float)
+        idx    = pd.date_range("2024-01-01", periods=n, freq="h")
+        return pd.DataFrame(
+            {"High": highs, "Low": lows, "Close": closes, "Volume": vols},
+            index=idx,
+        )
+
+    def test_returns_dict_with_required_keys(self):
+        df = self._sample_ohlcv()
+        vp = ta.volume_profile(df["High"], df["Low"], df["Close"], df["Volume"])
+        assert isinstance(vp, dict)
+        for key in ("poc", "vah", "val", "levels", "volumes"):
+            assert key in vp, f"Missing key: {key}"
+
+    def test_val_le_poc_le_vah(self):
+        df = self._sample_ohlcv()
+        vp = ta.volume_profile(df["High"], df["Low"], df["Close"], df["Volume"])
+        assert vp["val"] <= vp["poc"] <= vp["vah"], (
+            f"Order violated: VAL={vp['val']:.2f} POC={vp['poc']:.2f} VAH={vp['vah']:.2f}"
+        )
+
+    def test_levels_and_volumes_same_length(self):
+        df = self._sample_ohlcv()
+        vp = ta.volume_profile(df["High"], df["Low"], df["Close"], df["Volume"])
+        assert len(vp["levels"]) == len(vp["volumes"])
+
+    def test_degenerate_constant_price(self):
+        n   = 30
+        idx = pd.date_range("2024-01-01", periods=n, freq="h")
+        val = 100.0
+        h   = pd.Series(np.ones(n) * val, index=idx)
+        l   = pd.Series(np.ones(n) * val, index=idx)
+        c   = pd.Series(np.ones(n) * val, index=idx)
+        v   = pd.Series(np.ones(n) * 1000.0, index=idx)
+        vp  = ta.volume_profile(h, l, c, v)
+        assert vp["poc"] == vp["vah"] == vp["val"] == val
+
+    def test_volumes_sum_equals_total_volume(self):
+        """Sum of bin volumes must equal the total volume in the lookback window."""
+        df = self._sample_ohlcv(n=60)
+        lookback = 50
+        vp = ta.volume_profile(
+            df["High"], df["Low"], df["Close"], df["Volume"], lookback=lookback
+        )
+        expected_total = float(df["Volume"].iloc[-lookback:].sum())
+        actual_total   = sum(vp["volumes"])
+        assert abs(actual_total - expected_total) < expected_total * 0.01, (
+            f"Volume sum mismatch: expected {expected_total:.0f}, got {actual_total:.0f}"
+        )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Strategy 6 — Absorption Breakout
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestAbsorptionBreakout:
+
+    def _make_absorption_df(self, direction: str = "long") -> pd.DataFrame:
+        """
+        Build a DataFrame where iloc[-2] is a confirmed absorption bar and
+        iloc[-1] breaks out in the specified direction.
+        """
+        df  = _make_h1_df(n=80, seed=11)
+        regime_abs = _dummy_regime("TRENDING", adx=30.0, enabled=["ABSORB_BO"])
+
+        # Compute ATR to size the absorption bar correctly
+        atr_s = ta.atr(df["High"], df["Low"], df["Close"], length=14)
+        atr_v = float(atr_s.iloc[-2])
+        avg_vol = float(df["Volume"].rolling(20).mean().iloc[-2])
+
+        # Manufacture absorption on iloc[-2]: narrow range, high volume
+        # Use 0.0002 range (≈ 0.02% of price) to stay well below ATR×0.3 threshold
+        mid_price = float(df["Close"].iloc[-2])
+        df.at[df.index[-2], "High"]   = mid_price * 1.0002
+        df.at[df.index[-2], "Low"]    = mid_price * 0.9998
+        df.at[df.index[-2], "Volume"] = avg_vol * 3.0   # > 2× avg
+
+        absorb_high = float(df["High"].iloc[-2])
+        absorb_low  = float(df["Low"].iloc[-2])
+
+        # Manufacture breakout on iloc[-1]
+        if direction == "long":
+            breakout_price = absorb_high * 1.005
+            df.at[df.index[-1], "Close"] = breakout_price
+            df.at[df.index[-1], "High"]  = breakout_price * 1.002
+            df.at[df.index[-1], "session_vwap"] = breakout_price * 0.998  # below close
+        else:
+            breakout_price = absorb_low * 0.995
+            df.at[df.index[-1], "Close"] = breakout_price
+            df.at[df.index[-1], "Low"]   = breakout_price * 0.998
+            df.at[df.index[-1], "session_vwap"] = breakout_price * 1.002  # above close
+
+        df.at[df.index[-1], "rvol"] = 2.0
+
+        return df, regime_abs
+
+    def test_insufficient_bars_returns_flat(self):
+        df     = _make_h1_df(n=20)
+        regime = _dummy_regime("TRENDING", adx=30.0, enabled=["ABSORB_BO"])
+        sig    = absorption_breakout(df, regime)
+        assert sig.signal == "FLAT"
+        assert sig.strategy == "ABSORB_BO"
+
+    def test_no_absorption_previous_bar_returns_flat(self):
+        df     = _make_h1_df(n=80, seed=11)
+        # Ensure previous bar has normal volume (no absorption)
+        avg_vol = float(df["Volume"].rolling(20).mean().iloc[-2])
+        df.at[df.index[-2], "Volume"] = avg_vol * 0.8
+        regime = _dummy_regime("TRENDING", adx=30.0, enabled=["ABSORB_BO"])
+        sig    = absorption_breakout(df, regime)
+        assert sig.signal == "FLAT"
+
+    def test_long_signal_on_absorption_breakout(self):
+        df, regime = self._make_absorption_df("long")
+        sig = absorption_breakout(df, regime)
+        assert sig.signal == "LONG", f"Expected LONG, got {sig.signal}: {sig.reason}"
+        assert sig.strategy == "ABSORB_BO"
+        assert sig.confidence >= 0.75
+
+    def test_short_signal_on_absorption_breakdown(self):
+        df, regime = self._make_absorption_df("short")
+        sig = absorption_breakout(df, regime)
+        assert sig.signal == "SHORT", f"Expected SHORT, got {sig.signal}: {sig.reason}"
+        assert sig.confidence >= 0.75
+
+    def test_inside_range_returns_flat(self):
+        """Current bar stays inside absorption range → no breakout → FLAT."""
+        df     = _make_h1_df(n=80, seed=11)
+        avg_vol = float(df["Volume"].rolling(20).mean().iloc[-2])
+        mid    = float(df["Close"].iloc[-2])
+        # Force absorption on [-2] (narrow range so condition passes)
+        df.at[df.index[-2], "High"]   = mid * 1.0002
+        df.at[df.index[-2], "Low"]    = mid * 0.9998
+        df.at[df.index[-2], "Volume"] = avg_vol * 3.0
+        # Current bar stays inside range
+        df.at[df.index[-1], "Close"]  = mid
+        regime = _dummy_regime("TRENDING", adx=30.0, enabled=["ABSORB_BO"])
+        sig    = absorption_breakout(df, regime)
+        assert sig.signal == "FLAT"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Strategy 7 — Triple-A Setup
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestTripleASetup:
+
+    def _make_triple_a_df(self, direction: str = "long") -> pd.DataFrame:
+        """
+        Constructs a DataFrame with:
+          iloc[-4] : absorption bar (narrow range, high volume)
+          iloc[-3] and iloc[-2] : accumulation bars (coil inside absorption range)
+          iloc[-1] : aggression bar (breaks out with volume)
+        """
+        df = _make_h1_df(n=80, seed=22)
+        regime = _dummy_regime("TRENDING", adx=30.0, enabled=["TRIPLE_A"])
+
+        avg_vol = float(df["Volume"].rolling(20).mean().iloc[-4])
+        mid     = float(df["Close"].iloc[-4])
+
+        # Phase 1 — absorption at iloc[-4]
+        df.at[df.index[-4], "High"]   = mid * 1.001
+        df.at[df.index[-4], "Low"]    = mid * 0.999
+        df.at[df.index[-4], "Volume"] = avg_vol * 2.5
+
+        absorb_high = float(df["High"].iloc[-4])
+        absorb_low  = float(df["Low"].iloc[-4])
+
+        # Phase 2 — accumulation inside range at iloc[-3] and iloc[-2]
+        for idx_pos in [-3, -2]:
+            df.at[df.index[idx_pos], "Close"] = mid
+            df.at[df.index[idx_pos], "High"]  = absorb_high * 1.001
+            df.at[df.index[idx_pos], "Low"]   = absorb_low  * 0.999
+
+        # Phase 3 — aggression at iloc[-1]
+        avg_vol_cur = float(df["Volume"].rolling(20).mean().iloc[-1])
+        df.at[df.index[-1], "Volume"] = avg_vol_cur * 2.0  # vol_ok
+
+        if direction == "long":
+            aggr_price = absorb_high * 1.006
+            df.at[df.index[-1], "Close"]       = aggr_price
+            df.at[df.index[-1], "High"]        = aggr_price * 1.002
+            df.at[df.index[-1], "session_vwap"] = aggr_price * 0.995
+        else:
+            aggr_price = absorb_low * 0.994
+            df.at[df.index[-1], "Close"]       = aggr_price
+            df.at[df.index[-1], "Low"]         = aggr_price * 0.998
+            df.at[df.index[-1], "session_vwap"] = aggr_price * 1.005
+
+        return df, regime
+
+    def test_insufficient_bars_returns_flat(self):
+        df     = _make_h1_df(n=25)
+        regime = _dummy_regime("TRENDING", adx=30.0, enabled=["TRIPLE_A"])
+        sig    = triple_a_setup(df, regime)
+        assert sig.signal == "FLAT"
+        assert sig.strategy == "TRIPLE_A"
+
+    def test_no_absorption_in_last_6_bars_returns_flat(self):
+        df     = _make_h1_df(n=80, seed=22)
+        # Ensure no absorption in the last 6 bars by normalising volume and range
+        for i in range(-6, 0):
+            avg_vol = float(df["Volume"].rolling(20).mean().iloc[i])
+            df.at[df.index[i], "Volume"] = avg_vol * 0.5
+        regime = _dummy_regime("TRENDING", adx=30.0, enabled=["TRIPLE_A"])
+        sig    = triple_a_setup(df, regime)
+        assert sig.signal == "FLAT"
+        assert "No absorption" in sig.reason
+
+    def test_long_signal_on_valid_triple_a(self):
+        df, regime = self._make_triple_a_df("long")
+        sig = triple_a_setup(df, regime)
+        assert sig.signal == "LONG", f"Expected LONG, got {sig.signal}: {sig.reason}"
+        assert sig.strategy == "TRIPLE_A"
+        assert sig.confidence >= 0.80
+
+    def test_short_signal_on_valid_triple_a(self):
+        df, regime = self._make_triple_a_df("short")
+        sig = triple_a_setup(df, regime)
+        assert sig.signal == "SHORT", f"Expected SHORT, got {sig.signal}: {sig.reason}"
+        assert sig.confidence >= 0.80
+
+    def test_accumulation_breakout_aborts(self):
+        """If an accumulation bar breaks out of the absorption range, phase 2 fails."""
+        df, regime = self._make_triple_a_df("long")
+        # Break the accumulation range at iloc[-3]
+        absorb_high = float(df["High"].iloc[-4])
+        df.at[df.index[-3], "High"] = absorb_high * 1.05   # clearly outside range
+        sig = triple_a_setup(df, regime)
+        assert sig.signal == "FLAT"
+        assert "Accumulation broke" in sig.reason
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Strategy 8 — Value Area Bounce
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestValueAreaBounce:
+    """
+    value_area_bounce() depends on ta.volume_profile() returning specific VAL/VAH.
+    Constructing a real price series that simultaneously satisfies close ≈ VAL
+    AND close > EMA20 is fragile (they often point to opposite ends of the VA),
+    so we use monkeypatch to inject a controlled VP dict for signal tests and
+    keep the non-signal tests (FLAT cases) free of mocking.
+    """
+
+    def _make_df_with_absorption(self) -> pd.DataFrame:
+        """100-bar DF with a forced absorption bar on iloc[-2]."""
+        df      = _make_h1_df(n=100, seed=33)
+        avg_vol = float(df["Volume"].rolling(20).mean().iloc[-2])
+        mid     = float(df["Close"].iloc[-2])
+        # Narrow range (0.02%) + 3× average volume → absorption fires
+        df.at[df.index[-2], "High"]   = mid * 1.0002
+        df.at[df.index[-2], "Low"]    = mid * 0.9998
+        df.at[df.index[-2], "Volume"] = avg_vol * 3.0
+        return df
+
+    def test_insufficient_bars_returns_flat(self):
+        df     = _make_h1_df(n=20)
+        regime = _dummy_regime("RANGING", adx=15.0, enabled=["VA_BOUNCE"])
+        sig    = value_area_bounce(df, regime)
+        assert sig.signal == "FLAT"
+        assert sig.strategy == "VA_BOUNCE"
+
+    def test_price_away_from_va_returns_flat(self, monkeypatch):
+        """Price in the middle of the VA (at POC) → not near VAL or VAH → FLAT."""
+        df     = _make_h1_df(n=100, seed=33)
+        regime = _dummy_regime("RANGING", adx=15.0, enabled=["VA_BOUNCE"])
+        cur_c  = float(df["Close"].iloc[-1])
+        # Inject VP where close sits at POC — far from either edge
+        monkeypatch.setattr(ta, "volume_profile", lambda *a, **kw: {
+            "poc": cur_c,
+            "vah": cur_c + 5.0,
+            "val": cur_c - 5.0,
+            "levels": [], "volumes": [],
+        })
+        sig = value_area_bounce(df, regime)
+        assert sig.signal == "FLAT"
+        assert "not near VA" in sig.reason
+
+    def test_at_val_no_absorption_returns_flat(self, monkeypatch):
+        """Price near VAL but no absorption → institutional defence absent → FLAT."""
+        df     = _make_h1_df(n=100, seed=33)
+        regime = _dummy_regime("RANGING", adx=15.0, enabled=["VA_BOUNCE"])
+        cur_c  = float(df["Close"].iloc[-1])
+        # Inject VP with VAL right at current close (near_val = True)
+        monkeypatch.setattr(ta, "volume_profile", lambda *a, **kw: {
+            "poc": cur_c + 2.0,
+            "vah": cur_c + 4.0,
+            "val": cur_c - 0.02,
+            "levels": [], "volumes": [],
+        })
+        # No absorption forced → default normal volume → FLAT
+        sig = value_area_bounce(df, regime)
+        assert sig.signal == "FLAT"
+        assert "no absorption" in sig.reason.lower()
+
+    def test_long_signal_at_val_with_absorption(self, monkeypatch):
+        """
+        close ≈ VAL  +  absorption on [-2]  +  close > EMA20 → LONG.
+
+        With seed=33, n=100: close=105.43, EMA20≈105.22 (close > EMA20 ✓).
+        We inject a VP where VAL = close − 0.02 so near_val is trivially true.
+        """
+        df     = self._make_df_with_absorption()
+        regime = _dummy_regime("RANGING", adx=15.0, enabled=["VA_BOUNCE"])
+        cur_c  = float(df["Close"].iloc[-1])
+        monkeypatch.setattr(ta, "volume_profile", lambda *a, **kw: {
+            "poc": cur_c + 1.5,
+            "vah": cur_c + 3.0,
+            "val": cur_c - 0.02,   # close is just above VAL → near_val ✓
+            "levels": [], "volumes": [],
+        })
+        sig = value_area_bounce(df, regime)
+        assert sig.signal == "LONG", f"Expected LONG, got {sig.signal}: {sig.reason}"
+        assert sig.strategy == "VA_BOUNCE"
+        assert sig.confidence >= 0.75
+
+    def test_short_signal_at_vah_with_absorption(self, monkeypatch):
+        """
+        close ≈ VAH  +  absorption on [-2]  +  close < EMA20 → SHORT.
+
+        We nudge Close[-1] just below EMA20 to satisfy the short trend filter,
+        then inject a VP where VAH = close + 0.02 so near_vah is trivially true.
+        """
+        df    = self._make_df_with_absorption()
+        ema20 = float(ta.ema(df["Close"], length=20).iloc[-1])
+        # Force close 2% below pre-modification EMA20 so it stays below the
+        # recomputed EMA even after the last bar's close changes.
+        df.at[df.index[-1], "Close"] = ema20 * 0.98
+        cur_c  = float(df["Close"].iloc[-1])
+        regime = _dummy_regime("RANGING", adx=15.0, enabled=["VA_BOUNCE"])
+        monkeypatch.setattr(ta, "volume_profile", lambda *a, **kw: {
+            "poc": cur_c - 1.5,
+            "vah": cur_c + 0.02,   # close is just below VAH → near_vah ✓
+            "val": cur_c - 3.0,
+            "levels": [], "volumes": [],
+        })
+        sig = value_area_bounce(df, regime)
+        assert sig.signal == "SHORT", f"Expected SHORT, got {sig.signal}: {sig.reason}"
+        assert sig.confidence >= 0.75

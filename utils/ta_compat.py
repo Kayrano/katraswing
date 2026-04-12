@@ -149,6 +149,149 @@ def stoch(
     }, index=close.index)
 
 
+def absorption(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    length: int = 20,
+    vol_mult: float = 2.0,
+    range_mult: float = 0.3,
+) -> pd.Series:
+    """
+    Absorption bar detector (Fabio Valentini / order-flow concept).
+
+    An absorption bar shows abnormally high volume but moves very little —
+    the signature of institutional passive accumulation or distribution.
+
+    Condition (both must be true):
+        volume  > rolling_mean(volume, length)  × vol_mult
+        (high - low) < ATR(length)              × range_mult
+
+    Returns a boolean Series: True on bars where absorption is detected.
+    """
+    vol_avg   = volume.rolling(length).mean()
+    atr_s     = atr(high, low, close, length=length)
+    vol_cond  = volume > (vol_avg * vol_mult)
+    rng_cond  = (high - low) < (atr_s * range_mult)
+    result    = vol_cond & rng_cond
+    result.name = f"ABSORPTION_{length}_{vol_mult}_{range_mult}"
+    return result
+
+
+def delta_proxy(open_: pd.Series, close: pd.Series, volume: pd.Series) -> pd.Series:
+    """
+    Signed-volume proxy for buying/selling pressure (approximate delta).
+
+    Bullish candle (close > open): all volume attributed to buyers  (+volume)
+    Bearish candle (close < open): all volume attributed to sellers (-volume)
+    Doji (close == open):          neutral (0)
+
+    This is NOT true footprint delta (which requires tick-level bid/ask data).
+    It is the same approximation used by the PickMyTrade Fabio Valentini script.
+
+    Returns a signed float Series (positive = net buying, negative = net selling).
+    """
+    direction  = np.sign(close - open_)
+    result     = direction * volume
+    result.name = "DELTA_PROXY"
+    return result
+
+
+def volume_profile(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    lookback: int = 50,
+    n_rows: int = 24,
+) -> dict:
+    """
+    Simplified Volume Profile for the last `lookback` bars.
+
+    Distributes each bar's volume proportionally across the price bins it spans,
+    then identifies:
+        POC — Point of Control: price level with the most traded volume
+        VAH — Value Area High: upper boundary of the 70%-volume zone
+        VAL — Value Area Low:  lower boundary of the 70%-volume zone
+
+    Returns a dict:
+        {'poc': float, 'vah': float, 'val': float,
+         'levels': list[float], 'volumes': list[float]}
+
+    'levels' and 'volumes' are the bin-centre prices and their aggregated volumes.
+    """
+    n   = min(lookback, len(high))
+    h   = high.iloc[-n:].values.astype(float)
+    lo  = low.iloc[-n:].values.astype(float)
+    cl  = close.iloc[-n:].values.astype(float)
+    vol = volume.iloc[-n:].values.astype(float)
+
+    price_min = float(np.nanmin(lo))
+    price_max = float(np.nanmax(h))
+
+    # Degenerate case: constant price
+    if price_max <= price_min:
+        mid = (price_min + price_max) / 2.0
+        return {"poc": mid, "vah": mid, "val": mid, "levels": [mid], "volumes": [float(vol.sum())]}
+
+    bins        = np.linspace(price_min, price_max, n_rows + 1)
+    bin_centres = (bins[:-1] + bins[1:]) / 2.0
+    bin_vols    = np.zeros(n_rows)
+
+    for i in range(n):
+        bar_range = h[i] - lo[i]
+        if bar_range <= 0:
+            # Doji / single-tick — put all volume in the bin containing close
+            idx = int(np.searchsorted(bins[1:], cl[i]))
+            idx = min(idx, n_rows - 1)
+            bin_vols[idx] += vol[i]
+        else:
+            for j in range(n_rows):
+                overlap_lo  = max(lo[i], bins[j])
+                overlap_hi  = min(h[i],  bins[j + 1])
+                if overlap_hi > overlap_lo:
+                    bin_vols[j] += vol[i] * (overlap_hi - overlap_lo) / bar_range
+
+    # POC = bin with peak volume
+    poc_idx = int(np.argmax(bin_vols))
+    poc     = float(bin_centres[poc_idx])
+
+    # Value Area: expand outward from POC until 70% of total volume is included
+    total_vol  = float(bin_vols.sum())
+    target     = total_vol * 0.70
+    included   = np.zeros(n_rows, dtype=bool)
+    included[poc_idx] = True
+    accumulated = float(bin_vols[poc_idx])
+    lo_ptr, hi_ptr = poc_idx - 1, poc_idx + 1
+
+    while accumulated < target:
+        lo_v = float(bin_vols[lo_ptr]) if lo_ptr >= 0        else -1.0
+        hi_v = float(bin_vols[hi_ptr]) if hi_ptr < n_rows    else -1.0
+        if lo_v < 0 and hi_v < 0:
+            break
+        if hi_v >= lo_v:
+            included[hi_ptr] = True
+            accumulated     += bin_vols[hi_ptr]
+            hi_ptr          += 1
+        else:
+            included[lo_ptr] = True
+            accumulated     += bin_vols[lo_ptr]
+            lo_ptr          -= 1
+
+    va_idx = np.where(included)[0]
+    val    = float(bin_centres[va_idx.min()])
+    vah    = float(bin_centres[va_idx.max()])
+
+    return {
+        "poc":     poc,
+        "vah":     vah,
+        "val":     val,
+        "levels":  bin_centres.tolist(),
+        "volumes": bin_vols.tolist(),
+    }
+
+
 def keltner_channels(
     high: pd.Series,
     low: pd.Series,

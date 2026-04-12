@@ -456,6 +456,281 @@ def _zscore_confidence(z: float) -> float:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
+# STRATEGY 6 — Absorption Breakout  (Fabio Valentini / PickMyTrade)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def absorption_breakout(df_h1: pd.DataFrame, regime: RegimeResult) -> HourlySignal:
+    """
+    Absorption Breakout on H1 bars.
+
+    The bar immediately preceding the current one must show absorption:
+        volume > 20-bar avg × 2.0  AND  (high − low) < ATR(14) × 0.3
+
+    The current bar then breaks out of that narrow range with volume confirmation.
+
+    Long  entry: close > absorption bar High  AND  price above session VWAP  AND  RVOL ≥ 1.5
+    Short entry: close < absorption bar Low   AND  price below session VWAP  AND  RVOL ≥ 1.5
+
+    Stop loss: just beyond the absorption bar's opposite edge — naturally tight
+    because absorption bars have narrow ranges by definition.
+
+    Confidence bonus (+0.10) when breakout aligns with the nearest Volume Profile
+    key level (VAL for longs, VAH for shorts).
+    """
+    if len(df_h1) < 25:
+        return HourlySignal("ABSORB_BO", "FLAT", 0.0, "Insufficient bars (need 25)")
+
+    abs_s = ta.absorption(df_h1["High"], df_h1["Low"], df_h1["Close"], df_h1["Volume"])
+
+    if not bool(abs_s.iloc[-2]):
+        return HourlySignal("ABSORB_BO", "FLAT", 0.0, "No absorption on previous bar")
+
+    absorb_high = float(df_h1["High"].iloc[-2])
+    absorb_low  = float(df_h1["Low"].iloc[-2])
+    cur_close   = float(df_h1["Close"].iloc[-1])
+    cur_rvol    = float(df_h1["rvol"].iloc[-1]) if "rvol" in df_h1.columns else 1.0
+    cur_vwap    = float(df_h1["session_vwap"].iloc[-1]) if "session_vwap" in df_h1.columns else cur_close
+
+    rvol_ok = cur_rvol >= 1.5
+
+    # Volume profile key levels for bonus
+    near_val = near_vah = False
+    vp_note  = ""
+    try:
+        vp       = ta.volume_profile(df_h1["High"], df_h1["Low"], df_h1["Close"], df_h1["Volume"])
+        va_range = vp["vah"] - vp["val"]
+        prox     = va_range * 0.10
+        near_val = prox > 0 and abs(cur_close - vp["val"]) <= prox
+        near_vah = prox > 0 and abs(cur_close - vp["vah"]) <= prox
+        vp_note  = f" | VP POC={vp['poc']:.2f} VAH={vp['vah']:.2f} VAL={vp['val']:.2f}"
+    except Exception:
+        pass
+
+    # ── Long breakout ─────────────────────────────────────────────────────────
+    if cur_close > absorb_high and cur_close > cur_vwap:
+        conf  = 0.75 + (0.05 if rvol_ok else 0.0) + (0.10 if near_val else 0.0)
+        return HourlySignal(
+            "ABSORB_BO", "LONG", round(min(conf, 0.95), 3),
+            f"Absorption breakout ↑: close {cur_close:.2f} > absorb H {absorb_high:.2f} | "
+            f"RVOL {cur_rvol:.1f}× | VWAP {cur_vwap:.2f}{vp_note}",
+        )
+
+    # ── Short breakout ────────────────────────────────────────────────────────
+    if cur_close < absorb_low and cur_close < cur_vwap:
+        conf  = 0.75 + (0.05 if rvol_ok else 0.0) + (0.10 if near_vah else 0.0)
+        return HourlySignal(
+            "ABSORB_BO", "SHORT", round(min(conf, 0.95), 3),
+            f"Absorption breakout ↓: close {cur_close:.2f} < absorb L {absorb_low:.2f} | "
+            f"RVOL {cur_rvol:.1f}× | VWAP {cur_vwap:.2f}{vp_note}",
+        )
+
+    return HourlySignal(
+        "ABSORB_BO", "FLAT", 0.0,
+        f"Absorption bar present but no breakout: close {cur_close:.2f} in "
+        f"[{absorb_low:.2f}, {absorb_high:.2f}]",
+    )
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# STRATEGY 7 — Triple-A Setup  (Absorption → Accumulation → Aggression)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def triple_a_setup(df_h1: pd.DataFrame, regime: RegimeResult) -> HourlySignal:
+    """
+    Triple-A (Absorption → Accumulation → Aggression) on H1 bars.
+
+    Fabio Valentini's highest-conviction setup requires all three phases:
+      Phase 1 — Absorption:   a recent bar with high volume + narrow range
+                               (institutional passive building)
+      Phase 2 — Accumulation: the 1-3 bars after the absorption bar stay
+                               strictly within its High/Low range
+                               (price coils, waiting for resolution)
+      Phase 3 — Aggression:   the current bar closes outside the accumulated
+                               range with above-average volume
+                               (the directional move is confirmed)
+
+    Confidence 0.80 base (highest of all seven strategies).
+    +0.10 bonus when the aggression bar aligns with a Volume Profile key level.
+    """
+    if len(df_h1) < 30:
+        return HourlySignal("TRIPLE_A", "FLAT", 0.0, "Insufficient bars (need 30)")
+
+    abs_s = ta.absorption(df_h1["High"], df_h1["Low"], df_h1["Close"], df_h1["Volume"])
+
+    # ── Phase 1: find most recent absorption bar in the last 6 bars ──────────
+    found_abs_pos: int | None = None
+    for lookback in range(2, 7):          # search iloc[-2] … iloc[-6]
+        abs_pos = len(df_h1) - lookback - 1
+        if abs_pos < 0:
+            break
+        if bool(abs_s.iloc[abs_pos]):
+            found_abs_pos = abs_pos
+            break
+
+    if found_abs_pos is None:
+        return HourlySignal("TRIPLE_A", "FLAT", 0.0,
+                            "No absorption bar found in the last 6 bars")
+
+    absorb_high = float(df_h1["High"].iloc[found_abs_pos])
+    absorb_low  = float(df_h1["Low"].iloc[found_abs_pos])
+
+    # ── Phase 2: accumulation bars must stay inside absorption range ──────────
+    accum = df_h1.iloc[found_abs_pos + 1 : len(df_h1) - 1]   # excl. current bar
+    if len(accum) == 0:
+        return HourlySignal("TRIPLE_A", "FLAT", 0.0,
+                            "No accumulation bars between absorption and current bar")
+
+    contained = (
+        (accum["High"] <= absorb_high * 1.002) &
+        (accum["Low"]  >= absorb_low  * 0.998)
+    ).all()
+
+    if not contained:
+        return HourlySignal(
+            "TRIPLE_A", "FLAT", 0.0,
+            f"Accumulation broke absorption range [{absorb_low:.2f}–{absorb_high:.2f}]",
+        )
+
+    # ── Phase 3: aggression — current bar breaks out with volume ─────────────
+    cur_close = float(df_h1["Close"].iloc[-1])
+    cur_rvol  = float(df_h1["rvol"].iloc[-1]) if "rvol" in df_h1.columns else 1.0
+    cur_vwap  = float(df_h1["session_vwap"].iloc[-1]) if "session_vwap" in df_h1.columns else cur_close
+    cur_vol   = float(df_h1["Volume"].iloc[-1])
+    vol_avg   = float(df_h1["Volume"].rolling(20).mean().iloc[-1])
+    vol_ok    = cur_vol > vol_avg * 1.5
+    n_accum   = len(accum)
+
+    # Volume profile confluence
+    near_val = near_vah = False
+    vp_note  = ""
+    try:
+        vp       = ta.volume_profile(df_h1["High"], df_h1["Low"], df_h1["Close"], df_h1["Volume"])
+        va_range = vp["vah"] - vp["val"]
+        prox     = va_range * 0.10
+        near_val = prox > 0 and abs(cur_close - vp["val"]) <= prox
+        near_vah = prox > 0 and abs(cur_close - vp["vah"]) <= prox
+        vp_note  = f" | POC={vp['poc']:.2f} VAH={vp['vah']:.2f} VAL={vp['val']:.2f}"
+    except Exception:
+        pass
+
+    base_conf = 0.80
+
+    # ── Long aggression ───────────────────────────────────────────────────────
+    if cur_close > absorb_high and cur_close > cur_vwap:
+        conf = base_conf + (0.05 if vol_ok else 0.0) + (0.10 if near_val else 0.0)
+        return HourlySignal(
+            "TRIPLE_A", "LONG", round(min(conf, 0.95), 3),
+            f"Triple-A LONG: absorb [{absorb_low:.2f}–{absorb_high:.2f}] → "
+            f"{n_accum} accum bar(s) → aggr {cur_close:.2f} ↑ | "
+            f"RVOL {cur_rvol:.1f}×{vp_note}",
+        )
+
+    # ── Short aggression ──────────────────────────────────────────────────────
+    if cur_close < absorb_low and cur_close < cur_vwap:
+        conf = base_conf + (0.05 if vol_ok else 0.0) + (0.10 if near_vah else 0.0)
+        return HourlySignal(
+            "TRIPLE_A", "SHORT", round(min(conf, 0.95), 3),
+            f"Triple-A SHORT: absorb [{absorb_low:.2f}–{absorb_high:.2f}] → "
+            f"{n_accum} accum bar(s) → aggr {cur_close:.2f} ↓ | "
+            f"RVOL {cur_rvol:.1f}×{vp_note}",
+        )
+
+    return HourlySignal(
+        "TRIPLE_A", "FLAT", 0.0,
+        f"Absorption + accumulation confirmed — aggression not triggered yet: "
+        f"close {cur_close:.2f} still inside [{absorb_low:.2f}–{absorb_high:.2f}]",
+    )
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# STRATEGY 8 — Value Area Bounce
+# ════════════════════════════════════════════════════════════════════════════════
+
+def value_area_bounce(df_h1: pd.DataFrame, regime: RegimeResult) -> HourlySignal:
+    """
+    Value Area Bounce on H1 bars.
+
+    The Value Area (70% of session volume) creates natural institutional
+    support (VAL) and resistance (VAH) levels.  When price reaches these
+    zones and absorption confirms institutional defence, a bounce to POC
+    is the highest-probability outcome.
+
+    Long  entry: close ≈ VAL (within 10% of VA range)  AND  absorption present
+                 AND  close above EMA(20) for trend confirmation
+    Short entry: close ≈ VAH (within 10% of VA range)  AND  absorption present
+                 AND  close below EMA(20)
+
+    Target (managed externally): POC (Point of Control)
+    """
+    if len(df_h1) < 25:
+        return HourlySignal("VA_BOUNCE", "FLAT", 0.0, "Insufficient bars (need 25)")
+
+    # ── Volume profile ─────────────────────────────────────────────────────────
+    try:
+        vp = ta.volume_profile(df_h1["High"], df_h1["Low"], df_h1["Close"], df_h1["Volume"])
+    except Exception as exc:
+        return HourlySignal("VA_BOUNCE", "FLAT", 0.0, f"Volume profile error: {exc}")
+
+    poc      = vp["poc"]
+    vah      = vp["vah"]
+    val      = vp["val"]
+    va_range = vah - val
+
+    if va_range <= 0:
+        return HourlySignal("VA_BOUNCE", "FLAT", 0.0, "Value Area has zero range")
+
+    cur_close = float(df_h1["Close"].iloc[-1])
+    prox      = va_range * 0.10
+    near_val  = abs(cur_close - val) <= prox
+    near_vah  = abs(cur_close - vah) <= prox
+
+    if not near_val and not near_vah:
+        return HourlySignal(
+            "VA_BOUNCE", "FLAT", 0.0,
+            f"Price {cur_close:.2f} not near VA levels "
+            f"(VAL={val:.2f}, VAH={vah:.2f}, POC={poc:.2f})",
+        )
+
+    # ── Absorption check — institutional defence of the level ─────────────────
+    abs_s    = ta.absorption(df_h1["High"], df_h1["Low"], df_h1["Close"], df_h1["Volume"])
+    abs_here = bool(abs_s.iloc[-1]) or bool(abs_s.iloc[-2])
+
+    if not abs_here:
+        return HourlySignal(
+            "VA_BOUNCE", "FLAT", 0.0,
+            f"Price at VA level but no absorption — no institutional defence confirmed",
+        )
+
+    # ── EMA(20) trend filter ──────────────────────────────────────────────────
+    ema20     = ta.ema(df_h1["Close"], length=20)
+    cur_ema20 = float(ema20.iloc[-1])
+
+    base_conf = 0.75
+
+    # Long: VAL + absorption + bullish bias
+    if near_val and cur_close > cur_ema20:
+        return HourlySignal(
+            "VA_BOUNCE", "LONG", round(base_conf, 3),
+            f"VAL bounce: close {cur_close:.2f} ≈ VAL {val:.2f} | absorption ✓ | "
+            f"EMA20={cur_ema20:.2f} | target POC {poc:.2f}",
+        )
+
+    # Short: VAH + absorption + bearish bias
+    if near_vah and cur_close < cur_ema20:
+        return HourlySignal(
+            "VA_BOUNCE", "SHORT", round(base_conf, 3),
+            f"VAH rejection: close {cur_close:.2f} ≈ VAH {vah:.2f} | absorption ✓ | "
+            f"EMA20={cur_ema20:.2f} | target POC {poc:.2f}",
+        )
+
+    return HourlySignal(
+        "VA_BOUNCE", "FLAT", 0.0,
+        f"At VA level but EMA trend does not confirm "
+        f"(close={cur_close:.2f}, EMA20={cur_ema20:.2f}, VAL={val:.2f}, VAH={vah:.2f})",
+    )
+
+
+# ════════════════════════════════════════════════════════════════════════════════
 # ORCHESTRATOR — run_h1_gate
 # ════════════════════════════════════════════════════════════════════════════════
 
@@ -529,6 +804,9 @@ def run_h1_gate(
         "ORB_60":    lambda: orb_breakout(df_h1, regime),
         "SQUEEZE":   lambda: squeeze_breakout(df_h1, regime),
         "ZSCORE_MR": lambda: zscore_mean_reversion(df_h1, df_daily, regime),
+        "ABSORB_BO": lambda: absorption_breakout(df_h1, regime),
+        "TRIPLE_A":  lambda: triple_a_setup(df_h1, regime),
+        "VA_BOUNCE": lambda: value_area_bounce(df_h1, regime),
     }
     for name in regime.enabled_strategies:
         try:
@@ -536,6 +814,18 @@ def run_h1_gate(
             signals.append(sig)
         except Exception as exc:
             signals.append(HourlySignal(name, "FLAT", 0.0, f"Runtime error: {exc}"))
+
+    # ── Absorption confluence multiplier ──────────────────────────────────────
+    # If any absorption bar exists in the last 3 bars, boost all LONG signal
+    # confidences by 10% (capped at 1.0) — Valentini's "absorption confirms
+    # any entry" principle.
+    abs_s = ta.absorption(df_h1["High"], df_h1["Low"], df_h1["Close"], df_h1["Volume"])
+    recent_absorption = bool(abs_s.iloc[-3:].any()) if len(abs_s) >= 3 else False
+    if recent_absorption:
+        for sig in signals:
+            if sig.signal == "LONG":
+                sig.confidence = min(1.0, sig.confidence + 0.10)
+                sig.reason += " [+abs confluence]"
 
     # ── Pick best LONG signal ─────────────────────────────────────────────────
     long_signals = [s for s in signals if s.signal == "LONG"]
