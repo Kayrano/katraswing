@@ -4,7 +4,7 @@ Fetches upcoming earnings date and recent news headlines for a ticker.
 Warns if earnings are within N days — swing trades should be avoided around earnings.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import pandas as pd
 import yfinance as yf
@@ -203,7 +203,6 @@ def get_news(ticker: str, max_items: int = 5) -> list[dict]:
             link      = n.get("link") or n.get("content", {}).get("canonicalUrl", {}).get("url", "#")
             pub_ts    = n.get("providerPublishTime") or n.get("content", {}).get("pubDate", "")
             if pub_ts and isinstance(pub_ts, (int, float)):
-                from datetime import timezone
                 pub_dt = datetime.fromtimestamp(pub_ts, tz=timezone.utc)
                 published = pub_dt.strftime("%b %d")
             else:

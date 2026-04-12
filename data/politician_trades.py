@@ -10,6 +10,7 @@ Top-performing politicians weighted higher for the correction signal.
 Based on public performance tracking (returns vs S&P 500 since 2020).
 """
 
+import math
 import requests
 import time
 from datetime import datetime, timedelta, date
@@ -261,7 +262,6 @@ def compute_politician_sentiment(trades: list[dict]) -> dict:
         perf_w = 1.5 if t.get("is_top_performer") else 1.0
         # Amount weight (log-scale: $5K=1, $50K=2, $500K=3)
         amt = t.get("amount_usd", 25000)
-        import math
         amt_w = max(1.0, math.log10(max(amt, 1000) / 1000))
 
         w = recency_w * perf_w * amt_w
