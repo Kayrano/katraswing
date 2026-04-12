@@ -96,7 +96,7 @@ def close_position(symbol: str, api_key=None, secret_key=None, is_paper=None) ->
     try:
         h, base = _headers(api_key, secret_key, is_paper)
         r = requests.delete(f"{base}/positions/{symbol.upper()}", headers=h, timeout=_TIMEOUT)
-        if r.status_code in (200, 204, 207):
+        if r.status_code in (200, 204):
             return r.json() if r.content else {}
         return None
     except Exception:

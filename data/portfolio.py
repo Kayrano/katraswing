@@ -51,8 +51,8 @@ def add_position(
         shares=round(shares, 4),
         direction=direction,
         entry_date=str(date.today()),
-        stop_loss=round(stop_loss, 4) if stop_loss else None,
-        take_profit=round(take_profit, 4) if take_profit else None,
+        stop_loss=round(stop_loss, 4) if stop_loss is not None else None,
+        take_profit=round(take_profit, 4) if take_profit is not None else None,
         notes=notes.strip(),
     ))
     _save(positions)

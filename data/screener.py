@@ -192,7 +192,7 @@ def _score_ticker(ticker: str, df: pd.DataFrame) -> dict | None:
     else:             signal = "STRONG SELL"
 
     # ── 1-day change ──────────────────────────────────────────────────────────
-    chg_1d = (close[-1] / close[-2] - 1) * 100 if n >= 2 else 0.0
+    chg_1d = (close[-1] / close[-2] - 1) * 100 if (n >= 2 and close[-2] != 0) else 0.0
 
     return {
         "ticker":    ticker,

@@ -122,9 +122,8 @@ class StatisticianAgent:
         return score
 
     def _score_bollinger(self, ind: IndicatorBundle) -> float:
-        close = ind.bb_mid  # Use mid as proxy for current close in scoring
-        # We use actual price via ema20 as close approximation
-        close = ind.ema20
+        # Use actual close price; fall back to ema20 when close is unavailable
+        close = ind.close if ind.close > 0 else ind.ema20
 
         bw = ind.bb_upper - ind.bb_lower
         if bw == 0:
@@ -134,10 +133,8 @@ class StatisticianAgent:
             return 9.0
         if close < ind.bb_lower + 0.25 * bw:
             return 7.0
-        if close < ind.bb_mid:
+        if close <= ind.bb_mid:
             return 5.5
-        if close == ind.bb_mid:
-            return 5.0
         if close <= ind.bb_upper - 0.25 * bw:
             return 4.5
         if close <= ind.bb_upper:

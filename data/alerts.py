@@ -81,7 +81,7 @@ def check_alerts() -> list[dict]:
         try:
             info = yf.Ticker(t).fast_info
             price = getattr(info, "last_price", None)
-            if price:
+            if price is not None:
                 prices[t] = float(price)
         except Exception:
             pass

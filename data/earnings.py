@@ -6,6 +6,7 @@ Warns if earnings are within N days — swing trades should be avoided around ea
 
 from datetime import datetime, timedelta
 from typing import Optional
+import pandas as pd
 import yfinance as yf
 
 
@@ -53,7 +54,6 @@ def get_earnings_risk(ticker: str) -> dict:
                             val = val[0]
                         if val is not None:
                             try:
-                                import pandas as pd
                                 earnings_date = pd.Timestamp(val).to_pydatetime()
                             except Exception:
                                 pass
@@ -62,7 +62,6 @@ def get_earnings_risk(ticker: str) -> dict:
         if earnings_date is None:
             # Fallback: try earnings_dates property
             try:
-                import pandas as pd
                 ed = t.earnings_dates
                 if ed is not None and len(ed) > 0:
                     today = datetime.now().replace(tzinfo=None)
@@ -115,7 +114,6 @@ def get_earnings_history(ticker: str, price_df=None, n: int = 6) -> list[dict]:
     Returns last n historical earnings events with EPS beat/miss and 1-day price reaction.
     Each item: { date, eps_estimate, eps_actual, surprise_pct, beat, price_reaction_pct }
     """
-    import pandas as pd
     import numpy as np
 
     results = []

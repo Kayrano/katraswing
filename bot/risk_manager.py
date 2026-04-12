@@ -5,7 +5,7 @@ All pre-trade checks live here — keeps engine.py clean.
 
 import yfinance as yf
 import pandas as pd
-from datetime import date
+from datetime import date, timedelta
 
 from bot.config import (
     PORTFOLIO_SIZE,
@@ -89,10 +89,9 @@ def has_upcoming_earnings(ticker: str) -> tuple:
                 for col in cal.columns:
                     try:
                         d = pd.to_datetime(cal[col].iloc[0]).date()
-                        if date.today() <= d <= date.today().__class__.fromordinal(
-                            date.today().toordinal() + EARNINGS_DAYS_SKIP
-                        ):
-                            days = (d - date.today()).days
+                        today = date.today()
+                        if today <= d <= today + timedelta(days=EARNINGS_DAYS_SKIP):
+                            days = (d - today).days
                             return True, days
                     except Exception:
                         pass
