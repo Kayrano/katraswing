@@ -76,6 +76,11 @@ def render_bot_tab():
     # ══════════════════════════════════════════════════════════════════════════
     from broker.alpaca import get_positions, get_account, is_market_open
 
+    # Fetch account info — failure here does NOT suppress positions
+    market_open = False
+    equity = last_equity = buying_pwr = 0.0
+    daily_pnl = daily_pnl_pct = 0.0
+    _acct_error = None
     try:
         market_open = is_market_open(api_key=api_key, secret_key=secret_key, is_paper=is_paper)
         acct        = get_account(api_key=api_key, secret_key=secret_key, is_paper=is_paper)
@@ -84,13 +89,24 @@ def render_bot_tab():
         buying_pwr  = float(acct.get("buying_power",  0))
         daily_pnl   = equity - last_equity
         daily_pnl_pct = (daily_pnl / last_equity * 100) if last_equity else 0
-        positions   = get_positions(api_key=api_key, secret_key=secret_key, is_paper=is_paper)
     except Exception as e:
-        st.error(f"Could not connect to Alpaca: {e}")
-        equity = last_equity = buying_pwr = 0.0
-        daily_pnl = daily_pnl_pct = 0.0
-        positions = []
-        market_open = False
+        _acct_error = str(e)
+
+    # Fetch positions — separate block so account errors don't hide positions
+    positions = []
+    _pos_error = None
+    try:
+        positions = get_positions(api_key=api_key, secret_key=secret_key, is_paper=is_paper)
+        if not isinstance(positions, list):
+            _pos_error = f"Unexpected response type: {type(positions).__name__} — {str(positions)[:200]}"
+            positions = []
+    except Exception as e:
+        _pos_error = str(e)
+
+    if _acct_error:
+        st.error(f"Account fetch failed: {_acct_error}")
+    if _pos_error:
+        st.error(f"Positions fetch failed: {_pos_error}")
 
     summary_today = get_trade_summary_today()
     mkt_label     = "OPEN" if market_open else "CLOSED"
@@ -150,6 +166,17 @@ def render_bot_tab():
                 use_container_width=True,
                 hide_index=True,
             )
+
+    with col_pos:
+        with st.expander("🔍 Positions API Debug", expanded=False):
+            st.caption(f"API endpoint: {'paper-api' if is_paper else 'api'}.alpaca.markets/v2/positions")
+            st.caption(f"Raw count returned: {len(positions)}")
+            if positions:
+                st.json(positions[0])
+            elif _pos_error:
+                st.error(_pos_error)
+            else:
+                st.info("API returned an empty list — no open positions on this account.")
 
     with col_cfg:
         st.markdown("#### ⚙️ Bot Configuration")
