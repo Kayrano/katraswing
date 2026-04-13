@@ -5,7 +5,7 @@ Pre-populated from st.secrets / environment variables if available.
 """
 
 import streamlit as st
-from ui.auth_renderer import get_alpaca_creds
+from ui.auth_renderer import get_alpaca_creds, save_creds_file, clear_creds_file
 
 _ALPACA_KEY        = "alpaca_api_key"
 _ALPACA_SECRET_KEY = "alpaca_secret_key"
@@ -64,6 +64,8 @@ def render_settings_tab():
             st.session_state[_ALPACA_KEY]        = new_key.strip()
             st.session_state[_ALPACA_SECRET_KEY] = new_secret.strip()
             st.session_state[_ALPACA_IS_PAPER]   = new_paper
+            # Persist to file so credentials survive page refreshes
+            save_creds_file(new_key.strip(), new_secret.strip(), new_paper)
             st.success("Credentials saved! Head to the Live Bot tab to start trading.")
             st.rerun()
 
@@ -74,5 +76,6 @@ def render_settings_tab():
         if st.button("Clear API Keys", use_container_width=False):
             for k in (_ALPACA_KEY, _ALPACA_SECRET_KEY, _ALPACA_IS_PAPER):
                 st.session_state.pop(k, None)
+            clear_creds_file()
             st.success("Credentials cleared.")
             st.rerun()

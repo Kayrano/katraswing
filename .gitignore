@@ -21,6 +21,7 @@ env/
 # User data (regenerated at runtime)
 data/watchlist.json
 data/alerts.json
+data/alpaca_creds.json
 
 # OS
 .DS_Store

@@ -168,15 +168,25 @@ def render_bot_tab():
             )
 
     with col_pos:
-        with st.expander("🔍 Positions API Debug", expanded=False):
-            st.caption(f"API endpoint: {'paper-api' if is_paper else 'api'}.alpaca.markets/v2/positions")
-            st.caption(f"Raw count returned: {len(positions)}")
+        masked_key = (api_key[:4] + "…" + api_key[-4:]) if len(api_key) > 8 else "???"
+        with st.expander(f"🔍 Positions API Debug  (key: {masked_key}, {'paper' if is_paper else 'live'})", expanded=True):
+            endpoint = f"{'paper-api' if is_paper else 'api'}.alpaca.markets/v2/positions"
+            st.caption(f"Endpoint: {endpoint}")
+            st.caption(f"Positions returned: {len(positions)}")
             if positions:
                 st.json(positions[0])
+                if len(positions) > 1:
+                    st.caption(f"…and {len(positions)-1} more position(s)")
             elif _pos_error:
-                st.error(_pos_error)
+                st.error(f"API error: {_pos_error}")
+                st.warning("If this is a 401/403 error, your API key is wrong or expired. Go to ⚙️ Settings and re-enter your Alpaca credentials.")
             else:
-                st.info("API returned an empty list — no open positions on this account.")
+                st.warning(
+                    "The API returned an empty list. Your credentials are working but "
+                    "this Alpaca account has no open positions. "
+                    "If your positions are in a **different account**, go to ⚙️ Settings "
+                    "and enter the correct API key for that account."
+                )
 
     with col_cfg:
         st.markdown("#### ⚙️ Bot Configuration")
