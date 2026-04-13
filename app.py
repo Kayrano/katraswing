@@ -52,7 +52,9 @@ from ui.auth_renderer import get_alpaca_creds
 from bot.engine import get_state, start_bot
 
 _api_key, _secret_key, _is_paper = get_alpaca_creds()
-if _api_key and _secret_key and not get_state().get("running"):
+# Auto-start only when the user has NOT explicitly stopped the bot this session.
+# Without this guard, every st.rerun() (including after Stop Bot) would restart it.
+if _api_key and _secret_key and not get_state().get("running") and not st.session_state.get("_bot_user_stopped"):
     start_bot(_api_key, _secret_key, _is_paper)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────

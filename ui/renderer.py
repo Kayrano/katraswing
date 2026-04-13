@@ -3199,7 +3199,7 @@ def render_portfolio_tab() -> None:
             try:
                 fi = yf.Ticker(t).fast_info
                 price = getattr(fi, "last_price", None)
-                if price:
+                if price is not None:
                     live_prices[t] = float(price)
             except Exception:
                 pass
@@ -3216,7 +3216,7 @@ def render_portfolio_tab() -> None:
         cost = pos.entry_price * pos.shares
         total_cost += cost
 
-        if cur:
+        if cur is not None:
             if pos.direction == "LONG":
                 pnl_pct = (cur - pos.entry_price) / pos.entry_price * 100
                 pnl_abs = (cur - pos.entry_price) * pos.shares
@@ -3233,7 +3233,7 @@ def render_portfolio_tab() -> None:
             cur_val  = cost
 
         # Max risk from stop loss
-        if pos.stop_loss and cur:
+        if pos.stop_loss is not None and cur is not None:
             if pos.direction == "LONG":
                 risk = max(0, (cur - pos.stop_loss) * pos.shares)
             else:
@@ -3294,9 +3294,9 @@ def render_portfolio_tab() -> None:
         pos    = rd["pos"]
         pnl_c  = "#00c851" if rd["pnl_abs"] >= 0 else "#ff4444"
         dir_c  = "#00c851" if pos.direction == "LONG" else "#ff4444"
-        cur_s  = fmt_price(rd["cur"]) if rd["cur"] else "—"
-        sl_s   = fmt_price(pos.stop_loss)   if pos.stop_loss   else "—"
-        tp_s   = fmt_price(pos.take_profit) if pos.take_profit else "—"
+        cur_s  = fmt_price(rd["cur"]) if rd["cur"] is not None else "—"
+        sl_s   = fmt_price(pos.stop_loss)   if pos.stop_loss   is not None else "—"
+        tp_s   = fmt_price(pos.take_profit) if pos.take_profit is not None else "—"
 
         rc = st.columns([1.2, 1, 0.8, 1, 1.2, 1.2, 1.2, 1, 0.6])
         rc[0].markdown(f"<b style='color:#e0e0e0;'>{pos.ticker}</b>", unsafe_allow_html=True)

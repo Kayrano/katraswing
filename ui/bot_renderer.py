@@ -48,12 +48,14 @@ def render_bot_tab():
         with col_start:
             if st.button("▶ Start Bot", disabled=is_running,
                          use_container_width=True, type="primary"):
+                st.session_state.pop("_bot_user_stopped", None)
                 msg = start_bot(api_key, secret_key, is_paper)
                 st.success(msg)
                 st.rerun()
         with col_stop:
             if st.button("⏹ Stop Bot", disabled=not is_running,
                          use_container_width=True):
+                st.session_state["_bot_user_stopped"] = True
                 msg = stop_bot()
                 st.warning(msg)
                 st.rerun()
