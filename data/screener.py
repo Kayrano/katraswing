@@ -250,12 +250,21 @@ def _ema_series(close, period: int) -> np.ndarray:
         arr = close.values.astype(float)
     else:
         arr = np.asarray(close, dtype=float)
-    if len(arr) < period:
-        return arr
+
+    # Skip leading NaN values so MACD signal line (EMA of MACD line) isn't
+    # poisoned — without this, _ema(macd_diff, 9) always returns NaN because
+    # arr[:period].mean() includes leading NaN from the 26-period EMA warmup.
+    first_valid = 0
+    while first_valid < len(arr) and np.isnan(arr[first_valid]):
+        first_valid += 1
+
+    trimmed = arr[first_valid:]
+    if len(trimmed) < period:
+        return np.full(len(arr), np.nan)
+
     k   = 2 / (period + 1)
-    out = np.empty(len(arr))
-    out[period - 1] = arr[:period].mean()
-    for i in range(period, len(arr)):
-        out[i] = arr[i] * k + out[i - 1] * (1 - k)
-    out[:period - 1] = np.nan
+    out = np.full(len(arr), np.nan)
+    out[first_valid + period - 1] = trimmed[:period].mean()
+    for i in range(period, len(trimmed)):
+        out[first_valid + i] = trimmed[i] * k + out[first_valid + i - 1] * (1 - k)
     return out
