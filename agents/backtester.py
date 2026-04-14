@@ -334,6 +334,7 @@ def _compute_scores_series(df: pd.DataFrame) -> tuple:
             bb_squeeze=bb_squeeze, volume_spike=vol_spike, above_200_sma=above_200,
             macd_histogram_prev=macd_hist_prev, stoch_k_prev=stoch_k_prev,
             atr_5d_ago=atr_5ago,
+            close=float(df["Close"].iloc[i]),
         )
 
         result = stat.score(ind)
