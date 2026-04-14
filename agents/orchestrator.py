@@ -265,7 +265,7 @@ def _apply_macro_filters(ticker: str, score: float) -> tuple:
                 now_utc = pd.Timestamp.now(tz="UTC")
                 future = edates[edates.index >= now_utc]
                 if not future.empty:
-                    earn_date = future.index[-1].date()
+                    earn_date = future.index[0].date()
         except Exception:
             pass
 

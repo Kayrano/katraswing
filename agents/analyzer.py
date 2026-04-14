@@ -125,7 +125,7 @@ class AnalyzerAgent:
                         death_cross = True
 
         # BB Squeeze: bandwidth < 8% of midband
-        bb_bandwidth = (bb_upper - bb_lower) / bb_mid if bb_mid != 0 else 0
+        bb_bandwidth = (bb_upper - bb_lower) / bb_mid if (bb_mid != 0 and not np.isnan(bb_mid)) else 0
         bb_squeeze = bb_bandwidth < 0.08
 
         # Volume Spike

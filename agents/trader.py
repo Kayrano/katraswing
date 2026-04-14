@@ -99,8 +99,13 @@ class TraderAgent:
         try:
             lows = df["Low"].rolling(5, center=True).min()
             recent_lows = lows.dropna().iloc[-20:]
-            nearest_support = float(recent_lows.min())
-            if abs(entry - nearest_support) < (abs(entry - atr_stop) * 1.1):
+            # Only consider swing lows that are below entry (valid support)
+            below_entry = recent_lows[recent_lows < entry]
+            if below_entry.empty:
+                return atr_stop
+            # Find the swing low closest to the ATR stop (not the global minimum)
+            nearest_support = float(below_entry.iloc[(below_entry - atr_stop).abs().argsort().iloc[0]])
+            if abs(nearest_support - atr_stop) < 0.3 * atr:
                 # Place stop 0.5% below support
                 return nearest_support * 0.995
         except Exception:
@@ -120,8 +125,13 @@ class TraderAgent:
         try:
             highs = df["High"].rolling(5, center=True).max()
             recent_highs = highs.dropna().iloc[-20:]
-            nearest_resistance = float(recent_highs.max())
-            if abs(nearest_resistance - entry) < (abs(atr_stop - entry) * 1.1):
+            # Only consider swing highs that are above entry (valid resistance)
+            above_entry = recent_highs[recent_highs > entry]
+            if above_entry.empty:
+                return atr_stop
+            # Find the swing high closest to the ATR stop
+            nearest_resistance = float(above_entry.iloc[(above_entry - atr_stop).abs().argsort().iloc[0]])
+            if abs(nearest_resistance - atr_stop) < 0.3 * atr:
                 return nearest_resistance * 1.005
         except Exception:
             pass
