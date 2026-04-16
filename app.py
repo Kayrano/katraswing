@@ -263,6 +263,173 @@ with tab_analyzer:
             st.markdown("---")
             render_export_buttons(report)
 
+        # ── Section 7: Intraday Signals ───────────────────────────────────────
+        with st.expander("⚡ Intraday Signals — 5m & 15m Strategies · Backtest · Entry / SL / TP / Lot Size", expanded=False):
+            _itf_col1, _itf_col2, _itf_col3 = st.columns([2, 2, 2])
+            with _itf_col1:
+                _itf_timeframe = st.selectbox(
+                    "Timeframe", ["15m", "5m"], key="itf_tf",
+                    help="15m: EMA Pullback, Squeeze, Absorption | 5m: VWAP+RSI, ORB",
+                )
+            with _itf_col2:
+                _itf_account = st.number_input(
+                    "Account size ($)", min_value=1_000, max_value=10_000_000,
+                    value=100_000, step=5_000, key="itf_account",
+                )
+            with _itf_col3:
+                _itf_risk = st.number_input(
+                    "Risk per trade (%)", min_value=0.1, max_value=5.0,
+                    value=1.0, step=0.1, key="itf_risk",
+                )
+
+            _itf_run_col, _itf_bt_col = st.columns([1, 1])
+            with _itf_run_col:
+                _itf_signals_btn = st.button(
+                    "⚡ Get Live Signals", use_container_width=True,
+                    type="primary", key="btn_itf_signals",
+                )
+            with _itf_bt_col:
+                _itf_backtest_btn = st.button(
+                    "🧪 Run Backtest (60d)", use_container_width=True,
+                    key="btn_itf_backtest",
+                )
+
+            # ── Live Signals ──────────────────────────────────────────────────
+            if _itf_signals_btn:
+                with st.spinner(f"Fetching {_itf_timeframe} bars + running strategies for {report.ticker}..."):
+                    try:
+                        from agents.intraday_strategies import run_intraday_signals
+                        _active, _all_sigs = run_intraday_signals(
+                            report.ticker,
+                            timeframe=_itf_timeframe,
+                            account_size=_itf_account,
+                            risk_pct=_itf_risk,
+                        )
+                        st.session_state["itf_active"]  = _active
+                        st.session_state["itf_all"]     = _all_sigs
+                        st.session_state["itf_ticker"]  = report.ticker
+                        st.session_state["itf_tf_used"] = _itf_timeframe
+                    except Exception as _e:
+                        st.error(f"Intraday signal error: {_e}")
+
+            _itf_active = st.session_state.get("itf_active", [])
+            _itf_all    = st.session_state.get("itf_all", [])
+            _itf_shown_ticker = st.session_state.get("itf_ticker", "")
+            _itf_tf_used      = st.session_state.get("itf_tf_used", "")
+
+            if _itf_active and _itf_shown_ticker == report.ticker:
+                st.markdown(f"#### Live {_itf_tf_used} Signals for **{report.ticker}**")
+                for _sig in _itf_active:
+                    _dir_color = "#00cc66" if _sig.signal == "LONG" else "#ff4444"
+                    _lot  = getattr(_sig, "_lot_size",   0)
+                    _pval = getattr(_sig, "_pos_value",  0.0)
+                    _drisk = getattr(_sig, "_dollar_risk", 0.0)
+                    _conf_pct = f"{_sig.confidence*100:.0f}%"
+                    st.markdown(f"""
+<div style="border:1px solid {_dir_color}; border-radius:10px; padding:14px 18px;
+            margin-bottom:12px; background:#0d1117;">
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <span style="font-size:16px; font-weight:700; color:{_dir_color};">
+      {_sig.signal} &nbsp;·&nbsp; {_sig.strategy}
+    </span>
+    <span style="font-size:13px; color:#aaa;">Confidence: <b style="color:#fff;">{_conf_pct}</b></span>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:12px;">
+    <div style="text-align:center;">
+      <div style="font-size:11px; color:#888;">ENTRY</div>
+      <div style="font-size:17px; font-weight:700; color:#e0e0e0;">${_sig.entry:.2f}</div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:11px; color:#888;">STOP LOSS</div>
+      <div style="font-size:17px; font-weight:700; color:#ff4444;">${_sig.stop_loss:.2f}</div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:11px; color:#888;">TAKE PROFIT</div>
+      <div style="font-size:17px; font-weight:700; color:#00cc66;">${_sig.take_profit:.2f}</div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:11px; color:#888;">LOT SIZE</div>
+      <div style="font-size:17px; font-weight:700; color:#4488ff;">{_lot} shares</div>
+    </div>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:8px;">
+    <div style="text-align:center;">
+      <div style="font-size:11px; color:#888;">R:R</div>
+      <div style="font-size:13px; color:#ccc;">1:{_sig.rr_ratio:.1f}</div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:11px; color:#888;">POSITION VALUE</div>
+      <div style="font-size:13px; color:#ccc;">${_pval:,.0f}</div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:11px; color:#888;">DOLLAR RISK</div>
+      <div style="font-size:13px; color:#ccc;">${_drisk:,.0f}</div>
+    </div>
+  </div>
+  <div style="margin-top:10px; font-size:11px; color:#888;">
+    <b>Reason:</b> {_sig.reason}
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+            elif _itf_all and _itf_shown_ticker == report.ticker:
+                st.info(f"No {_itf_tf_used} signals triggered for {report.ticker} right now. Strategies ran — see status below.")
+
+            # Show FLAT reasons if we have them
+            if _itf_all and _itf_shown_ticker == report.ticker:
+                with st.expander("Strategy status (all signals)", expanded=False):
+                    for _sig in _itf_all:
+                        _icon = "🟢" if _sig.signal == "LONG" else ("🔴" if _sig.signal == "SHORT" else "⚪")
+                        st.markdown(f"{_icon} **{_sig.strategy}** ({_sig.timeframe}): {_sig.reason}")
+
+            # ── Backtest Results ──────────────────────────────────────────────
+            if _itf_backtest_btn:
+                with st.spinner(f"Running {_itf_timeframe} walk-forward backtest for {report.ticker} (last 60 days)..."):
+                    try:
+                        from agents.intraday_backtester import run_intraday_backtest
+                        _bt = run_intraday_backtest(report.ticker, timeframe=_itf_timeframe)
+                        st.session_state["itf_backtest"]    = _bt
+                        st.session_state["itf_bt_ticker"]   = report.ticker
+                        st.session_state["itf_bt_tf"]       = _itf_timeframe
+                    except Exception as _e:
+                        st.error(f"Backtest error: {_e}")
+
+            _bt = st.session_state.get("itf_backtest")
+            _bt_ticker = st.session_state.get("itf_bt_ticker", "")
+            _bt_tf     = st.session_state.get("itf_bt_tf", "")
+
+            if _bt and _bt_ticker == report.ticker:
+                _wr_color  = "#00cc66" if _bt.overall_win_rate >= 0.60 else "#ff9900"
+                _badge     = "✅ VALIDATED" if _bt.all_pass_threshold else "⚠ MIXED"
+                st.markdown(f"""
+<div style="border:1px solid #333; border-radius:10px; padding:14px 18px;
+            margin-bottom:12px; background:#0d1117;">
+  <div style="font-size:15px; font-weight:700; color:#e0e0e0;">
+    {_bt_tf} Backtest — {_bt.ticker} &nbsp;|&nbsp;
+    <span style="color:{_wr_color};">Overall Win Rate: {_bt.overall_win_rate*100:.1f}%</span>
+    &nbsp;·&nbsp; <span style="font-size:12px; color:#aaa;">{_badge} &nbsp;·&nbsp; {_bt.period_days} trading days</span>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+                for _r in _bt.results:
+                    if _r.total_trades == 0:
+                        st.markdown(f"**{_r.strategy}** — no trades generated in this period.")
+                        continue
+                    _rwr_color = "#00cc66" if _r.win_rate >= 0.60 else "#ff9900"
+                    _pass_badge = "✅" if _r.meets_threshold else "⚠"
+                    col_a, col_b, col_c, col_d, col_e = st.columns(5)
+                    col_a.metric(_r.strategy, f"{_r.win_rate*100:.1f}% WR {_pass_badge}")
+                    col_b.metric("Trades", _r.total_trades)
+                    col_c.metric("Profit Factor", f"{_r.profit_factor:.2f}")
+                    col_d.metric("Avg Win", f"{_r.avg_win_pct:+.2f}%")
+                    col_e.metric("Max DD", f"{_r.max_drawdown_pct:.2f}%")
+
+                if _bt.best_strategy:
+                    st.success(f"Best strategy: **{_bt.best_strategy}** — highest win rate in this period.")
+
+                st.caption(f"Backtest generated: {_bt.generated_at} · Walk-forward (no look-ahead) · 0.02% slippage · Long only · 1:2 R:R · Time stop: {'20 bars' if _bt_tf == '5m' else '10 bars'}")
+
         st.markdown("""
         <div style="text-align:center; margin-top:20px; color:#333; font-size:12px;">
             ⚠ Educational purposes only. Not financial advice.
