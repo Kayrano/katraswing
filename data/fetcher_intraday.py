@@ -45,7 +45,17 @@ VALID_INTERVALS = ("5m", "15m")
 
 
 def detect_market(ticker: str) -> str:
-    return "BIST" if ticker.upper().endswith(".IS") else "US"
+    """
+    Return "BIST", "FOREX", or "US" — mirrors the logic in fetcher_hourly.
+    """
+    sym = ticker.upper()
+    if sym.endswith(".IS"):
+        return "BIST"
+    if sym.endswith("=X") or sym.endswith("=F"):
+        return "FOREX"
+    if "-USD" in sym or "-BTC" in sym or "-ETH" in sym:
+        return "FOREX"
+    return "US"
 
 
 def fetch_intraday_data(
@@ -83,8 +93,7 @@ def fetch_intraday_data(
         raise ValueError(f"interval must be one of {VALID_INTERVALS}, got {interval!r}")
 
     market = detect_market(ticker)
-    cfg    = SESSION_CONFIG[market]
-    tz     = cfg["tz"]
+    tz     = SESSION_CONFIG.get(market, SESSION_CONFIG["US"])["tz"] if market != "FOREX" else ZoneInfo("America/New_York")
 
     raw = yf.Ticker(ticker).history(
         period=f"{days}d", interval=interval, auto_adjust=True
@@ -100,11 +109,16 @@ def fetch_intraday_data(
     else:
         df.index = df.index.tz_convert(tz)
 
-    # Clip to exchange hours
-    open_mins  = cfg["open_hour"] * 60 + cfg["open_minute"]
-    close_mins = cfg["close_hour"] * 60 + cfg["close_minute"]
-    bar_mins   = df.index.hour * 60 + df.index.minute
-    df = df[(bar_mins >= open_mins) & (bar_mins < close_mins)].copy()
+    # Clip to exchange hours (equities only — FOREX trades 24/5)
+    if market != "FOREX":
+        cfg        = SESSION_CONFIG[market]
+        open_mins  = cfg["open_hour"] * 60 + cfg["open_minute"]
+        close_mins = cfg["close_hour"] * 60 + cfg["close_minute"]
+        bar_mins   = df.index.hour * 60 + df.index.minute
+        df = df[(bar_mins >= open_mins) & (bar_mins < close_mins)].copy()
+    else:
+        # Drop weekend bars
+        df = df[df.index.dayofweek < 5].copy()
 
     min_bars = 30
     if len(df) < min_bars:

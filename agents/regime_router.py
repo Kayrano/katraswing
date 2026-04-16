@@ -88,6 +88,7 @@ def compute_regime(df_h1: pd.DataFrame) -> RegimeResult:
     Compute the ADX regime and session-window status for the last bar in df_h1.
 
     df_h1 must include the 'market' column produced by fetch_hourly_data().
+    Supported market values: "US" | "BIST" | "FOREX"
     """
     market = str(df_h1["market"].iloc[-1]) if "market" in df_h1.columns else "US"
 
@@ -114,7 +115,14 @@ def compute_regime(df_h1: pd.DataFrame) -> RegimeResult:
 
     # ── Session window ────────────────────────────────────────────────────────
     last_bar = df_h1.index[-1]
-    in_win, mr_only, win_note = _check_session_window(last_bar, market)
+
+    # FOREX / crypto / futures trade nearly 24/5 — no blackout windows apply.
+    if market == "FOREX":
+        in_win   = True
+        mr_only  = False
+        win_note = "FOREX market — 24/5 trading, no session blackout"
+    else:
+        in_win, mr_only, win_note = _check_session_window(last_bar, market)
 
     # In MR-only windows further restrict the enabled list
     if mr_only:

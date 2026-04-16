@@ -45,8 +45,21 @@ SESSION_CONFIG: dict[str, dict] = {
 
 
 def detect_market(ticker: str) -> str:
-    """Return 'BIST' when the ticker carries the .IS suffix, else 'US'."""
-    return "BIST" if ticker.upper().endswith(".IS") else "US"
+    """
+    Return the market identifier for a ticker symbol.
+    - "BIST"  — Turkish equities (.IS suffix)
+    - "FOREX" — Forex pairs / spot commodities / futures / crypto
+                (=X suffix, =F suffix, -USD/-BTC suffix)
+    - "US"    — all other tickers (US equities, ETFs, indices)
+    """
+    sym = ticker.upper()
+    if sym.endswith(".IS"):
+        return "BIST"
+    if sym.endswith("=X") or sym.endswith("=F"):
+        return "FOREX"
+    if "-USD" in sym or "-BTC" in sym or "-ETH" in sym:
+        return "FOREX"
+    return "US"
 
 
 def fetch_hourly_data(ticker: str, days: int = 60) -> pd.DataFrame:
@@ -77,8 +90,7 @@ def fetch_hourly_data(ticker: str, days: int = 60) -> pd.DataFrame:
         filtering (too little history to warm up the indicators).
     """
     market = detect_market(ticker)
-    cfg    = SESSION_CONFIG[market]
-    tz     = cfg["tz"]
+    tz     = SESSION_CONFIG.get(market, SESSION_CONFIG["US"])["tz"] if market != "FOREX" else _US_TZ
 
     # ── Fetch raw H1 bars ─────────────────────────────────────────────────────
     raw = yf.Ticker(ticker).history(
@@ -89,18 +101,23 @@ def fetch_hourly_data(ticker: str, days: int = 60) -> pd.DataFrame:
 
     df = raw[["Open", "High", "Low", "Close", "Volume"]].copy().dropna()
 
-    # ── Localise index to session timezone ────────────────────────────────────
+    # ── Localise index ─────────────────────────────────────────────────────────
     if df.index.tz is None:
         df.index = df.index.tz_localize("UTC").tz_convert(tz)
     else:
         df.index = df.index.tz_convert(tz)
 
-    # ── Clip to exchange session hours ────────────────────────────────────────
-    # We keep bars that START at or after open and strictly before close.
-    open_mins  = cfg["open_hour"]  * 60 + cfg["open_minute"]
-    close_mins = cfg["close_hour"] * 60 + cfg["close_minute"]
-    bar_mins   = df.index.hour * 60 + df.index.minute
-    df = df[(bar_mins >= open_mins) & (bar_mins < close_mins)].copy()
+    # ── Clip to exchange session hours (equities only) ────────────────────────
+    # FOREX/futures trade nearly 24/5 — skip session clipping; keep all bars.
+    if market != "FOREX":
+        cfg        = SESSION_CONFIG[market]
+        open_mins  = cfg["open_hour"]  * 60 + cfg["open_minute"]
+        close_mins = cfg["close_hour"] * 60 + cfg["close_minute"]
+        bar_mins   = df.index.hour * 60 + df.index.minute
+        df = df[(bar_mins >= open_mins) & (bar_mins < close_mins)].copy()
+    else:
+        # Drop weekend bars (Saturday + Sunday) which are sometimes included
+        df = df[df.index.dayofweek < 5].copy()
 
     if len(df) < 50:
         raise ValueError(

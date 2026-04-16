@@ -30,6 +30,10 @@ def run_analysis(query: str) -> ReportData:
     market_cap  = stock_data["market_cap"]
     current_price     = stock_data["current_price"]
     price_change_pct  = stock_data["price_change_pct"]
+    asset_class       = stock_data.get("asset_class", "EQUITY")
+
+    # Flags for downstream gating — fundamentals only make sense for equities
+    is_equity = asset_class == "EQUITY"
 
     analyzer     = AnalyzerAgent()
     statistician = StatisticianAgent()
@@ -39,12 +43,14 @@ def run_analysis(query: str) -> ReportData:
     indicators   = analyzer.analyze(df)
     score_result = statistician.score(indicators)
 
-    # ── Phase 3: CAN SLIM analysis (before trade setup so we can blend) ───────
-    try:
-        from agents.canslim_agent import CanSlimAgent
-        canslim = CanSlimAgent().analyze(ticker, df)
-    except Exception:
-        canslim = None
+    # ── Phase 3: CAN SLIM analysis (equity only) ──────────────────────────────
+    canslim = None
+    if is_equity:
+        try:
+            from agents.canslim_agent import CanSlimAgent
+            canslim = CanSlimAgent().analyze(ticker, df)
+        except Exception:
+            canslim = None
 
     # ── Phase 4: Blend technical score with CAN SLIM (80/20) ─────────────────
     if canslim is not None:
@@ -56,15 +62,21 @@ def run_analysis(query: str) -> ReportData:
         score_result.expected_value  = round(statistician._expected_value(score_result.win_probability), 2)
 
     # ── Phase 5: Macro regime + earnings proximity filters ───────────────
-    filtered_score, filter_notes = _apply_macro_filters(ticker, score_result.total_score)
+    # For non-equity assets (gold, forex, crypto) skip earnings check;
+    # SPY/VIX macro filters still apply as a market sentiment overlay.
+    filtered_score, filter_notes = _apply_macro_filters(
+        ticker, score_result.total_score, apply_earnings=is_equity
+    )
     if filtered_score != score_result.total_score:
         score_result.total_score     = round(filtered_score, 1)
         score_result.signal_label    = statistician._label(filtered_score)
         score_result.win_probability = round(statistician._win_probability(filtered_score), 3)
         score_result.expected_value  = round(statistician._expected_value(score_result.win_probability), 2)
 
-    # ── Phase 5b: Politician trades signal ──────────────────────────────────
-    politician_data = _apply_politician_signal(ticker, score_result, statistician, filter_notes)
+    # ── Phase 5b: Politician trades signal (equity only) ─────────────────────
+    politician_data = None
+    if is_equity:
+        politician_data = _apply_politician_signal(ticker, score_result, statistician, filter_notes)
 
     # ── Phase 6: Trade setup (uses filtered score for direction) ────────────
     trade_setup = trader.compute_trade_setup(df, indicators, score_result.total_score)
@@ -216,7 +228,7 @@ def _apply_politician_signal(
         return None
 
 
-def _apply_macro_filters(ticker: str, score: float) -> tuple:
+def _apply_macro_filters(ticker: str, score: float, apply_earnings: bool = True) -> tuple:
     """
     Apply macro regime and earnings proximity filters to the combined score.
     All external fetches are wrapped in try/except; failures are silent.
@@ -252,7 +264,10 @@ def _apply_macro_filters(ticker: str, score: float) -> tuple:
     except Exception:
         pass
 
-    # Earnings proximity penalty
+    # Earnings proximity penalty (skipped for non-equity assets)
+    if not apply_earnings:
+        return round(score, 1), notes
+
     try:
         from datetime import date as _date
         t = yf.Ticker(ticker)
