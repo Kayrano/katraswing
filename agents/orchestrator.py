@@ -62,10 +62,13 @@ def run_analysis(query: str) -> ReportData:
         score_result.expected_value  = round(statistician._expected_value(score_result.win_probability), 2)
 
     # ── Phase 5: Macro regime + earnings proximity filters ───────────────
-    # For non-equity assets (gold, forex, crypto) skip earnings check;
-    # SPY/VIX macro filters still apply as a market sentiment overlay.
+    # For non-equity assets (gold, forex, crypto) skip earnings check AND
+    # the SPY/VIX equity bear-market filter (gold often rises in bear markets).
+    apply_spy_vix = asset_class in ("EQUITY", "ETF", "INDEX")
     filtered_score, filter_notes = _apply_macro_filters(
-        ticker, score_result.total_score, apply_earnings=is_equity
+        ticker, score_result.total_score,
+        apply_earnings=is_equity,
+        apply_spy_vix=apply_spy_vix,
     )
     if filtered_score != score_result.total_score:
         score_result.total_score     = round(filtered_score, 1)
@@ -228,41 +231,52 @@ def _apply_politician_signal(
         return None
 
 
-def _apply_macro_filters(ticker: str, score: float, apply_earnings: bool = True) -> tuple:
+def _apply_macro_filters(
+    ticker: str,
+    score: float,
+    apply_earnings: bool = True,
+    apply_spy_vix: bool = True,
+) -> tuple:
     """
     Apply macro regime and earnings proximity filters to the combined score.
     All external fetches are wrapped in try/except; failures are silent.
+
+    apply_spy_vix=False skips the SPY/VIX equity-bear-market penalty —
+    used for FOREX, FUTURES, and CRYPTO where gold/oil/crypto often move
+    inversely or independently of the US equity market.
     """
     notes = []
     is_long = score >= 50
 
-    # SPY 200-day SMA: suppress LONG signals in a bear market
-    try:
-        spy_s = yf.Ticker("SPY").history(period="1y", interval="1d", auto_adjust=True)["Close"]
-        if len(spy_s) >= 200:
-            spy_sma200 = float(spy_s.rolling(200).mean().iloc[-1])
-            spy_close  = float(spy_s.iloc[-1])
-            if spy_close < spy_sma200 and is_long:
-                score = max(35.0, score - 10.0)
-                notes.append(
-                    f"SPY {spy_close:.0f} < 200 SMA {spy_sma200:.0f} — bearish macro, LONG score −10"
-                )
-    except Exception:
-        pass
+    # SPY 200-day SMA: suppress LONG signals in a bear market (equities/ETFs only)
+    if apply_spy_vix:
+        try:
+            spy_s = yf.Ticker("SPY").history(period="1y", interval="1d", auto_adjust=True)["Close"]
+            if len(spy_s) >= 200:
+                spy_sma200 = float(spy_s.rolling(200).mean().iloc[-1])
+                spy_close  = float(spy_s.iloc[-1])
+                if spy_close < spy_sma200 and is_long:
+                    score = max(35.0, score - 10.0)
+                    notes.append(
+                        f"SPY {spy_close:.0f} < 200 SMA {spy_sma200:.0f} — bearish macro, LONG score −10"
+                    )
+        except Exception:
+            pass
 
-    # VIX dynamic filter: elevated volatility vs its own 20-day MA
-    try:
-        vix_s = yf.Ticker("^VIX").history(period="3mo", interval="1d", auto_adjust=True)["Close"]
-        if len(vix_s) >= 20:
-            vix_ma20 = float(vix_s.rolling(20).mean().iloc[-1])
-            vix_cur  = float(vix_s.iloc[-1])
-            if vix_cur > vix_ma20 and is_long:
-                score = max(0.0, score - 5.0)
-                notes.append(
-                    f"VIX {vix_cur:.1f} > 20-day MA {vix_ma20:.1f} — elevated volatility, LONG score −5"
-                )
-    except Exception:
-        pass
+    # VIX dynamic filter: elevated volatility vs its own 20-day MA (equities/ETFs only)
+    if apply_spy_vix:
+        try:
+            vix_s = yf.Ticker("^VIX").history(period="3mo", interval="1d", auto_adjust=True)["Close"]
+            if len(vix_s) >= 20:
+                vix_ma20 = float(vix_s.rolling(20).mean().iloc[-1])
+                vix_cur  = float(vix_s.iloc[-1])
+                if vix_cur > vix_ma20 and is_long:
+                    score = max(0.0, score - 5.0)
+                    notes.append(
+                        f"VIX {vix_cur:.1f} > 20-day MA {vix_ma20:.1f} — elevated volatility, LONG score −5"
+                    )
+        except Exception:
+            pass
 
     # Earnings proximity penalty (skipped for non-equity assets)
     if not apply_earnings:

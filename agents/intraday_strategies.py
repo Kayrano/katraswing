@@ -528,6 +528,17 @@ def absorption_15m(df: pd.DataFrame) -> IntradaySignal:
 _STRATEGIES_5M  = [vwap_rsi_5m, orb_5m]
 _STRATEGIES_15M = [ema_pullback_15m, squeeze_15m, absorption_15m]
 
+# ── Strategy name registry ────────────────────────────────────────────────────
+# fn.__name__.upper() gives wrong names for ema_pullback_15m → "EMA_PULLBACK_15M"
+# and absorption_15m → "ABSORPTION_15M".  Use this map everywhere instead.
+_STRATEGY_NAME_MAP: dict[str, str] = {
+    "vwap_rsi_5m":     "VWAP_RSI_5M",
+    "orb_5m":          "ORB_5M",
+    "ema_pullback_15m": "EMA_PB_15M",
+    "squeeze_15m":     "SQUEEZE_15M",
+    "absorption_15m":  "ABSORB_15M",
+}
+
 
 def run_intraday_signals(
     ticker: str,
@@ -570,7 +581,7 @@ def run_intraday_signals(
             all_signals.append(sig)
         except Exception as exc:
             tf = timeframe
-            name = fn.__name__.upper()
+            name = _STRATEGY_NAME_MAP.get(fn.__name__, fn.__name__.upper())
             all_signals.append(_flat(name, tf, f"Runtime error: {exc}"))
 
     # Absorption confluence multiplier (Valentini): if any absorption in last 3 bars,

@@ -36,6 +36,7 @@ from agents.intraday_strategies import (
     absorption_15m,
     _STRATEGIES_5M,
     _STRATEGIES_15M,
+    _STRATEGY_NAME_MAP,
 )
 from data.fetcher_intraday import fetch_intraday_data
 
@@ -101,7 +102,7 @@ def _backtest_strategy(
     Walk-forward simulation for one strategy on the full intraday DataFrame.
     Iterates bar by bar; at each bar calls the strategy on df.iloc[:i+1].
     """
-    name = strategy_fn.__name__.upper()
+    name = _STRATEGY_NAME_MAP.get(strategy_fn.__name__, strategy_fn.__name__.upper())
     time_stop = 20 if timeframe == "5m" else 10
 
     trades: list[BacktestTrade] = []
@@ -198,15 +199,34 @@ def _backtest_strategy(
 
         in_trade    = True
         entry_bar   = i
-        entry_price = sig.entry * (1 + SLIPPAGE)
+        # LONG: pay slightly more (slippage cost); SHORT: receive slightly less
+        if sig.signal == "LONG":
+            entry_price = sig.entry * (1 + SLIPPAGE)
+        else:
+            entry_price = sig.entry * (1 - SLIPPAGE)
         stop_loss   = sig.stop_loss
         take_profit = sig.take_profit
         direction   = sig.signal
         entry_date  = df["session_date"].iloc[i]
 
-    # Force-close any open trade at end of data
-    if in_trade and trades:
-        pass   # already closed within loop on last SESSION_END
+    # Force-close any open trade that is still open at the end of the dataset.
+    # This handles trades entered on the very last bar (SESSION_END branch in the
+    # main loop only fires when there is a NEXT bar to compare dates against).
+    if in_trade:
+        last_close = float(df["Close"].iloc[-1])
+        if direction == "LONG":
+            exit_price = last_close * (1 - SLIPPAGE)
+            pnl_pct = (exit_price - entry_price) / entry_price * 100
+        else:
+            exit_price = last_close * (1 + SLIPPAGE)
+            pnl_pct = (entry_price - exit_price) / entry_price * 100
+        trades.append(BacktestTrade(
+            strategy=name, direction=direction,
+            entry_bar=entry_bar, exit_bar=len(df) - 1,
+            entry_price=entry_price, exit_price=exit_price,
+            stop_loss=stop_loss, take_profit=take_profit,
+            outcome="SESSION_END", pnl_pct=round(pnl_pct, 4),
+        ))
 
     # ── Compute statistics ────────────────────────────────────────────────────
     total = len(trades)
