@@ -174,7 +174,7 @@ def absorption(
     atr_s     = atr(high, low, close, length=length)
     vol_cond  = volume > (vol_avg * vol_mult)
     rng_cond  = (high - low) < (atr_s * range_mult)
-    result    = vol_cond & rng_cond
+    result    = (vol_cond & rng_cond).fillna(False)
     result.name = f"ABSORPTION_{length}_{vol_mult}_{range_mult}"
     return result
 

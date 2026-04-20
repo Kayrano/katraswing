@@ -195,7 +195,7 @@ def orb_5m(df: pd.DataFrame) -> IntradaySignal:
 
     if len(df) < 6:
         return _flat(NAME, TF, "Insufficient bars")
-    if "session_bar_number" not in df.columns:
+    if "session_bar_number" not in df.columns or "session_date" not in df.columns:
         return _flat(NAME, TF, "Session metadata missing")
 
     cur_bar_num = int(df["session_bar_number"].iloc[-1])
@@ -470,7 +470,8 @@ def absorption_15m(df: pd.DataFrame) -> IntradaySignal:
 
     abs_s = ta.absorption(df["High"], df["Low"], df["Close"], df["Volume"])
 
-    if not bool(abs_s.iloc[-2]):
+    prev_abs = abs_s.iloc[-2]
+    if not (pd.notna(prev_abs) and bool(prev_abs)):
         return _flat(NAME, TF, "No absorption on previous bar")
 
     absorb_high = float(df["High"].iloc[-2])

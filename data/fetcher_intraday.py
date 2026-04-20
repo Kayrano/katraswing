@@ -51,8 +51,10 @@ def detect_market(ticker: str) -> str:
     sym = ticker.upper()
     if sym.endswith(".IS"):
         return "BIST"
-    if sym.endswith("=X") or sym.endswith("=F"):
+    if sym.endswith("=X"):
         return "FOREX"
+    if sym.endswith("=F"):
+        return "US"   # futures: clip to US session (9:30-16:00 ET) for ORB
     if "-USD" in sym or "-BTC" in sym or "-ETH" in sym:
         return "FOREX"
     return "US"
