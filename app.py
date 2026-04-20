@@ -1,950 +1,159 @@
-﻿"""
-KATRASWING — Swing Trade Analyzer
-Main Streamlit entry point with 4 tabs:
-  1. Analyzer        — single-stock analysis + MTF
-  2. Watchlist       — saved tickers, batch score scan
-  3. Price Alerts    — set/monitor price triggers
-  4. Backtester      — historical walk-forward simulation
+"""
+KATRASWING — 5m NQ Futures Signal Dashboard
+Real-time trading signals driven by chart analysis + breaking news.
 
 Run with: streamlit run app.py
 """
 
+import time
 import streamlit as st
 
-# ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Katraswing — Swing Trade Analyzer",
-    page_icon="📈",
+    page_title="Katraswing — 5m Signal Dashboard",
+    page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
-# ── Auth gate — must come before any content ──────────────────────────────────
-from ui.auth_renderer import render_auth_gate
-render_auth_gate()
+# ── Dark theme CSS ────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+  body, .stApp { background-color: #0e1117; color: #fafafa; }
+  .stTextInput > div > div > input { background: #1e2130; color: #fafafa; border-color: #2a2d3e; }
+  .stButton > button { background: #1e2130; color: #fafafa; border: 1px solid #2a2d3e; }
+  .stButton > button:hover { border-color: #42a5f5; color: #42a5f5; }
+  section[data-testid="stSidebar"] { background: #0e1117; }
+  div[data-testid="stMetric"] { background: #1e2130; border-radius: 8px; padding: 10px; }
+  hr { border-color: #2a2d3e; }
+</style>
+""", unsafe_allow_html=True)
 
-# ── Theme injection ───────────────────────────────────────────────────────────
-from ui.renderer import get_theme_css
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("## ⚡ Katraswing")
+    st.markdown("**5m Signal Dashboard**")
+    st.markdown("---")
 
-if "light_theme" not in st.session_state:
-    st.session_state["light_theme"] = False
+    ticker_input = st.text_input(
+        "Ticker",
+        value=st.session_state.get("ticker", "NQ=F"),
+        placeholder="e.g. NQ=F, AAPL, TSLA",
+        help="Use NQ=F for Nasdaq E-mini futures, MNQ=F for Micro.",
+    ).strip().upper()
 
-st.markdown(get_theme_css(st.session_state["light_theme"]), unsafe_allow_html=True)
+    finnhub_key = st.text_input(
+        "Finnhub API Key",
+        value=st.session_state.get("finnhub_key", ""),
+        type="password",
+        help="Get a free key at finnhub.io",
+    ).strip()
 
-# ── App header + theme toggle ─────────────────────────────────────────────────
-title_col, toggle_col = st.columns([5, 1])
-with title_col:
-    st.markdown("""
-    <div style="padding:6px 0 14px 0;">
-        <h1 style="font-size:30px; font-weight:800; color:#4488ff; margin:0;">📈 KATRASWING</h1>
-        <p style="color:#555; font-size:13px; margin-top:4px;">
-            AI-Powered Swing Trade Analyzer · 4-Agent System · Multi-Timeframe · 1:2 R:R
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-with toggle_col:
-    st.markdown("<div style='padding-top:18px;'>", unsafe_allow_html=True)
-    st.toggle("☀ Light", key="light_theme")
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("---")
 
-# ── Auto-start bot if credentials are available and bot isn't already running ──
-from ui.auth_renderer import get_alpaca_creds
-from bot.engine import get_state, start_bot
-
-_api_key, _secret_key, _is_paper = get_alpaca_creds()
-# Auto-start only when the user has NOT explicitly stopped the bot this session.
-# Without this guard, every st.rerun() (including after Stop Bot) would restart it.
-if _api_key and _secret_key and not get_state().get("running") and not st.session_state.get("_bot_user_stopped"):
-    start_bot(_api_key, _secret_key, _is_paper)
-
-# ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_analyzer, tab_watchlist, tab_alerts, tab_backtest, tab_heatmap, tab_screener, tab_portfolio, tab_compare, tab_replay, tab_bot, tab_politician, tab_settings = st.tabs([
-    "📊 Analyzer", "👁 Watchlist", "🔔 Price Alerts", "🧪 Backtester",
-    "🌡 Sector Heatmap", "🔍 Screener", "💼 Portfolio", "⚖ Compare", "⏪ Replay",
-    "🤖 Live Bot", "🏛 Congress Trades", "⚙️ Settings",
-])
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 1 — ANALYZER
-# ═══════════════════════════════════════════════════════════════════════════════
-with tab_analyzer:
-    from agents.orchestrator import run_analysis
-    from ui.renderer import (
-        render_header, render_score_panel, render_trade_setup,
-        render_candlestick_chart, render_macd_chart, render_rsi_chart,
-        render_volume_chart, render_indicator_breakdown, render_mtf_panel,
-        render_earnings_risk, render_earnings_history, render_position_sizing,
-        render_chart_patterns, render_export_buttons, render_filter_notes,
-        render_radar_chart, render_setup_checklist, render_relative_strength,
-        render_ai_narrative, render_valuation_history, render_estimate_revisions,
-        render_weinstein_stage, render_institutional_footprint,
-        render_ticker_notes, render_weinstein_chart, render_dividend_panel,
-        render_peer_comparison, render_live_dashboard, render_analyst_panel,
+    account_size = st.number_input(
+        "Account Size ($)",
+        value=st.session_state.get("account_size", 100_000),
+        min_value=1_000,
+        step=5_000,
+    )
+    risk_pct = st.slider(
+        "Risk per trade (%)",
+        min_value=0.25, max_value=3.0, step=0.25,
+        value=st.session_state.get("risk_pct", 1.0),
     )
 
-    # ── Cached dashboard scan (runs once, refreshes every 5 min) ─────────────
-    @st.cache_data(ttl=300, show_spinner=False)
-    def _load_dashboard():
-        from data.screener import run_screener
-        from datetime import datetime
-        results = run_screener(preset_name="All (no filter)")
-        ts = datetime.now().strftime("%H:%M")
-        return results, ts
+    st.markdown("---")
 
-    col_input, col_btn = st.columns([4, 1])
-    with col_input:
-        query = st.text_input(
-            label="Stock Search",
-            placeholder="Enter stock name or ticker  (e.g. Apple, TSLA, Nvidia...)",
-            label_visibility="collapsed",
-            key="stock_query",
-        )
-    with col_btn:
-        analyze_clicked = st.button("Analyze", use_container_width=True, type="primary", key="btn_analyze")
-
-    # ── Handle dashboard card click (auto-analyze) ────────────────────────────
-    _dash_trigger = st.session_state.pop("dashboard_trigger", None)
-    if _dash_trigger:
-        with st.spinner(f"Analyzing **{_dash_trigger}** — running 4-agent analysis + multi-timeframe..."):
-            try:
-                report = run_analysis(_dash_trigger)
-                st.session_state["last_report"] = report
-                from data.score_alerts import check_score_alerts
-                _sa_fired = check_score_alerts(report.ticker, report.score.total_score)
-                if _sa_fired:
-                    st.session_state["_sa_fired"] = _sa_fired
-            except Exception as e:
-                st.error(f"Analysis failed: {e}")
-
-    if analyze_clicked and query.strip():
-        with st.spinner(f"Analyzing **{query.strip()}** — running 4-agent analysis + multi-timeframe..."):
-            try:
-                report = run_analysis(query.strip())
-                st.session_state["last_report"] = report
-                # Check score alerts for this ticker
-                from data.score_alerts import check_score_alerts
-                _sa_fired = check_score_alerts(report.ticker, report.score.total_score)
-                if _sa_fired:
-                    st.session_state["_sa_fired"] = _sa_fired
-            except ValueError as e:
-                st.error(str(e))
-                st.stop()
-            except Exception as e:
-                st.error(f"Analysis failed: {e}")
-                st.stop()
-
-    report = st.session_state.get("last_report")
-
-    if report:
-        # ── Sidebar sticky summary ────────────────────────────────────────────
-        from utils.formatting import score_color, direction_color
-        _sc = score_color(report.score.total_score)
-        _dc = direction_color(report.trade_setup.direction)
-        _mtf_dir = report.mtf.agreement_direction if report.mtf else "—"
-        _mtf_score = f"{report.mtf.combined_score:.0f}" if report.mtf else "—"
-        with st.sidebar:
-            st.markdown(f"""
-            <div style="padding:10px; border-radius:10px; background:#1a1a2e;
-                        border:1px solid {_sc}; margin-bottom:10px;">
-                <div style="font-size:16px; font-weight:700; color:#e0e0e0;">{report.ticker}</div>
-                <div style="font-size:11px; color:#888; margin-bottom:6px;">{report.company_name[:24]}</div>
-                <div style="font-size:28px; font-weight:700; color:{_sc};">{report.score.total_score:.0f}</div>
-                <div style="font-size:12px; color:{_sc};">{report.score.signal_label}</div>
-                <div style="margin-top:6px; font-size:13px; font-weight:700; color:{_dc};">
-                    {report.trade_setup.direction}
-                </div>
-                <div style="margin-top:4px; font-size:11px; color:#888;">
-                    Win: {report.score.win_probability*100:.1f}%
-                    &nbsp;|&nbsp; EV: ${report.score.expected_value:+.2f}
-                </div>
-                <div style="margin-top:4px; font-size:11px; color:#888;">
-                    MTF: {_mtf_dir} &nbsp;({_mtf_score})
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-        # Score alert banners
-        for _sa in st.session_state.pop("_sa_fired", []):
-            _cond = "rose above" if _sa["condition"] == "above" else "fell below"
-            st.success(
-                f"Score Alert: **{_sa['ticker']}** score {_cond} {_sa['threshold']:.0f} "
-                f"— current score: **{_sa['score']:.0f}**"
-                + (f"  · {_sa['note']}" if _sa["note"] else "")
-            )
-
-        # ── Always visible: header + score + trade setup ──────────────────────
-        render_header(report)
-
-        col_score, col_trade = st.columns([1, 1], gap="medium")
-        with col_score:
-            render_score_panel(report)
-        with col_trade:
-            st.markdown("### Trade Setup")
-            render_trade_setup(report)
-
-        render_filter_notes(report)
-
-        # ── Section 1: Setup Quality ──────────────────────────────────────────
-        with st.expander("📊 Setup Quality — Relative Strength · Weinstein Stage · Checklist", expanded=True):
-            render_relative_strength(report)
-            st.markdown("---")
-            render_weinstein_stage(report)
-            st.markdown("---")
-            render_weinstein_chart(report)
-            st.markdown("---")
-            render_setup_checklist(report)
-
-        # ── Section 2: Price Charts ───────────────────────────────────────────
-        with st.expander("📈 Price Charts — Candlestick · MACD · RSI · Volume · Multi-TF", expanded=True):
-            render_candlestick_chart(report)
-            col_macd, col_rsi = st.columns(2, gap="medium")
-            with col_macd:
-                render_macd_chart(report)
-            with col_rsi:
-                render_rsi_chart(report)
-            render_volume_chart(report)
-            st.markdown("---")
-            from ui.renderer import render_multitf_chart
-            render_multitf_chart(report)
-
-        # ── Section 3: Technical Analysis ─────────────────────────────────────
-        with st.expander("🔬 Technical Analysis — MTF · Indicators · Radar · Footprint · Patterns", expanded=False):
-            render_mtf_panel(report)
-            st.markdown("---")
-            render_indicator_breakdown(report)
-            st.markdown("---")
-            render_radar_chart(report)
-            st.markdown("---")
-            render_institutional_footprint(report)
-            st.markdown("---")
-            render_chart_patterns(report.df)
-
-        # ── Section 4: Fundamentals ───────────────────────────────────────────
-        with st.expander("📋 Fundamentals — Quality Score · CAN SLIM · Valuation · Dividend · Peers", expanded=False):
-            from ui.renderer import render_canslim_panel, render_quality_score
-            render_quality_score(report)
-            st.markdown("---")
-            render_canslim_panel(report)
-            st.markdown("---")
-            render_valuation_history(report)
-            st.markdown("---")
-            render_dividend_panel(report)
-            st.markdown("---")
-            render_peer_comparison(report)
-
-        # ── Section 4b: Analyst Views ─────────────────────────────────────────
-        with st.expander("📡 Analyst Views — Track Records · S&P 500 Targets · Stock Consensus", expanded=False):
-            render_analyst_panel(report)
-
-        # ── Section 5: Congress Trades ────────────────────────────────────────
-        with st.expander("🏛 Congress Trades — Politician Activity · Sentiment · Score Correction", expanded=False):
-            from ui.politician_renderer import render_politician_panel
-            render_politician_panel(report)
-
-        # ── Section 6: Earnings & Events ──────────────────────────────────────
-        with st.expander("📅 Earnings & Events — Risk · History · Estimate Revisions", expanded=False):
-            render_earnings_risk(report.ticker)
-            render_earnings_history(report)
-            st.markdown("---")
-            render_estimate_revisions(report)
-
-        # ── Section 6: AI & Tools ─────────────────────────────────────────────
-        with st.expander("🤖 AI & Tools — Narrative · DCF · Position Sizing · Notes · Export", expanded=False):
-            from ui.renderer import render_dcf_estimator
-            render_dcf_estimator(report)
-            st.markdown("---")
-            render_ai_narrative(report)
-            st.markdown("---")
-            ts = report.trade_setup
-            if ts.direction != "NO TRADE":
-                render_position_sizing(ts.entry, ts.stop_loss, ts.take_profit)
-                st.markdown("---")
-            render_ticker_notes(report)
-            st.markdown("---")
-            render_export_buttons(report)
-
-        # ── Section 7: Intraday Signals ───────────────────────────────────────
-        with st.expander("⚡ Intraday Signals — 5m & 15m Strategies · Backtest · Entry / SL / TP / Lot Size", expanded=False):
-            _itf_col1, _itf_col2, _itf_col3 = st.columns([2, 2, 2])
-            with _itf_col1:
-                _itf_timeframe = st.selectbox(
-                    "Timeframe", ["15m", "5m"], key="itf_tf",
-                    help="15m: EMA Pullback, Squeeze, Absorption | 5m: VWAP+RSI, ORB",
-                )
-            with _itf_col2:
-                _itf_account = st.number_input(
-                    "Account size ($)", min_value=1_000, max_value=10_000_000,
-                    value=100_000, step=5_000, key="itf_account",
-                )
-            with _itf_col3:
-                _itf_risk = st.number_input(
-                    "Risk per trade (%)", min_value=0.1, max_value=5.0,
-                    value=1.0, step=0.1, key="itf_risk",
-                )
-
-            _itf_run_col, _itf_bt_col = st.columns([1, 1])
-            with _itf_run_col:
-                _itf_signals_btn = st.button(
-                    "⚡ Get Live Signals", use_container_width=True,
-                    type="primary", key="btn_itf_signals",
-                )
-            with _itf_bt_col:
-                _itf_backtest_btn = st.button(
-                    "🧪 Run Backtest (60d)", use_container_width=True,
-                    key="btn_itf_backtest",
-                )
-
-            # ── Live Signals ──────────────────────────────────────────────────
-            if _itf_signals_btn:
-                with st.spinner(f"Fetching {_itf_timeframe} bars + running strategies for {report.ticker}..."):
-                    try:
-                        from agents.intraday_strategies import run_intraday_signals
-                        _active, _all_sigs = run_intraday_signals(
-                            report.ticker,
-                            timeframe=_itf_timeframe,
-                            account_size=_itf_account,
-                            risk_pct=_itf_risk,
-                        )
-                        st.session_state["itf_active"]  = _active
-                        st.session_state["itf_all"]     = _all_sigs
-                        st.session_state["itf_ticker"]  = report.ticker
-                        st.session_state["itf_tf_used"] = _itf_timeframe
-                    except Exception as _e:
-                        st.error(f"Intraday signal error: {_e}")
-
-            _itf_active = st.session_state.get("itf_active", [])
-            _itf_all    = st.session_state.get("itf_all", [])
-            _itf_shown_ticker = st.session_state.get("itf_ticker", "")
-            _itf_tf_used      = st.session_state.get("itf_tf_used", "")
-
-            if _itf_active and _itf_shown_ticker == report.ticker:
-                st.markdown(f"#### Live {_itf_tf_used} Signals for **{report.ticker}**")
-                for _sig in _itf_active:
-                    _dir_color = "#00cc66" if _sig.signal == "LONG" else "#ff4444"
-                    _lot  = getattr(_sig, "_lot_size",   0)
-                    _pval = getattr(_sig, "_pos_value",  0.0)
-                    _drisk = getattr(_sig, "_dollar_risk", 0.0)
-                    _conf_pct = f"{_sig.confidence*100:.0f}%"
-                    st.markdown(f"""
-<div style="border:1px solid {_dir_color}; border-radius:10px; padding:14px 18px;
-            margin-bottom:12px; background:#0d1117;">
-  <div style="display:flex; justify-content:space-between; align-items:center;">
-    <span style="font-size:16px; font-weight:700; color:{_dir_color};">
-      {_sig.signal} &nbsp;·&nbsp; {_sig.strategy}
-    </span>
-    <span style="font-size:13px; color:#aaa;">Confidence: <b style="color:#fff;">{_conf_pct}</b></span>
-  </div>
-  <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:12px;">
-    <div style="text-align:center;">
-      <div style="font-size:11px; color:#888;">ENTRY</div>
-      <div style="font-size:17px; font-weight:700; color:#e0e0e0;">${_sig.entry:.2f}</div>
-    </div>
-    <div style="text-align:center;">
-      <div style="font-size:11px; color:#888;">STOP LOSS</div>
-      <div style="font-size:17px; font-weight:700; color:#ff4444;">${_sig.stop_loss:.2f}</div>
-    </div>
-    <div style="text-align:center;">
-      <div style="font-size:11px; color:#888;">TAKE PROFIT</div>
-      <div style="font-size:17px; font-weight:700; color:#00cc66;">${_sig.take_profit:.2f}</div>
-    </div>
-    <div style="text-align:center;">
-      <div style="font-size:11px; color:#888;">LOT SIZE</div>
-      <div style="font-size:17px; font-weight:700; color:#4488ff;">{_lot} shares</div>
-    </div>
-  </div>
-  <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:8px;">
-    <div style="text-align:center;">
-      <div style="font-size:11px; color:#888;">R:R</div>
-      <div style="font-size:13px; color:#ccc;">1:{_sig.rr_ratio:.1f}</div>
-    </div>
-    <div style="text-align:center;">
-      <div style="font-size:11px; color:#888;">POSITION VALUE</div>
-      <div style="font-size:13px; color:#ccc;">${_pval:,.0f}</div>
-    </div>
-    <div style="text-align:center;">
-      <div style="font-size:11px; color:#888;">DOLLAR RISK</div>
-      <div style="font-size:13px; color:#ccc;">${_drisk:,.0f}</div>
-    </div>
-  </div>
-  <div style="margin-top:10px; font-size:11px; color:#888;">
-    <b>Reason:</b> {_sig.reason}
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-            elif _itf_all and _itf_shown_ticker == report.ticker:
-                st.info(f"No {_itf_tf_used} signals triggered for {report.ticker} right now. Strategies ran — see status below.")
-
-            # Show FLAT reasons if we have them
-            if _itf_all and _itf_shown_ticker == report.ticker:
-                with st.expander("Strategy status (all signals)", expanded=False):
-                    for _sig in _itf_all:
-                        _icon = "🟢" if _sig.signal == "LONG" else ("🔴" if _sig.signal == "SHORT" else "⚪")
-                        st.markdown(f"{_icon} **{_sig.strategy}** ({_sig.timeframe}): {_sig.reason}")
-
-            # ── Backtest Results ──────────────────────────────────────────────
-            if _itf_backtest_btn:
-                with st.spinner(f"Running {_itf_timeframe} walk-forward backtest for {report.ticker} (last 60 days)..."):
-                    try:
-                        from agents.intraday_backtester import run_intraday_backtest
-                        _bt = run_intraday_backtest(report.ticker, timeframe=_itf_timeframe)
-                        st.session_state["itf_backtest"]    = _bt
-                        st.session_state["itf_bt_ticker"]   = report.ticker
-                        st.session_state["itf_bt_tf"]       = _itf_timeframe
-                    except Exception as _e:
-                        st.error(f"Backtest error: {_e}")
-
-            _bt = st.session_state.get("itf_backtest")
-            _bt_ticker = st.session_state.get("itf_bt_ticker", "")
-            _bt_tf     = st.session_state.get("itf_bt_tf", "")
-
-            if _bt and _bt_ticker == report.ticker:
-                _wr_color  = "#00cc66" if _bt.overall_win_rate >= 0.60 else "#ff9900"
-                _badge     = "✅ VALIDATED" if _bt.all_pass_threshold else "⚠ MIXED"
-                st.markdown(f"""
-<div style="border:1px solid #333; border-radius:10px; padding:14px 18px;
-            margin-bottom:12px; background:#0d1117;">
-  <div style="font-size:15px; font-weight:700; color:#e0e0e0;">
-    {_bt_tf} Backtest — {_bt.ticker} &nbsp;|&nbsp;
-    <span style="color:{_wr_color};">Overall Win Rate: {_bt.overall_win_rate*100:.1f}%</span>
-    &nbsp;·&nbsp; <span style="font-size:12px; color:#aaa;">{_badge} &nbsp;·&nbsp; {_bt.period_days} trading days</span>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-                for _r in _bt.results:
-                    if _r.total_trades == 0:
-                        st.markdown(f"**{_r.strategy}** — no trades generated in this period.")
-                        continue
-                    _rwr_color = "#00cc66" if _r.win_rate >= 0.60 else "#ff9900"
-                    _pass_badge = "✅" if _r.meets_threshold else "⚠"
-                    col_a, col_b, col_c, col_d, col_e = st.columns(5)
-                    col_a.metric(_r.strategy, f"{_r.win_rate*100:.1f}% WR {_pass_badge}")
-                    col_b.metric("Trades", _r.total_trades)
-                    col_c.metric("Profit Factor", f"{_r.profit_factor:.2f}")
-                    col_d.metric("Avg Win", f"{_r.avg_win_pct:+.2f}%")
-                    col_e.metric("Max DD", f"{_r.max_drawdown_pct:.2f}%")
-
-                if _bt.best_strategy:
-                    st.success(f"Best strategy: **{_bt.best_strategy}** — highest win rate in this period.")
-
-                st.caption(f"Backtest generated: {_bt.generated_at} · Walk-forward (no look-ahead) · 0.02% slippage · Long only · 1:2 R:R · Time stop: {'20 bars' if _bt_tf == '5m' else '10 bars'}")
-
-        st.markdown("""
-        <div style="text-align:center; margin-top:20px; color:#333; font-size:12px;">
-            ⚠ Educational purposes only. Not financial advice.
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-        with st.spinner("Loading market dashboard..."):
-            try:
-                _dash_results, _dash_ts = _load_dashboard()
-                render_live_dashboard(_dash_results, _dash_ts)
-            except Exception as _e:
-                st.markdown("""
-                <div style="text-align:center; padding:40px 20px; color:#444;">
-                    <div style="font-size:48px;">📊</div>
-                    <h3 style="color:#555;">Enter a ticker above to analyze</h3>
-                    <p style="font-size:13px; color:#333;">RSI · MACD · Bollinger · ATR · Multi-TF · CAN SLIM · AI Narrative</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 2 — WATCHLIST
-# ═══════════════════════════════════════════════════════════════════════════════
-with tab_watchlist:
-    from data.watchlist import load_watchlist, add_ticker, remove_ticker, load_scores, save_scores
-    from agents.orchestrator import run_analysis as _run
-    from utils.formatting import fmt_price, fmt_pct, score_color
-
-    st.markdown("### Watchlist")
-
-    # Add ticker
-    wc1, wc2 = st.columns([4, 1])
-    with wc1:
-        new_ticker = st.text_input(
-            label="Add Ticker",
-            placeholder="Ticker or company name (e.g. AAPL, Microsoft)",
-            label_visibility="collapsed",
-            key="wl_input",
-        )
-    with wc2:
-        if st.button("Add", key="wl_add", use_container_width=True):
-            if new_ticker.strip():
-                add_ticker(new_ticker.strip().upper())
-                st.rerun()
-
-    tickers = load_watchlist()
-
-    if not tickers:
-        st.info("Your watchlist is empty. Add tickers above.")
-    else:
-        scan_clicked = st.button("🔄 Scan All", key="wl_scan", type="primary")
-
-        if scan_clicked:
-            prev_scores = load_scores()
-            results = []
-            new_scores = {}
-            progress = st.progress(0, text="Scanning...")
-            for idx, t in enumerate(tickers):
-                progress.progress((idx + 1) / len(tickers), text=f"Scanning {t}...")
-                try:
-                    r = _run(t)
-                    score = r.score.total_score
-                    new_scores[r.ticker] = score
-                    prev = prev_scores.get(r.ticker)
-                    delta = round(score - prev, 1) if prev is not None else None
-                    results.append({
-                        "ticker":     r.ticker,
-                        "company":    r.company_name[:28],
-                        "price":      r.current_price,
-                        "chg_pct":    r.price_change_pct,
-                        "score":      score,
-                        "signal":     r.score.signal_label,
-                        "direction":  r.trade_setup.direction,
-                        "entry":      r.trade_setup.entry,
-                        "stop_loss":  r.trade_setup.stop_loss,
-                        "take_profit":r.trade_setup.take_profit,
-                        "win_prob":   r.score.win_probability,
-                        "ev":         r.score.expected_value,
-                        "mtf":        r.mtf.agreement_direction if r.mtf else "—",
-                        "delta":      delta,
-                    })
-                except Exception as e:
-                    results.append({"ticker": t, "company": "Error", "price": 0,
-                                    "chg_pct": 0, "score": 0, "signal": str(e)[:30],
-                                    "direction": "—", "entry": 0, "stop_loss": 0,
-                                    "take_profit": 0, "win_prob": 0.0, "ev": 0.0,
-                                    "mtf": "—", "delta": None})
-            progress.empty()
-            save_scores(new_scores)
-            st.session_state["wl_results"] = results
-
-        results = st.session_state.get("wl_results", [])
-
-        if results:
-            import pandas as pd
-            df_wl = pd.DataFrame(results)
-            df_wl = df_wl.sort_values("score", ascending=False)
-
-            # Render colored rows
-            for _, row in df_wl.iterrows():
-                s = float(row["score"])
-                color = score_color(s)
-                chg   = float(row["chg_pct"])
-                chg_col = "#00c851" if chg >= 0 else "#ff4444"
-                arrow   = "▲" if chg >= 0 else "▼"
-                wp = float(row["win_prob"]) * 100
-                ev = float(row["ev"])
-                ev_col = "#00c851" if ev >= 0 else "#ff4444"
-
-                c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.5, 2, 1.2, 1.2, 1, 1.2, 1.2, 0.6])
-                c1.markdown(f"<b style='color:#e0e0e0;'>{row['ticker']}</b>", unsafe_allow_html=True)
-                c2.markdown(f"<span style='color:#888; font-size:12px;'>{row['company']}</span>", unsafe_allow_html=True)
-                c3.markdown(f"<span style='color:#e0e0e0;'>{fmt_price(row['price'])}</span> <span style='color:{chg_col}; font-size:11px;'>{arrow}{abs(chg):.1f}%</span>", unsafe_allow_html=True)
-                delta = row.get("delta")
-                if delta is not None:
-                    d_arrow = "▲" if delta >= 0 else "▼"
-                    d_color = "#00c851" if delta >= 0 else "#ff4444"
-                    delta_html = f"<span style='color:{d_color}; font-size:10px; margin-left:4px;'>{d_arrow}{abs(delta):.1f}</span>"
-                else:
-                    delta_html = ""
-                c4.markdown(f"<span style='color:{color}; font-weight:700; font-size:18px;'>{s:.0f}</span>{delta_html}", unsafe_allow_html=True)
-                c5.markdown(f"<span style='color:{color}; font-size:11px;'>{row['signal']}</span>", unsafe_allow_html=True)
-                c6.markdown(f"<span style='color:#e0e0e0; font-size:12px;'>{wp:.1f}%</span> <span style='color:#666; font-size:10px;'>win</span>", unsafe_allow_html=True)
-                c7.markdown(f"<span style='color:{ev_col}; font-size:12px;'>${ev:+.1f}</span> <span style='color:#666; font-size:10px;'>EV</span>", unsafe_allow_html=True)
-                if c8.button("✕", key=f"rm_{row['ticker']}"):
-                    remove_ticker(row["ticker"])
-                    st.session_state.pop("wl_results", None)
-                    st.rerun()
-                st.markdown("<div style='border-bottom:1px solid #1e1e2e; margin:2px 0;'></div>", unsafe_allow_html=True)
-
-        else:
-            # Show static list with remove buttons
-            for t in tickers:
-                tc1, tc2 = st.columns([6, 1])
-                tc1.markdown(f"<span style='color:#e0e0e0; font-size:15px;'>📌 {t}</span>", unsafe_allow_html=True)
-                if tc2.button("✕", key=f"rm_s_{t}"):
-                    remove_ticker(t)
-                    st.rerun()
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 3 — PRICE ALERTS
-# ═══════════════════════════════════════════════════════════════════════════════
-with tab_alerts:
-    from data.alerts import load_alerts, add_alert, remove_alert, check_alerts
-    from utils.formatting import fmt_price
-
-    st.markdown("### Price Alerts")
-
-    # Check alerts on load
-    triggered = check_alerts()
-    for t in triggered:
-        cond = "rose above" if t["condition"] == "above" else "fell below"
-        st.success(f"🔔 **{t['ticker']}** {cond} your target {fmt_price(t['target'])}  —  current: {fmt_price(t['current'])}"
-                   + (f"  · {t['note']}" if t['note'] else ""))
-
-    # Add alert form
-    with st.expander("➕ Set New Alert", expanded=False):
-        ac1, ac2, ac3, ac4 = st.columns([1.5, 1.5, 1.5, 1])
-        with ac1:
-            al_ticker = st.text_input("Ticker", placeholder="AAPL", key="al_ticker",
-                                      label_visibility="visible")
-        with ac2:
-            al_price = st.number_input("Target Price ($)", min_value=0.01, step=0.5, key="al_price",
-                                       label_visibility="visible")
-        with ac3:
-            al_cond = st.selectbox("Condition", ["above", "below"], key="al_cond",
-                                   label_visibility="visible")
-        with ac4:
-            al_note = st.text_input("Note (optional)", key="al_note", label_visibility="visible")
-
-        if st.button("Create Alert", key="al_create", type="primary"):
-            if al_ticker.strip() and al_price > 0:
-                add_alert(al_ticker.strip().upper(), al_price, al_cond, al_note)
-                st.success(f"Alert created: {al_ticker.upper()} {al_cond} ${al_price:.2f}")
-                st.rerun()
-            else:
-                st.warning("Please enter a ticker and target price.")
-
-    # Alert list
-    alerts = load_alerts()
-    if not alerts:
-        st.info("No alerts set. Use the form above to create one.")
-    else:
-        active   = [a for a in alerts if not a.triggered]
-        fired    = [a for a in alerts if a.triggered]
-
-        if active:
-            st.markdown("#### Active Alerts")
-            for idx, a in enumerate(alerts):
-                if a.triggered:
-                    continue
-                real_idx = alerts.index(a)
-                bc1, bc2, bc3, bc4, bc5 = st.columns([1, 1.5, 1.2, 2, 0.6])
-                bc1.markdown(f"<b style='color:#e0e0e0;'>{a.ticker}</b>", unsafe_allow_html=True)
-                cond_color = "#00c851" if a.condition == "above" else "#ff4444"
-                bc2.markdown(f"<span style='color:{cond_color};'>{a.condition.upper()} {fmt_price(a.target_price)}</span>", unsafe_allow_html=True)
-                bc3.markdown(f"<span style='color:#666; font-size:12px;'>Set {a.created_at[:10]}</span>", unsafe_allow_html=True)
-                bc4.markdown(f"<span style='color:#888; font-size:12px;'>{a.note}</span>", unsafe_allow_html=True)
-                if bc5.button("✕", key=f"del_al_{real_idx}"):
-                    remove_alert(real_idx)
-                    st.rerun()
-                st.markdown("<div style='border-bottom:1px solid #1e1e2e; margin:2px 0;'></div>", unsafe_allow_html=True)
-
-        if fired:
-            with st.expander(f"✅ Triggered Alerts ({len(fired)})", expanded=False):
-                for a in fired:
-                    st.markdown(
-                        f"**{a.ticker}** — {a.condition} ${a.target_price:.2f} "
-                        f"→ triggered at **${a.triggered_price:.2f}** on {(a.triggered_at or '')[:10]}"
-                        + (f" · _{a.note}_" if a.note else ""),
-                        unsafe_allow_html=False,
-                    )
+    auto_refresh = st.checkbox(
+        "Auto-refresh (5 min)",
+        value=st.session_state.get("auto_refresh", False),
+    )
+    run_btn = st.button("🔄 Run Signal", use_container_width=True, type="primary")
 
     st.markdown("---")
-    from ui.renderer import render_score_alerts_panel
-    render_score_alerts_panel()
+    st.caption("Data: yfinance + Finnhub  \nCharts: Plotly  \nv2.0 NQ Edition")
 
+# Persist settings
+st.session_state["ticker"] = ticker_input
+st.session_state["finnhub_key"] = finnhub_key
+st.session_state["account_size"] = account_size
+st.session_state["risk_pct"] = risk_pct
+st.session_state["auto_refresh"] = auto_refresh
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 4 — BACKTESTER
-# ═══════════════════════════════════════════════════════════════════════════════
-with tab_backtest:
-    from agents.backtester import run_backtest
-    from ui.renderer import render_backtest_results
+# Auto-refresh: rerun every 5 minutes
+if auto_refresh:
+    last = st.session_state.get("last_refresh_ts", 0)
+    if time.time() - last > 300:
+        st.session_state["last_refresh_ts"] = time.time()
+        st.session_state["needs_run"] = True
 
-    st.markdown("### Historical Backtester")
-    st.caption("Walk-forward simulation — no look-ahead bias. Enters trades when score crosses threshold.")
+needs_run = run_btn or st.session_state.pop("needs_run", False)
 
-    bt1, bt2, bt3, bt4 = st.columns([2, 1, 1, 1])
-    with bt1:
-        bt_ticker = st.text_input(
-            label="Ticker",
-            placeholder="AAPL, Tesla, MSFT...",
-            label_visibility="collapsed",
-            key="bt_ticker",
+# ── Header ────────────────────────────────────────────────────────────────────
+st.markdown(
+    f"# ⚡ {ticker_input} — 5m Signal Dashboard",
+)
+
+if not needs_run and "signal_result" not in st.session_state:
+    st.info("Enter a ticker in the sidebar and click **Run Signal** to load the dashboard.")
+    st.stop()
+
+# ── Run signal pipeline ───────────────────────────────────────────────────────
+if needs_run:
+    if not ticker_input:
+        st.warning("Enter a ticker symbol in the sidebar.")
+        st.stop()
+
+    with st.spinner(f"Fetching 5m data and news for {ticker_input}…"):
+        from agents.signal_engine import run_signal
+        result = run_signal(
+            ticker=ticker_input,
+            finnhub_api_key=finnhub_key,
+            account_size=account_size,
+            risk_pct=risk_pct,
         )
-    with bt2:
-        bt_period = st.selectbox("Period", ["1y", "2y", "3y"], index=1,
-                                  label_visibility="visible", key="bt_period")
-    with bt3:
-        bt_threshold = st.slider("Long threshold", 50, 80, 65, step=5, key="bt_thresh")
-    with bt4:
-        bt_run = st.button("Run Backtest", type="primary", use_container_width=True, key="bt_run")
+    st.session_state["signal_result"] = result
+    st.session_state["last_refresh_ts"] = time.time()
+else:
+    result = st.session_state["signal_result"]
 
-    if bt_run and bt_ticker.strip():
-        with st.spinner(f"Running walk-forward backtest on **{bt_ticker.strip()}** ({bt_period})... this may take 20-40 seconds."):
-            try:
-                bt_result = run_backtest(
-                    ticker=bt_ticker.strip(),
-                    period=bt_period,
-                    score_threshold=float(bt_threshold),
-                    short_threshold=float(100 - bt_threshold),
-                )
-                st.session_state["bt_result"] = bt_result
-            except ValueError as e:
-                st.error(str(e))
-            except Exception as e:
-                st.error(f"Backtest failed: {e}")
+# ── Error guard ───────────────────────────────────────────────────────────────
+if result.error:
+    st.error(f"Error: {result.error}")
+    st.stop()
 
-    bt_result = st.session_state.get("bt_result")
-    if bt_result:
-        render_backtest_results(bt_result)
-    else:
-        st.markdown("""
-        <div style="text-align:center; padding:50px 20px; color:#444;">
-            <div style="font-size:48px;">🧪</div>
-            <h3 style="color:#555;">Enter a ticker and click Run Backtest</h3>
-            <p style="font-size:13px; max-width:420px; margin:10px auto; color:#444;">
-                The engine replays 1-3 years of daily data, scores each day,
-                enters trades at the threshold, and tracks SL/TP outcomes.
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+# ── Last refresh timestamp ────────────────────────────────────────────────────
+from datetime import datetime
+st.caption(f"Last updated: {datetime.now().strftime('%H:%M:%S')}  |  Ticker: {result.ticker}")
 
+# ── Main layout: chart (left) + signal+news (right) ──────────────────────────
+from ui.chart import (
+    render_5m_chart,
+    render_signal_box,
+    render_news_feed,
+    render_indicators,
+    render_pattern_summary,
+)
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 5 — SECTOR HEATMAP
-# ═══════════════════════════════════════════════════════════════════════════════
-with tab_heatmap:
-    from data.sector_scan import SECTOR_TICKERS, scan_all_sectors, sector_averages
-    from agents.orchestrator import run_analysis as _run_hm
-    from ui.renderer import render_sector_heatmap
+col_chart, col_panel = st.columns([6, 4])
 
-    st.markdown("### Sector Heatmap")
-    st.caption("Scans 80+ liquid stocks across 11 GICS sectors and ranks by average trade score.")
+with col_chart:
+    render_5m_chart(result)
 
-    # Sector selector + scan button
-    hm_c1, hm_c2 = st.columns([3, 1])
-    with hm_c1:
-        selected_sectors = st.multiselect(
-            "Sectors to scan (leave empty = all)",
-            options=list(SECTOR_TICKERS.keys()),
-            default=[],
-            key="hm_sectors",
-            label_visibility="visible",
-        )
-    with hm_c2:
-        hm_scan = st.button("🔄 Scan Sectors", type="primary",
-                             use_container_width=True, key="hm_scan")
-
-    if hm_scan:
-        sectors_to_scan = selected_sectors or list(SECTOR_TICKERS.keys())
-        total_tickers = sum(len(SECTOR_TICKERS[s]) for s in sectors_to_scan)
-
-        progress_bar = st.progress(0, text="Starting sector scan...")
-        progress_state = {"count": 0}
-
-        def _hm_progress(i, total, ticker, sector):
-            progress_state["count"] = i + 1
-            pct = (i + 1) / total
-            progress_bar.progress(pct, text=f"[{i+1}/{total}] Scanning {ticker} ({sector})...")
-
-        try:
-            scan_data = scan_all_sectors(
-                run_analysis_fn=_run_hm,
-                sectors=sectors_to_scan,
-                progress_callback=_hm_progress,
-            )
-            progress_bar.empty()
-            st.session_state["hm_scan_data"] = scan_data
-            st.session_state["hm_sector_avgs"] = sector_averages(scan_data)
-        except Exception as e:
-            progress_bar.empty()
-            st.error(f"Scan failed: {e}")
-
-    scan_data  = st.session_state.get("hm_scan_data")
-    sector_avgs = st.session_state.get("hm_sector_avgs")
-
-    if scan_data and sector_avgs:
-        render_sector_heatmap(scan_data, sector_avgs)
-    else:
-        st.markdown("""
-        <div style="text-align:center; padding:50px 20px; color:#444;">
-            <div style="font-size:48px;">🌡</div>
-            <h3 style="color:#555;">Select sectors and click Scan</h3>
-            <p style="font-size:13px; max-width:440px; margin:10px auto; color:#444;">
-                Scanning all 11 sectors (~80 tickers) takes 3-5 minutes.
-                Select specific sectors for a faster partial scan.
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # ── Sector Rotation Timeline (always visible — fast ETF fetch) ────────────
-    from ui.renderer import render_sector_rotation
+with col_panel:
+    render_signal_box(result)
     st.markdown("---")
-    st.markdown("### Sector Rotation Timeline")
-    st.caption("4-week rolling returns for all 11 sector ETFs — shows where money is flowing.")
-    render_sector_rotation()
+    st.markdown("#### 📰 Breaking News")
+    render_news_feed(result)
 
+# ── Bottom row: indicators + patterns ────────────────────────────────────────
+st.markdown("---")
+ind_col, pat_col = st.columns([1, 1])
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 6 — SCREENER
-# ═══════════════════════════════════════════════════════════════════════════════
-with tab_screener:
-    from data.screener import run_screener, PRESETS, SWING_UNIVERSE
-    from ui.renderer import render_screener_results
+with ind_col:
+    st.markdown("#### 📊 Indicators")
+    render_indicators(result)
 
-    st.markdown("### Swing Screener")
-    st.caption(f"Fast scan of {len(SWING_UNIVERSE)} liquid stocks. Uses lightweight TA — for discovery, not full analysis.")
-
-    sc1, sc2, sc3 = st.columns([2, 1, 1])
-    with sc1:
-        preset = st.selectbox(
-            "Filter Preset",
-            options=list(PRESETS.keys()),
-            key="scr_preset",
-            label_visibility="visible",
-        )
-    with sc2:
-        scr_run = st.button("🔍 Run Screener", type="primary", use_container_width=True, key="scr_run")
-    with sc3:
-        st.markdown("<div style='padding-top:28px; font-size:12px; color:#555;'>~5-10 sec scan</div>", unsafe_allow_html=True)
-
-    if scr_run:
-        with st.spinner(f"Scanning {len(SWING_UNIVERSE)} stocks — **{preset}**..."):
-            try:
-                scr_results = run_screener(preset_name=preset)
-                st.session_state["scr_results"] = scr_results
-                st.session_state["scr_preset_used"] = preset
-            except Exception as e:
-                st.error(f"Screener failed: {e}")
-
-    scr_results = st.session_state.get("scr_results")
-    if scr_results is not None:
-        used = st.session_state.get("scr_preset_used", preset)
-        st.markdown(f"#### Results — {used}")
-        render_screener_results(scr_results)
-    else:
-        st.markdown("""
-        <div style="text-align:center; padding:50px 20px; color:#444;">
-            <div style="font-size:48px;">🔍</div>
-            <h3 style="color:#555;">Select a filter preset and click Run Screener</h3>
-            <p style="font-size:13px; max-width:460px; margin:10px auto; color:#444;">
-                Results show score, direction, RSI, volume ratio, Weinstein Stage 2 flag, and 1-day move.
-                Click any ticker in the Analyzer tab for a full deep-dive.
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 7 — PORTFOLIO
-# ═══════════════════════════════════════════════════════════════════════════════
-with tab_portfolio:
-    from ui.renderer import render_portfolio_tab
-    render_portfolio_tab()
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 8 — COMPARE
-# ═══════════════════════════════════════════════════════════════════════════════
-with tab_compare:
-    from agents.orchestrator import run_analysis as _run_cmp
-    from ui.renderer import render_comparison
-
-    st.markdown("### Comparison Mode")
-    st.caption("Analyze 2–3 stocks side by side. Scores, trade setups, and a radar chart are shown together.")
-
-    cmp_c1, cmp_c2, cmp_c3, cmp_c4 = st.columns([2, 2, 2, 1])
-    with cmp_c1:
-        cmp_t1 = st.text_input(
-            label="Stock 1", placeholder="AAPL",
-            label_visibility="visible", key="cmp_t1",
-        )
-    with cmp_c2:
-        cmp_t2 = st.text_input(
-            label="Stock 2", placeholder="MSFT",
-            label_visibility="visible", key="cmp_t2",
-        )
-    with cmp_c3:
-        cmp_t3 = st.text_input(
-            label="Stock 3 (optional)", placeholder="NVDA",
-            label_visibility="visible", key="cmp_t3",
-        )
-    with cmp_c4:
-        st.markdown("<div style='padding-top:22px;'>", unsafe_allow_html=True)
-        cmp_run = st.button("Compare", type="primary", use_container_width=True, key="cmp_run")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    if cmp_run:
-        queries = [q.strip() for q in [cmp_t1, cmp_t2, cmp_t3] if q.strip()]
-        if len(queries) < 2:
-            st.warning("Enter at least 2 tickers to compare.")
-        else:
-            cmp_reports = []
-            with st.spinner(f"Analyzing {', '.join(queries)}..."):
-                for q in queries:
-                    try:
-                        cmp_reports.append(_run_cmp(q))
-                    except Exception as e:
-                        st.error(f"Could not analyze **{q}**: {e}")
-            if cmp_reports:
-                st.session_state["cmp_reports"] = cmp_reports
-
-    cmp_reports = st.session_state.get("cmp_reports")
-
-    if cmp_reports:
-        st.markdown("---")
-        render_comparison(cmp_reports)
-    else:
-        st.markdown("""
-        <div style="text-align:center; padding:60px 20px; color:#444;">
-            <div style="font-size:56px;">⚖</div>
-            <h3 style="color:#555;">Enter 2–3 stocks above and click Compare</h3>
-            <p style="font-size:13px; max-width:460px; margin:10px auto; color:#444;">
-                Scores, signals, trade levels, and a radar chart will appear side by side.
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 9 — BAR REPLAY
-# ═══════════════════════════════════════════════════════════════════════════════
-with tab_replay:
-    from ui.renderer import render_bar_replay
-
-    st.markdown("### Bar Replay Mode")
-    st.caption("Step through history bar-by-bar. Uses the last analyzed stock — run Analyzer first.")
-
-    replay_report = st.session_state.get("last_report")
-
-    if replay_report:
-        render_bar_replay(replay_report)
-    else:
-        st.markdown("""
-        <div style="text-align:center; padding:60px 20px; color:#444;">
-            <div style="font-size:48px;">⏪</div>
-            <h3 style="color:#555;">No analysis loaded yet</h3>
-            <p style="font-size:13px; max-width:460px; margin:10px auto; color:#444;">
-                Go to the Analyzer tab, search for a stock, and click Analyze.
-                Then come back here to replay its price history bar-by-bar.
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 10 — LIVE BOT
-# ═══════════════════════════════════════════════════════════════════════════════
-with tab_bot:
-    from ui.bot_renderer import render_bot_tab
-    render_bot_tab()
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 11 — CONGRESS TRADES
-# ═══════════════════════════════════════════════════════════════════════════════
-with tab_politician:
-    from ui.politician_renderer import render_politician_tab
-    render_politician_tab()
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 12 — SETTINGS
-# ═══════════════════════════════════════════════════════════════════════════════
-with tab_settings:
-    from ui.settings_renderer import render_settings_tab
-    render_settings_tab()
+with pat_col:
+    st.markdown("#### 🔍 Chart Patterns")
+    render_pattern_summary(result)
