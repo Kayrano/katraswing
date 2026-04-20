@@ -30,25 +30,20 @@ except ImportError:
 # ── Symbol mapping: yfinance ticker → your MT5 broker symbol ─────────────────
 # Edit these to match your broker's exact symbol names.
 SYMBOL_MAP: dict[str, str] = {
-    "NQ=F":     "NQ100m!",    # NQ Mini Futures (CME)
-    "ES=F":     "ES",          # ES Mini Futures (CME)
-    "XAUUSD=X": "XAUUSD",     # Gold Spot
-    "GC=F":     "XAUUSD",     # Gold Futures → Gold Spot
+    "NQ=F":     "#US100_M26",    # NQ Mini Futures (CME)
+    "ES=F":     "#US500_M26",          # ES Mini Futures (CME)
     "EURUSD=X": "EURUSD",
     "GBPUSD=X": "GBPUSD",
-    "USDJPY=X": "USDJPY",
-    "BTCUSD=X": "BTCUSD",
+    "USDJPY=X": "USDJPY"
 }
 
 # Default lot sizes by MT5 symbol (adjust for your account/risk tolerance)
 DEFAULT_LOTS: dict[str, float] = {
-    "NQ100m!": 1.0,
-    "ES":       1.0,
-    "XAUUSD":   0.1,
-    "EURUSD":   0.1,
-    "GBPUSD":   0.1,
-    "USDJPY":   0.1,
-    "BTCUSD":   0.01,
+    "#US100_M26": 0.20,
+    "#US500_M26": 0.20,
+    "EURUSD":     0.1,
+    "GBPUSD":     0.1,
+    "USDJPY":     0.1,
 }
 
 MAGIC_NUMBER = 234100   # unique ID for Katraswing orders
