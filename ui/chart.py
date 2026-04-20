@@ -166,7 +166,7 @@ def render_5m_chart(result: SignalResult) -> None:
     )
     fig.update_xaxes(showticklabels=False, row=1, col=1)
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 # ── Signal box ────────────────────────────────────────────────────────────────

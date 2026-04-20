@@ -42,7 +42,7 @@ st.markdown("""
 INSTRUMENTS = [
     {"ticker": "NQ=F",     "label": "🔵 NQ Mini",   "name": "Nasdaq 100 E-mini Futures"},
     {"ticker": "ES=F",     "label": "🟢 ES Mini",   "name": "S&P 500 E-mini Futures"},
-    {"ticker": "XAUUSD=X", "label": "🟡 Gold / g",  "name": "Gram Gold Spot vs USD"},
+    {"ticker": "GC=F",     "label": "🟡 Gold / g",  "name": "Gram Gold Futures / USD"},
 ]
 
 # ── MT5 background thread state (module-level → survives Streamlit reruns) ───
@@ -225,7 +225,7 @@ with st.sidebar:
         "Auto-refresh (5 min)",
         value=st.session_state.get("auto_refresh", False),
     )
-    run_btn = st.button("🔄 Run All Signals", use_container_width=True, type="primary")
+    run_btn = st.button("🔄 Run All Signals", width='stretch', type="primary")
 
     # ── MT5 Auto-Trading Panel ────────────────────────────────────────────────
     st.markdown("---")
@@ -234,7 +234,7 @@ with st.sidebar:
 
     mt5_tickers = st.multiselect(
         "Trade these signals",
-        options=["NQ=F", "ES=F", "XAUUSD=X"],
+        options=["NQ=F", "ES=F", "GC=F"],
         default=st.session_state.get("mt5_tickers", ["NQ=F", "ES=F"]),
     )
     mt5_min_conf = st.slider(
@@ -252,7 +252,7 @@ with st.sidebar:
     is_running = _MT5["running"]
 
     if not is_running:
-        if st.button("▶ Start Auto-Trading", use_container_width=True, type="primary"):
+        if st.button("▶ Start Auto-Trading", width='stretch', type="primary"):
             _start_mt5({
                 "tickers":      mt5_tickers,
                 "min_conf":     mt5_min_conf,
@@ -263,7 +263,7 @@ with st.sidebar:
             })
             st.rerun()
     else:
-        if st.button("⏹ Stop Auto-Trading", use_container_width=True):
+        if st.button("⏹ Stop Auto-Trading", width='stretch'):
             _stop_mt5()
             st.rerun()
 
@@ -278,7 +278,7 @@ with st.sidebar:
 
     # Emergency close-all
     if is_running and _MT5["connected"]:
-        if st.button("🚨 Close All Positions", use_container_width=True):
+        if st.button("🚨 Close All Positions", width='stretch'):
             from utils.mt5_bridge import close_all_positions
             close_all_positions()
             st.success("All positions closed.")
