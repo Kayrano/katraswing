@@ -14,7 +14,18 @@ import streamlit as st
 from agents.signal_engine import SignalResult
 
 
-# ── Candlestick chart ─────────────────────────────────────────────────────────
+# ── MT5-style candlestick chart ───────────────────────────────────────────────
+
+_BG       = "#131722"   # MT5 dark background
+_GRID     = "#1e2329"   # subtle grid lines
+_UP       = "#089981"   # MT5 green candle
+_DOWN     = "#F23645"   # MT5 red candle
+_VWAP_C   = "#2196F3"   # blue VWAP line
+_EMA_C    = "#FF9800"   # orange EMA line
+_ENTRY_C  = "#B2B5BE"   # white/grey entry line
+_SL_C     = "#F23645"   # red SL line
+_TP_C     = "#089981"   # green TP line
+
 
 def render_5m_chart(result: SignalResult) -> None:
     df = result.df_5m
@@ -22,115 +33,138 @@ def render_5m_chart(result: SignalResult) -> None:
         st.warning("No chart data available.")
         return
 
-    df = df.tail(100).copy()
+    df = df.tail(80).copy()
+    # Use string labels on x-axis to eliminate weekend/holiday gaps
+    x_labels = [str(i) for i in range(len(df))]
+    tick_step = max(1, len(df) // 8)
+    tickvals  = x_labels[::tick_step]
+    ticktext  = [df.index[int(i)].strftime("%m/%d %H:%M") for i in tickvals]
 
     fig = make_subplots(
         rows=2, cols=1,
         shared_xaxes=True,
-        row_heights=[0.75, 0.25],
-        vertical_spacing=0.03,
+        row_heights=[0.78, 0.22],
+        vertical_spacing=0.02,
     )
 
-    # Candlestick
+    # ── Candlesticks ──────────────────────────────────────────────────────────
     fig.add_trace(go.Candlestick(
-        x=df.index,
-        open=df["Open"], high=df["High"],
-        low=df["Low"], close=df["Close"],
-        name="Price",
-        increasing_line_color="#26a69a",
-        decreasing_line_color="#ef5350",
-        increasing_fillcolor="#26a69a",
-        decreasing_fillcolor="#ef5350",
+        x=x_labels,
+        open=df["Open"].values,
+        high=df["High"].values,
+        low=df["Low"].values,
+        close=df["Close"].values,
+        name="",
+        increasing=dict(line=dict(color=_UP, width=1), fillcolor=_UP),
+        decreasing=dict(line=dict(color=_DOWN, width=1), fillcolor=_DOWN),
+        showlegend=False,
+        hovertext=[
+            f"O: {o:.2f}  H: {h:.2f}  L: {l:.2f}  C: {c:.2f}"
+            for o, h, l, c in zip(df["Open"], df["High"], df["Low"], df["Close"])
+        ],
+        hoverinfo="text+x",
     ), row=1, col=1)
 
-    # Session VWAP
+    # ── VWAP ─────────────────────────────────────────────────────────────────
     if "session_vwap" in df.columns:
         fig.add_trace(go.Scatter(
-            x=df.index, y=df["session_vwap"],
-            name="VWAP", line=dict(color="#ffb300", width=1.5, dash="dot"),
-            hovertemplate="%{y:.2f}",
+            x=x_labels, y=df["session_vwap"].values,
+            name="VWAP",
+            line=dict(color=_VWAP_C, width=1.5),
+            hovertemplate="VWAP: %{y:.2f}<extra></extra>",
         ), row=1, col=1)
 
-    # EMA20 — compute full series from the chart's df
+    # ── EMA 20 ────────────────────────────────────────────────────────────────
     try:
         import utils.ta_compat as ta
-        ema20_series = ta.ema(df["Close"], length=20)
-        if ema20_series is not None and not ema20_series.isna().all():
+        ema20 = ta.ema(df["Close"], length=20)
+        if ema20 is not None and not ema20.isna().all():
             fig.add_trace(go.Scatter(
-                x=df.index, y=ema20_series,
-                name="EMA20", line=dict(color="#7e57c2", width=1.2),
-                hovertemplate="%{y:.2f}",
+                x=x_labels, y=ema20.values,
+                name="EMA20",
+                line=dict(color=_EMA_C, width=1.2),
+                hovertemplate="EMA20: %{y:.2f}<extra></extra>",
             ), row=1, col=1)
     except Exception:
         pass
 
-    # Entry / SL / TP lines
+    # ── Entry / SL / TP horizontal lines ────────────────────────────────────
     if result.direction in ("LONG", "SHORT") and result.entry > 0:
-        color_entry = "#42a5f5"
-        color_sl = "#ef5350"
-        color_tp = "#26a69a"
-        x_range = [df.index[0], df.index[-1]]
-
-        for price, color, label in [
-            (result.entry, color_entry, f"Entry {result.entry:.2f}"),
-            (result.sl,    color_sl,    f"SL {result.sl:.2f}"),
-            (result.tp,    color_tp,    f"TP {result.tp:.2f}"),
+        direction_label = "BUY" if result.direction == "LONG" else "SELL"
+        for price, color, tag in [
+            (result.entry, _ENTRY_C, direction_label),
+            (result.sl,    _SL_C,    f"SL  {result.sl:.2f}"),
+            (result.tp,    _TP_C,    f"TP  {result.tp:.2f}"),
         ]:
-            fig.add_shape(type="line", x0=x_range[0], x1=x_range[1],
-                          y0=price, y1=price,
-                          line=dict(color=color, width=1.5, dash="dash"),
-                          row=1, col=1)
+            fig.add_shape(
+                type="line",
+                x0=x_labels[0], x1=x_labels[-1],
+                y0=price, y1=price,
+                line=dict(color=color, width=1.5, dash="dash"),
+                row=1, col=1,
+            )
+            # Label pinned to right edge of chart
             fig.add_annotation(
-                x=x_range[-1], y=price, text=label,
-                showarrow=False, xanchor="right",
-                font=dict(color=color, size=11),
+                x=x_labels[-1], y=price,
+                text=f"<b>{tag}</b>",
+                showarrow=False,
+                xanchor="left",
+                bgcolor=color,
+                bordercolor=color,
+                font=dict(color="#ffffff" if color != _ENTRY_C else "#131722", size=11),
+                xshift=4,
                 row=1, col=1,
             )
 
-    # Pattern annotations
-    if result.patterns and result.patterns.patterns:
-        for p in result.patterns.patterns[:3]:
-            bar_idx = min(p.bar_end, len(df) - 1)
-            x_pos = df.index[bar_idx]
-            y_pos = df["High"].iloc[bar_idx] * 1.001
-            fig.add_annotation(
-                x=x_pos, y=y_pos, text=p.name,
-                showarrow=True, arrowhead=2,
-                font=dict(color=p.color, size=10),
-                arrowcolor=p.color,
-                row=1, col=1,
-            )
-
-    # Volume bars
-    colors = ["#26a69a" if c >= o else "#ef5350"
-              for c, o in zip(df["Close"], df["Open"])]
+    # ── Volume bars ───────────────────────────────────────────────────────────
+    vol_colors = [_UP if c >= o else _DOWN
+                  for c, o in zip(df["Close"].values, df["Open"].values)]
     fig.add_trace(go.Bar(
-        x=df.index, y=df["Volume"],
-        name="Volume", marker_color=colors, showlegend=False,
+        x=x_labels, y=df["Volume"].values,
+        marker_color=vol_colors,
+        marker_opacity=0.6,
+        showlegend=False,
+        hovertemplate="Vol: %{y:,.0f}<extra></extra>",
     ), row=2, col=1)
 
-    # RVOL line overlay on volume
-    if "rvol" in df.columns:
-        # Scale rvol to volume axis
-        avg_vol = df["Volume"].mean()
-        fig.add_trace(go.Scatter(
-            x=df.index, y=df["rvol"] * avg_vol,
-            name="RVOL×Avg", line=dict(color="#ffb300", width=1, dash="dot"),
-            hovertemplate="RVOL: %{customdata:.2f}",
-            customdata=df["rvol"],
-        ), row=2, col=1)
-
+    # ── Layout ────────────────────────────────────────────────────────────────
     fig.update_layout(
-        paper_bgcolor="#0e1117",
-        plot_bgcolor="#0e1117",
-        font=dict(color="#fafafa"),
+        paper_bgcolor=_BG,
+        plot_bgcolor=_BG,
+        font=dict(color="#B2B5BE", family="monospace", size=11),
         xaxis_rangeslider_visible=False,
-        legend=dict(orientation="h", y=1.02, x=0),
-        margin=dict(l=0, r=0, t=30, b=0),
-        height=480,
+        margin=dict(l=0, r=80, t=20, b=0),
+        height=500,
+        legend=dict(
+            orientation="h", x=0, y=1.02,
+            font=dict(size=11), bgcolor="rgba(0,0,0,0)",
+        ),
+        hovermode="x unified",
     )
-    fig.update_xaxes(gridcolor="#1e2130", showgrid=True)
-    fig.update_yaxes(gridcolor="#1e2130", showgrid=True)
+
+    # Price axis: right side, matching MT5
+    fig.update_yaxes(
+        gridcolor=_GRID, gridwidth=1,
+        side="right",
+        showgrid=True, zeroline=False,
+        tickfont=dict(size=10),
+        row=1, col=1,
+    )
+    fig.update_yaxes(
+        gridcolor=_GRID,
+        side="right",
+        showgrid=False, zeroline=False,
+        tickfont=dict(size=9),
+        row=2, col=1,
+    )
+    fig.update_xaxes(
+        gridcolor=_GRID, gridwidth=1,
+        showgrid=True, zeroline=False,
+        tickvals=tickvals, ticktext=ticktext,
+        tickfont=dict(size=10),
+        row=2, col=1,
+    )
+    fig.update_xaxes(showticklabels=False, row=1, col=1)
 
     st.plotly_chart(fig, use_container_width=True)
 
@@ -313,16 +347,6 @@ def render_pattern_summary(result: SignalResult) -> None:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _tail_series(series_or_val, n: int, index) -> list:
-    """Extract last n values from an indicator that may be a scalar or series."""
-    if hasattr(series_or_val, "__len__"):
-        arr = list(series_or_val)
-        if len(arr) >= n:
-            return arr[-n:]
-        return [None] * (n - len(arr)) + arr
-    return [series_or_val] * n
-
 
 def _time_ago(dt: datetime) -> str:
     now = datetime.now(tz=timezone.utc)
