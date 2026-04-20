@@ -1,9 +1,9 @@
 """
 KATRASWING — 5m Signal Dashboard
-Three fixed instruments: NQ Mini, ES Mini, Gram Gold / USD
+Instruments: NQ Mini, ES Mini
 
-Run locally with: streamlit run app.py
-MT5 auto-trading requires MetaTrader5 to be open on the same Windows machine.
+Run locally: streamlit run app.py
+MT5 approval-trading requires MetaTrader5 open on the same Windows machine.
 """
 
 import threading
@@ -33,56 +33,60 @@ st.markdown("""
   }
   .stTabs [aria-selected="true"] { background: #2a2d3e; color: #fafafa; }
   hr { border-color: #2a2d3e; }
-  .mt5-card { background: #1e2130; border-radius: 10px; padding: 12px 16px; margin-bottom: 8px; }
-  .mt5-pos  { background: #111827; border-radius: 6px; padding: 6px 10px; font-size: 12px; margin: 3px 0; }
+  .signal-card { border-radius: 12px; padding: 16px 20px; margin-bottom: 10px; }
+  .mt5-pos { background:#111827; border-radius:6px; padding:6px 10px; font-size:12px; margin:3px 0; }
+  .log-box  { background:#111827; border-radius:8px; padding:10px; font-size:11px;
+               font-family:monospace; color:#9ca3af; max-height:160px; overflow-y:auto; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Instruments ───────────────────────────────────────────────────────────────
+# ── Instruments (gold removed — Yahoo Finance unavailable) ────────────────────
 INSTRUMENTS = [
-    {"ticker": "NQ=F",     "label": "🔵 NQ Mini",   "name": "Nasdaq 100 E-mini Futures"},
-    {"ticker": "ES=F",     "label": "🟢 ES Mini",   "name": "S&P 500 E-mini Futures"},
-    {"ticker": "GC=F",     "label": "🟡 Gold / g",  "name": "Gram Gold Futures / USD"},
+    {"ticker": "NQ=F", "label": "🔵 NQ Mini", "name": "Nasdaq 100 E-mini Futures"},
+    {"ticker": "ES=F", "label": "🟢 ES Mini", "name": "S&P 500 E-mini Futures"},
 ]
 
-# ── MT5 background thread state (module-level → survives Streamlit reruns) ───
-# Written by the background thread, read by Streamlit on each rerun.
+# ── MT5 shared state (module-level — survives Streamlit reruns) ───────────────
 _MT5: dict = {
-    "thread":      None,
-    "stop_event":  None,
-    "running":     False,
-    "connected":   False,
-    "last_check":  None,       # datetime of last poll
-    "last_signal": None,       # dict with last fired signal info
-    "positions":   [],         # list of MT5Position objects
-    "log":         [],         # last 20 log lines
-    "error":       "",
+    "thread":     None,
+    "stop_event": None,
+    "running":    False,
+    "connected":  False,
+    "last_check": None,
+    "pending":    [],      # signals awaiting your approval — list of dicts
+    "sent":       set(),   # "ticker:direction:date" keys already approved+sent
+    "rejected":   set(),   # keys you dismissed (skip for today)
+    "last_sent":  None,    # info dict of last successfully placed order
+    "positions":  [],      # open MT5Position objects
+    "log":        [],      # last 20 activity lines
+    "error":      "",
 }
 
 
-def _mt5_log(msg: str):
+def _log(msg: str):
     ts = datetime.now().strftime("%H:%M:%S")
     _MT5["log"].append(f"{ts}  {msg}")
     _MT5["log"] = _MT5["log"][-20:]
 
 
 def _mt5_loop(stop_event: threading.Event, config: dict):
-    """Background thread: polls signal engine and sends orders to MT5."""
+    """
+    Background thread: polls signal engine, queues signals for manual approval.
+    Does NOT place any order automatically.
+    """
     from agents.signal_engine import run_signal
-    from utils.mt5_bridge import (
-        connect, disconnect, ensure_connected,
-        send_from_signal_result, get_open_positions,
-    )
+    from utils.mt5_bridge import connect, disconnect, get_open_positions
 
-    _mt5_log("Connecting to MT5 terminal…")
+    _log("Connecting to MT5 terminal…")
     if not connect():
-        _MT5["error"] = "Cannot connect to MT5. Is the terminal open?"
-        _mt5_log(f"ERROR: {_MT5['error']}")
+        _MT5["error"] = "Cannot connect to MT5. Is the terminal open and logged in?"
+        _log(f"ERROR: {_MT5['error']}")
         _MT5["running"] = False
         return
 
     _MT5["connected"] = True
-    _mt5_log("Connected ✓")
+    _MT5["error"] = ""
+    _log("Connected ✓  —  monitoring for signals…")
 
     tickers      = config["tickers"]
     min_conf     = config["min_conf"]
@@ -91,18 +95,17 @@ def _mt5_loop(stop_event: threading.Event, config: dict):
     finnhub_key  = config["finnhub_key"]
     interval     = config["interval"]
 
-    sent: set[str] = set()   # dedup: (ticker:direction:date)
-
     while not stop_event.is_set():
         today = date.today()
-        # clear sent signals from prior sessions
-        sent = {k for k in sent if k.endswith(str(today))}
+        # drop stale sent/rejected from prior sessions
+        _MT5["sent"]     = {k for k in _MT5["sent"]     if k.endswith(str(today))}
+        _MT5["rejected"]  = {k for k in _MT5["rejected"] if k.endswith(str(today))}
 
         for ticker in tickers:
             if stop_event.is_set():
                 break
 
-            _mt5_log(f"Polling {ticker}…")
+            _log(f"Polling {ticker}…")
             try:
                 sr = run_signal(
                     ticker=ticker,
@@ -111,54 +114,52 @@ def _mt5_loop(stop_event: threading.Event, config: dict):
                     risk_pct=risk_pct,
                 )
             except Exception as exc:
-                _mt5_log(f"ERROR {ticker}: {exc}")
+                _log(f"ERROR {ticker}: {exc}")
                 continue
 
             if sr.error:
-                _mt5_log(f"{ticker}: {sr.error}")
+                _log(f"{ticker}: {sr.error}")
                 continue
 
             if sr.direction not in ("LONG", "SHORT"):
-                _mt5_log(f"{ticker}: no trade (conf={sr.confidence:.0%})")
+                _log(f"{ticker}: no trade (conf={sr.confidence:.0%})")
                 continue
 
             if sr.confidence < min_conf:
-                _mt5_log(
-                    f"{ticker}: {sr.direction} {sr.confidence:.0%} "
-                    f"< threshold {min_conf:.0%} — skip"
-                )
+                _log(f"{ticker}: {sr.direction} {sr.confidence:.0%} < {min_conf:.0%} — skip")
                 continue
 
             key = f"{ticker}:{sr.direction}:{today}"
-            if key in sent:
-                _mt5_log(f"{ticker}: already in trade today — skip")
+
+            if key in _MT5["sent"]:
+                _log(f"{ticker}: already sent today — skip")
+                continue
+            if key in _MT5["rejected"]:
+                _log(f"{ticker}: rejected by you today — skip")
                 continue
 
-            _mt5_log(
-                f"SIGNAL ★ {sr.direction} {ticker} "
-                f"conf={sr.confidence:.0%} entry={sr.entry:.4f}"
-            )
-
-            if not ensure_connected():
-                _mt5_log("MT5 reconnect failed — skipping order")
+            # Check if already in pending queue
+            pending_keys = {p["key"] for p in _MT5["pending"]}
+            if key in pending_keys:
+                _log(f"{ticker}: already awaiting your approval")
                 continue
 
-            result = send_from_signal_result(sr)
-            if result.success:
-                sent.add(key)
-                _MT5["last_signal"] = {
-                    "ticker":     ticker,
-                    "direction":  sr.direction,
-                    "confidence": sr.confidence,
-                    "entry":      result.entry,
-                    "sl":         result.sl,
-                    "tp":         result.tp,
-                    "ticket":     result.ticket,
-                    "time":       datetime.now().strftime("%H:%M:%S"),
-                }
-                _mt5_log(f"Order #{result.ticket} placed ✓")
-            else:
-                _mt5_log(f"Order rejected: {result.error}")
+            # Queue for manual approval
+            top_patterns = [(p.name, p.win_rate) for p in sr.patterns.patterns[:3]]
+            _MT5["pending"].append({
+                "sr":          sr,
+                "key":         key,
+                "ticker":      ticker,
+                "direction":   sr.direction,
+                "confidence":  sr.confidence,
+                "entry":       sr.entry,
+                "sl":          sr.sl,
+                "tp":          sr.tp,
+                "patterns":    top_patterns,
+                "news":        sr.news_sentiment,
+                "time":        datetime.now().strftime("%H:%M:%S"),
+            })
+            _log(f"★ AWAITING APPROVAL — {sr.direction} {ticker} {sr.confidence:.0%}")
 
         try:
             _MT5["positions"] = get_open_positions()
@@ -171,7 +172,7 @@ def _mt5_loop(stop_event: threading.Event, config: dict):
     disconnect()
     _MT5["connected"] = False
     _MT5["running"]   = False
-    _mt5_log("MT5 thread stopped.")
+    _log("MT5 thread stopped.")
 
 
 def _start_mt5(config: dict):
@@ -179,11 +180,8 @@ def _start_mt5(config: dict):
         return
     stop_event = threading.Event()
     t = threading.Thread(target=_mt5_loop, args=(stop_event, config), daemon=True)
-    _MT5["stop_event"] = stop_event
-    _MT5["thread"]     = t
-    _MT5["running"]    = True
-    _MT5["error"]      = ""
-    _MT5["log"]        = []
+    _MT5.update({"stop_event": stop_event, "thread": t, "running": True,
+                 "error": "", "log": [], "pending": []})
     t.start()
 
 
@@ -222,23 +220,23 @@ with st.sidebar:
     st.markdown("---")
 
     auto_refresh = st.checkbox(
-        "Auto-refresh (5 min)",
+        "Auto-refresh signals (5 min)",
         value=st.session_state.get("auto_refresh", False),
     )
-    run_btn = st.button("🔄 Run All Signals", width='stretch', type="primary")
+    run_btn = st.button("🔄 Run All Signals", width="stretch", type="primary")
 
-    # ── MT5 Auto-Trading Panel ────────────────────────────────────────────────
+    # ── MT5 Panel ─────────────────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown("### 🤖 MT5 Auto-Trading")
-    st.caption("Runs locally — MT5 terminal must be open on this machine.")
+    st.markdown("### 🤖 MT5 Signal Monitor")
+    st.caption("Finds signals and asks for your approval before placing any order.")
 
     mt5_tickers = st.multiselect(
-        "Trade these signals",
-        options=["NQ=F", "ES=F", "GC=F"],
+        "Monitor these tickers",
+        options=["NQ=F", "ES=F"],
         default=st.session_state.get("mt5_tickers", ["NQ=F", "ES=F"]),
     )
     mt5_min_conf = st.slider(
-        "Min confidence to enter",
+        "Min confidence to alert",
         min_value=0.50, max_value=0.95, step=0.05,
         value=st.session_state.get("mt5_min_conf", 0.65),
     )
@@ -250,9 +248,8 @@ with st.sidebar:
     )
 
     is_running = _MT5["running"]
-
     if not is_running:
-        if st.button("▶ Start Auto-Trading", width='stretch', type="primary"):
+        if st.button("▶ Start Monitoring", width="stretch", type="primary"):
             _start_mt5({
                 "tickers":      mt5_tickers,
                 "min_conf":     mt5_min_conf,
@@ -263,22 +260,23 @@ with st.sidebar:
             })
             st.rerun()
     else:
-        if st.button("⏹ Stop Auto-Trading", width='stretch'):
+        if st.button("⏹ Stop Monitoring", width="stretch"):
             _stop_mt5()
             st.rerun()
 
-    # Status indicator
     if is_running:
-        conn_icon = "🟢" if _MT5["connected"] else "🟡"
-        st.markdown(f"{conn_icon} **Running** — polling every {mt5_interval}s")
+        icon = "🟢" if _MT5["connected"] else "🟡"
+        st.markdown(f"{icon} **Monitoring** — every {mt5_interval}s")
         if _MT5["last_check"]:
             st.caption(f"Last poll: {_MT5['last_check'].strftime('%H:%M:%S')}")
+        pending_count = len(_MT5["pending"])
+        if pending_count:
+            st.warning(f"⚠️ {pending_count} signal(s) awaiting approval")
     elif _MT5["error"]:
         st.error(_MT5["error"])
 
-    # Emergency close-all
-    if is_running and _MT5["connected"]:
-        if st.button("🚨 Close All Positions", width='stretch'):
+    if _MT5["connected"] and _MT5["positions"]:
+        if st.button("🚨 Close All Positions", width="stretch"):
             from utils.mt5_bridge import close_all_positions
             close_all_positions()
             st.success("All positions closed.")
@@ -292,15 +290,17 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
     st.markdown("---")
-    st.caption("Data: yfinance + Finnhub  \nv2.1 MT5 Integrated")
+    st.caption("Data: yfinance + Finnhub  \nv2.2 — Approval Mode")
 
 # Persist settings
-st.session_state["finnhub_key"]  = finnhub_key
-st.session_state["account_size"] = account_size
-st.session_state["risk_pct"]     = risk_pct
-st.session_state["auto_refresh"] = auto_refresh
-st.session_state["mt5_tickers"]  = mt5_tickers
-st.session_state["mt5_min_conf"] = mt5_min_conf
+st.session_state.update({
+    "finnhub_key":  finnhub_key,
+    "account_size": account_size,
+    "risk_pct":     risk_pct,
+    "auto_refresh": auto_refresh,
+    "mt5_tickers":  mt5_tickers,
+    "mt5_min_conf": mt5_min_conf,
+})
 
 # Auto-refresh trigger
 if auto_refresh:
@@ -314,59 +314,133 @@ needs_run = run_btn or ("results" not in st.session_state)
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown("# ⚡ Katraswing — 5m Signal Dashboard")
 
-# ── MT5 Live Status Bar (shown when auto-trading is active) ──────────────────
-if _MT5["running"] or _MT5["last_signal"]:
-    with st.container():
-        mt5_cols = st.columns([1, 1, 1])
+# ── Pending approval signals ──────────────────────────────────────────────────
+pending = _MT5["pending"]
+if pending:
+    st.markdown("---")
+    st.markdown(f"## 🔔 Trade Signals Awaiting Your Approval  ({len(pending)})")
 
-        with mt5_cols[0]:
-            sig = _MT5["last_signal"]
-            if sig:
-                color = "#00c851" if sig["direction"] == "LONG" else "#ff4444"
-                st.markdown(
-                    f"<div class='mt5-card'>"
-                    f"<b>Last Signal</b><br>"
-                    f"<span style='color:{color};font-size:18px;'>{sig['direction']}</span> "
-                    f"{sig['ticker']} — <b>{sig['confidence']:.0%}</b> conf<br>"
-                    f"<small>Entry {sig['entry']:.2f} | SL {sig['sl']:.2f} | TP {sig['tp']:.2f}</small><br>"
-                    f"<small style='color:#888;'>Ticket #{sig['ticket']} @ {sig['time']}</small>"
-                    f"</div>",
-                    unsafe_allow_html=True,
+    to_remove = []   # indices approved or rejected this rerun
+
+    for i, item in enumerate(pending):
+        direction = item["direction"]
+        ticker    = item["ticker"]
+        conf      = item["confidence"]
+
+        bg    = "#0d2b1a" if direction == "LONG" else "#2b0d0d"
+        color = "#00c851" if direction == "LONG" else "#ff4444"
+        arrow = "▲" if direction == "LONG" else "▼"
+
+        pattern_str = "  |  ".join(
+            f"{n} ({w:.0%})" for n, w in item["patterns"]
+        ) or "—"
+
+        st.markdown(
+            f"<div class='signal-card' style='background:{bg};border:1px solid {color};'>"
+            f"<span style='color:{color};font-size:22px;font-weight:700;'>"
+            f"{arrow} {direction} &nbsp; {ticker}</span>"
+            f"&nbsp;&nbsp;<span style='color:#ccc;font-size:14px;'>confidence <b>{conf:.0%}</b> "
+            f"&nbsp;·&nbsp; detected {item['time']}</span><br><br>"
+            f"<b>Entry</b> {item['entry']:.2f} &nbsp;&nbsp;"
+            f"<b>Stop Loss</b> {item['sl']:.2f} &nbsp;&nbsp;"
+            f"<b>Take Profit</b> {item['tp']:.2f}<br>"
+            f"<small style='color:#aaa;'>Patterns: {pattern_str}"
+            f" &nbsp;·&nbsp; News: {item['news']}</small>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+        btn_col1, btn_col2, btn_col3 = st.columns([2, 2, 6])
+
+        with btn_col1:
+            if st.button(f"✅ Approve & Send", key=f"approve_{item['key']}"):
+                from utils.mt5_bridge import ensure_connected, send_from_signal_result
+                if ensure_connected():
+                    result = send_from_signal_result(item["sr"])
+                    if result.success:
+                        _MT5["sent"].add(item["key"])
+                        _MT5["last_sent"] = {
+                            "ticker":     ticker,
+                            "direction":  direction,
+                            "confidence": conf,
+                            "entry":      result.entry,
+                            "sl":         result.sl,
+                            "tp":         result.tp,
+                            "ticket":     result.ticket,
+                            "time":       datetime.now().strftime("%H:%M:%S"),
+                        }
+                        _log(f"Order #{result.ticket} placed ✓ (approved by user)")
+                        st.success(f"Order #{result.ticket} placed in MT5!")
+                    else:
+                        st.error(f"MT5 rejected: {result.error}")
+                else:
+                    st.error("MT5 not connected.")
+                to_remove.append(i)
+
+        with btn_col2:
+            if st.button(f"❌ Reject", key=f"reject_{item['key']}"):
+                _MT5["rejected"].add(item["key"])
+                _log(f"Signal rejected by user: {direction} {ticker}")
+                to_remove.append(i)
+
+        st.markdown("")  # spacing
+
+    # Remove processed items (reverse order to keep indices valid)
+    for i in sorted(set(to_remove), reverse=True):
+        if i < len(_MT5["pending"]):
+            _MT5["pending"].pop(i)
+
+    if to_remove:
+        st.rerun()
+
+    st.markdown("---")
+
+# ── Last sent order + open positions ─────────────────────────────────────────
+if _MT5["last_sent"] or _MT5["positions"]:
+    cols = st.columns([1, 1])
+
+    with cols[0]:
+        sig = _MT5["last_sent"]
+        if sig:
+            color = "#00c851" if sig["direction"] == "LONG" else "#ff4444"
+            st.markdown(
+                f"<div style='background:#1e2130;border-radius:10px;padding:12px 16px;'>"
+                f"<b>Last Approved Order</b><br>"
+                f"<span style='color:{color};font-size:18px;'>{sig['direction']}</span> "
+                f"{sig['ticker']} — <b>{sig['confidence']:.0%}</b> conf<br>"
+                f"<small>Entry {sig['entry']:.2f} | SL {sig['sl']:.2f} | TP {sig['tp']:.2f}</small><br>"
+                f"<small style='color:#888;'>Ticket #{sig['ticket']} @ {sig['time']}</small>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+    with cols[1]:
+        positions = _MT5["positions"]
+        if positions:
+            html = "<div style='background:#1e2130;border-radius:10px;padding:12px 16px;'><b>Open Positions</b><br>"
+            for p in positions:
+                pnl_color = "#00c851" if p.profit >= 0 else "#ff4444"
+                dir_color = "#00c851" if p.direction == "LONG" else "#ff4444"
+                html += (
+                    f"<div class='mt5-pos'>"
+                    f"<span style='color:{dir_color};'>{p.direction}</span> "
+                    f"{p.symbol} vol={p.volume} "
+                    f"<span style='color:{pnl_color};'>P&L {p.profit:+.2f}</span></div>"
                 )
-            else:
-                st.markdown(
-                    "<div class='mt5-card'><b>Last Signal</b><br>"
-                    "<span style='color:#888;'>Waiting for signal…</span></div>",
-                    unsafe_allow_html=True,
-                )
+            html += "</div>"
+            st.markdown(html, unsafe_allow_html=True)
 
-        with mt5_cols[1]:
-            positions = _MT5["positions"]
-            pos_html = "<div class='mt5-card'><b>Open Positions</b><br>"
-            if positions:
-                for p in positions:
-                    pnl_color = "#00c851" if p.profit >= 0 else "#ff4444"
-                    dir_color = "#00c851" if p.direction == "LONG" else "#ff4444"
-                    pos_html += (
-                        f"<div class='mt5-pos'>"
-                        f"<span style='color:{dir_color};'>{p.direction}</span> "
-                        f"{p.symbol} vol={p.volume} "
-                        f"<span style='color:{pnl_color};'>P&L {p.profit:+.2f}</span>"
-                        f"</div>"
-                    )
-            else:
-                pos_html += "<span style='color:#888;'>No open positions</span>"
-            pos_html += "</div>"
-            st.markdown(pos_html, unsafe_allow_html=True)
+    st.markdown("---")
 
-        with mt5_cols[2]:
-            log_lines = _MT5["log"][-8:]
-            log_html = "<div class='mt5-card'><b>Activity Log</b><br><small style='color:#888;font-family:monospace;'>"
-            log_html += "<br>".join(log_lines) if log_lines else "No activity yet"
-            log_html += "</small></div>"
-            st.markdown(log_html, unsafe_allow_html=True)
-
-        st.markdown("---")
+# ── Activity log (compact) ────────────────────────────────────────────────────
+if _MT5["running"] and _MT5["log"]:
+    with st.expander("📋 MT5 Activity Log", expanded=False):
+        st.markdown(
+            "<div class='log-box'>" +
+            "<br>".join(_MT5["log"][-15:]) +
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
 # ── Fetch all signals ─────────────────────────────────────────────────────────
 if needs_run:
@@ -391,7 +465,7 @@ else:
 
 st.caption(f"Last updated: {datetime.now().strftime('%H:%M:%S')}")
 
-# ── Tabs ──────────────────────────────────────────────────────────────────────
+# ── Instrument Tabs ───────────────────────────────────────────────────────────
 from ui.chart import (
     render_5m_chart, render_signal_box, render_news_feed,
     render_indicators, render_pattern_summary,
@@ -402,7 +476,6 @@ tabs = st.tabs([inst["label"] for inst in INSTRUMENTS])
 for tab, inst in zip(tabs, INSTRUMENTS):
     with tab:
         result = results[inst["ticker"]]
-
         st.markdown(f"### {inst['name']} &nbsp; `{inst['ticker']}`", unsafe_allow_html=True)
 
         if result.error:
@@ -410,10 +483,8 @@ for tab, inst in zip(tabs, INSTRUMENTS):
             continue
 
         col_chart, col_panel = st.columns([6, 4])
-
         with col_chart:
             render_5m_chart(result)
-
         with col_panel:
             render_signal_box(result)
             st.markdown("---")
