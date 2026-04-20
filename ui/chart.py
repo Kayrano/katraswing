@@ -51,14 +51,18 @@ def render_5m_chart(result: SignalResult) -> None:
             hovertemplate="%{y:.2f}",
         ), row=1, col=1)
 
-    # EMA20
-    if result.indicators and result.indicators.ema20 is not None:
-        ema_series = _tail_series(result.indicators.ema20, len(df), df.index)
-        fig.add_trace(go.Scatter(
-            x=df.index, y=ema_series,
-            name="EMA20", line=dict(color="#7e57c2", width=1.2),
-            hovertemplate="%{y:.2f}",
-        ), row=1, col=1)
+    # EMA20 — compute full series from the chart's df
+    try:
+        import utils.ta_compat as ta
+        ema20_series = ta.ema(df["Close"], length=20)
+        if ema20_series is not None and not ema20_series.isna().all():
+            fig.add_trace(go.Scatter(
+                x=df.index, y=ema20_series,
+                name="EMA20", line=dict(color="#7e57c2", width=1.2),
+                hovertemplate="%{y:.2f}",
+            ), row=1, col=1)
+    except Exception:
+        pass
 
     # Entry / SL / TP lines
     if result.direction in ("LONG", "SHORT") and result.entry > 0:
@@ -270,8 +274,8 @@ def render_indicators(result: SignalResult) -> None:
         ("RSI(14)", f"{ind.rsi:.1f}" if ind.rsi is not None else "—",
          "#ef5350" if (ind.rsi or 50) > 70 else "#26a69a" if (ind.rsi or 50) < 30 else "#fafafa"),
         ("ATR", f"{ind.atr:.2f}" if ind.atr is not None else "—", "#fafafa"),
-        ("MACD", f"{ind.macd_hist:+.3f}" if ind.macd_hist is not None else "—",
-         "#26a69a" if (ind.macd_hist or 0) > 0 else "#ef5350"),
+        ("MACD", f"{ind.macd_histogram:+.3f}" if ind.macd_histogram is not None else "—",
+         "#26a69a" if (ind.macd_histogram or 0) > 0 else "#ef5350"),
         ("BB Squeeze", "YES" if getattr(ind, "bb_squeeze", False) else "NO",
          "#ffb300" if getattr(ind, "bb_squeeze", False) else "#555"),
     ]
