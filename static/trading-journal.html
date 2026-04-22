@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Journal — Apr 14–21, 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0b0e;
+    --surface: #111318;
+    --surface2: #181c24;
+    --border: #1e2330;
+    --accent: #00d4aa;
+    --accent2: #ff6b6b;
+    --accent3: #ffd166;
+    --text: #e8eaf0;
+    --muted: #5a6080;
+    --win: #00d4aa;
+    --loss: #ff4f4f;
+    --neutral: #ffd166;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* HEADER */
+  header {
+    padding: 40px 48px 28px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content: '';
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 360px; height: 360px;
+    background: radial-gradient(circle, rgba(0,212,170,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .journal-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: var(--text);
+  }
+  .journal-title span { color: var(--accent); }
+  .header-meta {
+    text-align: right;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .header-meta strong { color: var(--accent3); }
+
+  /* OVERVIEW CARDS */
+  .overview-bar {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .stat-card {
+    background: var(--surface);
+    padding: 20px 24px;
+  }
+  .stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .stat-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+  }
+  .stat-value.pos { color: var(--win); }
+  .stat-value.neg { color: var(--loss); }
+  .stat-value.neu { color: var(--neutral); }
+  .stat-sub { font-size: 10px; color: var(--muted); margin-top: 3px; }
+
+  /* CHART AREA */
+  .chart-section {
+    padding: 32px 48px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 20px;
+  }
+  .section-title span { color: var(--accent); }
+  #equity-chart {
+    width: 100%;
+    height: 180px;
+  }
+
+  /* TABS */
+  .tabs-wrapper {
+    padding: 0 48px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+  }
+  .tab {
+    padding: 16px 24px;
+    cursor: pointer;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    background: none;
+    border-left: none; border-right: none; border-top: none;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab .tab-pnl { font-size: 10px; display: block; margin-top: 2px; }
+  .tab .tab-pnl.pos { color: var(--win); }
+  .tab .tab-pnl.neg { color: var(--loss); }
+
+  /* DAY PANEL */
+  .day-panels { padding: 32px 48px 48px; }
+  .day-panel { display: none; }
+  .day-panel.active { display: block; }
+
+  .day-header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 24px;
+    margin-bottom: 28px;
+    align-items: start;
+  }
+  .day-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+  }
+  .day-stats-row {
+    display: flex;
+    gap: 24px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+  .ds { text-align: center; }
+  .ds-v { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; }
+  .ds-l { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .day-pnl-badge {
+    font-family: 'Syne', sans-serif;
+    font-size: 32px;
+    font-weight: 800;
+    padding: 12px 24px;
+    border: 1px solid;
+    text-align: center;
+  }
+  .day-pnl-badge.pos { color: var(--win); border-color: rgba(0,212,170,0.3); background: rgba(0,212,170,0.05); }
+  .day-pnl-badge.neg { color: var(--loss); border-color: rgba(255,79,79,0.3); background: rgba(255,79,79,0.05); }
+
+  /* TRADES TABLE */
+  .trades-table-wrap { overflow-x: auto; margin-bottom: 28px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  thead tr { background: var(--surface2); }
+  th {
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 10px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 400;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .td-pos { color: var(--win); font-weight: 700; }
+  .td-neg { color: var(--loss); font-weight: 700; }
+  .td-neutral { color: var(--neutral); }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 9px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border-radius: 2px;
+  }
+  .badge-so { background: rgba(255,79,79,0.15); color: var(--loss); border: 1px solid rgba(255,79,79,0.3); }
+  .badge-sl { background: rgba(255,107,107,0.1); color: #ff9999; border: 1px solid rgba(255,107,107,0.2); }
+  .badge-tp { background: rgba(0,212,170,0.1); color: var(--win); border: 1px solid rgba(0,212,170,0.2); }
+  .badge-win { background: rgba(0,212,170,0.08); color: var(--win); }
+  .badge-loss { background: rgba(255,79,79,0.08); color: var(--loss); }
+
+  /* ANALYSIS BOX */
+  .analysis-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .analysis-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 20px;
+  }
+  .analysis-box h4 {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--accent3);
+    margin-bottom: 12px;
+  }
+  .analysis-box ul { list-style: none; padding: 0; }
+  .analysis-box ul li {
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border);
+    color: #b0b8d0;
+    font-size: 12px;
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  .analysis-box ul li:last-child { border-bottom: none; }
+  .analysis-box ul li::before { content: '▸'; color: var(--accent); flex-shrink: 0; }
+  .analysis-box.red h4 { color: var(--loss); }
+  .analysis-box.green h4 { color: var(--win); }
+
+  /* PATTERN FLAGS */
+  .flags-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .flag {
+    padding: 5px 14px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border: 1px solid;
+  }
+  .flag-danger { color: var(--loss); border-color: rgba(255,79,79,0.4); background: rgba(255,79,79,0.05); }
+  .flag-warn { color: var(--neutral); border-color: rgba(255,209,102,0.4); background: rgba(255,209,102,0.05); }
+  .flag-ok { color: var(--win); border-color: rgba(0,212,170,0.4); background: rgba(0,212,170,0.05); }
+
+  /* MINI BARS */
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .bar-label { width: 140px; font-size: 11px; color: var(--muted); flex-shrink: 0; }
+  .bar-track { flex: 1; height: 6px; background: var(--surface2); position: relative; }
+  .bar-fill { height: 100%; transition: width 0.8s ease; }
+  .bar-fill.pos { background: var(--win); }
+  .bar-fill.neg { background: var(--loss); }
+  .bar-val { width: 70px; text-align: right; font-size: 11px; }
+  .bar-val.pos { color: var(--win); }
+  .bar-val.neg { color: var(--loss); }
+
+  /* FOOTER */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 20px 48px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  footer span { color: var(--accent); }
+
+  /* SEPARATOR */
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 24px 0;
+  }
+
+  .trade-note {
+    font-style: italic;
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  /* SCROLL */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-top">
+    <div>
+      <div class="journal-title">TRADING <span>JOURNAL</span></div>
+      <div style="color:var(--muted);font-size:11px;margin-top:6px;letter-spacing:1px;">APR 14 – APR 21, 2026 &nbsp;·&nbsp; GOLDgr · US100 · US500 · SOLANA · BITCOIN</div>
+    </div>
+    <div class="header-meta">
+      <div>Account <strong>#92844050</strong></div>
+      <div style="margin-top:4px;">6 trading days logged</div>
+    </div>
+  </div>
+</header>
+
+<div class="overview-bar">
+  <div class="stat-card">
+    <div class="stat-label">Total P&L (trading)</div>
+    <div class="stat-value neg">-$199.57</div>
+    <div class="stat-sub">Across 6 sessions</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Best Day</div>
+    <div class="stat-value pos">+$177.98</div>
+    <div class="stat-sub">Apr 17 (disciplined scalping)</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Worst Day</div>
+    <div class="stat-value neg">-$254.43</div>
+    <div class="stat-sub">Apr 14 (margin stop-outs)</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Margin Stop-Outs</div>
+    <div class="stat-value neg">4</div>
+    <div class="stat-sub">Apr 14, 15, 16, 21</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Peak → Trough</div>
+    <div class="stat-value neu">$382 → $36</div>
+    <div class="stat-sub">-90% in one session (Apr 21)</div>
+  </div>
+</div>
+
+<!-- EQUITY CHART -->
+<div class="chart-section">
+  <div class="section-title"><span>///</span> ACCOUNT EQUITY CURVE</div>
+  <canvas id="equity-chart"></canvas>
+</div>
+
+<!-- TABS -->
+<div class="tabs-wrapper">
+  <button class="tab active" onclick="showDay(0)">
+    APR 14<span class="tab-pnl neg">-$254.43</span>
+  </button>
+  <button class="tab" onclick="showDay(1)">
+    APR 15<span class="tab-pnl neg">-$123.18</span>
+  </button>
+  <button class="tab" onclick="showDay(2)">
+    APR 16<span class="tab-pnl neg">-$81.51</span>
+  </button>
+  <button class="tab" onclick="showDay(3)">
+    APR 17<span class="tab-pnl pos">+$177.98</span>
+  </button>
+  <button class="tab" onclick="showDay(4)">
+    APR 20<span class="tab-pnl pos">+$104.70</span>
+  </button>
+  <button class="tab" onclick="showDay(5)">
+    APR 21<span class="tab-pnl neg">-$207.15</span>
+  </button>
+</div>
+
+<!-- DAY PANELS -->
+<div class="day-panels">
+
+  <!-- APR 14 -->
+  <div class="day-panel active" id="panel-0">
+    <div class="day-header">
+      <div>
+        <div class="day-title">Monday, April 14 — Account Opening Day</div>
+        <div style="color:var(--muted);font-size:12px;margin-top:4px;">First deposits: $353.63 total · Starting balance: $0</div>
+        <div class="day-stats-row">
+          <div class="ds"><div class="ds-v">8</div><div class="ds-l">Closed Trades</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--win)">3</div><div class="ds-l">Winners</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--loss)">5</div><div class="ds-l">Losers</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--loss)">4</div><div class="ds-l">Stop-Outs (SO)</div></div>
+        </div>
+      </div>
+      <div class="day-pnl-badge neg">-$254.43</div>
+    </div>
+
+    <div class="flags-row">
+      <span class="flag flag-danger">⚠ Margin Stop-Out x4</span>
+      <span class="flag flag-danger">⚠ 2000 Lot Position</span>
+      <span class="flag flag-danger">⚠ No Risk Control</span>
+      <span class="flag flag-warn">⚡ Averaging Down</span>
+    </div>
+
+    <div class="trades-table-wrap">
+      <table>
+        <thead><tr>
+          <th>Time</th><th>Instrument</th><th>Dir</th><th>Size</th><th>Entry</th><th>Exit</th><th>P&L</th><th>Exit Type</th><th>Notes</th>
+        </tr></thead>
+        <tbody>
+          <tr><td>13:09</td><td>GOLDgr</td><td>Long</td><td>26</td><td>153.837</td><td>153.211</td><td class="td-neg">-$16.28</td><td><span class="badge badge-so">SO</span></td><td class="trade-note">First trade, reasonable size</td></tr>
+          <tr><td>14:32</td><td>SOLANA</td><td>Long</td><td>100</td><td>85.889</td><td>85.451</td><td class="td-neg">-$43.80</td><td><span class="badge badge-loss">Market</span></td><td class="trade-note">Panic exit, -0.5%</td></tr>
+          <tr><td>15:23–15:25</td><td>GOLDgr</td><td>Long</td><td>50+200+<strong>2000</strong></td><td>~153.24</td><td>153.211</td><td class="td-neg">-$91.90</td><td><span class="badge badge-so">SO x3</span></td><td class="trade-note">🔴 Catastrophic position sizing — 2000 lots caused margin stop-out wiping account</td></tr>
+          <tr><td>16:51</td><td>GOLDgr</td><td>Short</td><td>150</td><td>154.047</td><td>154.476</td><td class="td-neg">-$64.35</td><td><span class="badge badge-loss">Market</span></td><td class="trade-note">Counter-trend entry, bought back higher</td></tr>
+          <tr><td>17:23–17:49</td><td>GOLDgr</td><td>Long</td><td>100+100</td><td>154.334</td><td>154.127</td><td class="td-neg">-$37.30</td><td><span class="badge badge-so">SO x2</span></td><td class="trade-note">Averaging into losing long, both margin stopped</td></tr>
+          <tr><td>20:48</td><td>GOLDgr</td><td>Long</td><td>25</td><td>155.536</td><td>155.540</td><td class="td-pos">+$0.10</td><td><span class="badge badge-win">Market</span></td><td class="trade-note">Tiny win, good size</td></tr>
+          <tr><td>20:57</td><td>GOLDgr</td><td>Long</td><td>100</td><td>155.469</td><td>155.509</td><td class="td-pos">+$4.00</td><td><span class="badge badge-win">Market</span></td><td class="trade-note">Small positive scalp</td></tr>
+          <tr><td>21:24</td><td>GOLDgr</td><td>Long</td><td>100</td><td>155.499</td><td>155.490</td><td class="td-neg">-$0.90</td><td><span class="badge badge-sl">SL</span></td><td></td></tr>
+          <tr><td>21:45</td><td>GOLDgr</td><td>Long</td><td>100</td><td>155.470</td><td>155.380</td><td class="td-neg">-$9.00</td><td><span class="badge badge-sl">SL</span></td><td class="trade-note">Retry same setup</td></tr>
+          <tr><td>21:53</td><td>GOLDgr</td><td>Long</td><td>100</td><td>155.392</td><td>155.442</td><td class="td-pos">+$5.00</td><td><span class="badge badge-win">Market</span></td><td class="trade-note">Recovery trade worked</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="analysis-grid">
+      <div class="analysis-box red">
+        <h4>✕ Errors Identified</h4>
+        <ul>
+          <li>Opened 2000-lot GOLDgr position with no SL — consumed entire margin in seconds. This is a 77× leverage exposure on a micro account.</li>
+          <li>After the 2000-lot blow-up, immediately started adding MORE long positions (100+100) in the same direction — classic revenge behavior.</li>
+          <li>SOLANA entered without a clear plan, exited manually within 2 minutes at a loss.</li>
+          <li>Counter-trend short at 16:51 after prolonged uptrend — no directional bias check.</li>
+          <li>4 separate margin stop-outs in a single session is a structural failure, not a market failure.</li>
+        </ul>
+      </div>
+      <div class="analysis-box green">
+        <h4>✓ What Worked</h4>
+        <ul>
+          <li>Late session (20:48–21:55) showed calmer entries with smaller sizes (25–100 lots).</li>
+          <li>Used defined SL levels in the final trades.</li>
+          <li>Correctly identified short-term direction after 20:00 pivot.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- APR 15 -->
+  <div class="day-panel" id="panel-1">
+    <div class="day-header">
+      <div>
+        <div class="day-title">Tuesday, April 15 — Repair Mode Fails</div>
+        <div style="color:var(--muted);font-size:12px;margin-top:4px;">Starting balance: $99.20 · Deposits: $100.70</div>
+        <div class="day-stats-row">
+          <div class="ds"><div class="ds-v">16</div><div class="ds-l">Closed Trades</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--win)">7</div><div class="ds-l">Winners</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--loss)">9</div><div class="ds-l">Losers</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--loss)">1</div><div class="ds-l">Margin SO</div></div>
+        </div>
+      </div>
+      <div class="day-pnl-badge neg">-$123.18</div>
+    </div>
+
+    <div class="flags-row">
+      <span class="flag flag-danger">⚠ Over-Sizing Again (300 lots)</span>
+      <span class="flag flag-danger">⚠ Margin Stop-Out</span>
+      <span class="flag flag-warn">⚡ Multiple SL Hits in a Row</span>
+      <span class="flag flag-warn">⚡ No Recovery Between Losses</span>
+    </div>
+
+    <div class="trades-table-wrap">
+      <table>
+        <thead><tr>
+          <th>Time</th><th>Instrument</th><th>Dir</th><th>Size</th><th>Entry</th><th>Exit</th><th>P&L</th><th>Exit Type</th><th>Notes</th>
+        </tr></thead>
+        <tbody>
+          <tr><td>10:58</td><td>GOLDgr</td><td>Long</td><td>100</td><td>154.656</td><td>154.697</td><td class="td-pos">+$4.10</td><td><span class="badge badge-win">Market</span></td><td class="trade-note">Good start, controlled</td></tr>
+          <tr><td>13:40</td><td>GOLDgr</td><td>Short</td><td>200</td><td>154.207</td><td>154.430</td><td class="td-neg">-$44.60</td><td><span class="badge badge-sl">SL</span></td><td class="trade-note">Doubled size vs prior trade, wrong direction</td></tr>
+          <tr><td>14:03</td><td>GOLDgr</td><td>Short</td><td>200</td><td>154.246</td><td>154.312</td><td class="td-neg">-$13.20</td><td><span class="badge badge-sl">SL</span></td><td class="trade-note">Repeated same failed setup</td></tr>
+          <tr><td>16:39</td><td>GOLDgr</td><td>Long</td><td>100</td><td>155.069</td><td>155.099</td><td class="td-pos">+$3.00</td><td><span class="badge badge-win">Market</span></td><td></td></tr>
+          <tr><td>16:55</td><td>GOLDgr</td><td>Short</td><td>200</td><td>155.178</td><td>155.129</td><td class="td-pos">+$9.80</td><td><span class="badge badge-win">Market</span></td><td class="trade-note">Good momentum scalp</td></tr>
+          <tr><td>17:01</td><td>GOLDgr</td><td>Long</td><td>200</td><td>155.196</td><td>155.003</td><td class="td-neg">-$38.60</td><td><span class="badge badge-sl">SL</span></td><td class="trade-note">Immediately reversed after prior short profit — whipsawed</td></tr>
+          <tr><td>17:19</td><td>GOLDgr</td><td>Long</td><td>100</td><td>155.173</td><td>155.126</td><td class="td-neg">-$4.70</td><td><span class="badge badge-loss">Market</span></td><td></td></tr>
+          <tr><td>17:29</td><td>GOLDgr</td><td>Short</td><td>100</td><td>155.124</td><td>155.037</td><td class="td-pos">+$8.70</td><td><span class="badge badge-win">Market</span></td><td></td></tr>
+          <tr><td>17:44</td><td>GOLDgr</td><td>Long</td><td>200</td><td>154.928</td><td>154.806</td><td class="td-neg">-$24.40</td><td><span class="badge badge-so">SO</span></td><td class="trade-note">Margin stop-out on 200 lots — account too small for this size</td></tr>
+          <tr><td>18:27</td><td>GOLDgr</td><td>Long</td><td>300</td><td>154.427</td><td>154.293</td><td class="td-neg">-$40.20</td><td><span class="badge badge-sl">SL</span></td><td class="trade-note">🔴 After SO, immediately reopens with 300 lots (larger!) — escalation pattern</td></tr>
+          <tr><td>18:36</td><td>GOLDgr</td><td>Long</td><td>100</td><td>154.279</td><td>154.512</td><td class="td-pos">+$23.30</td><td><span class="badge badge-win">Market</span></td><td class="trade-note">Calm re-entry at support, caught move</td></tr>
+          <tr><td>19:38</td><td>GOLDgr</td><td>Long</td><td>10</td><td>154.673</td><td>154.555</td><td class="td-neg">-$1.18</td><td><span class="badge badge-sl">SL</span></td><td class="trade-note">Tiny size — testing discipline</td></tr>
+          <tr><td>19:58–20:09</td><td>GOLDgr</td><td>Long</td><td>50+150</td><td>154.47</td><td>154.38</td><td class="td-neg">-$17.30</td><td><span class="badge badge-loss">Market</span></td><td class="trade-note">Split position, both closed at loss</td></tr>
+          <tr><td>20:34</td><td>GOLDgr</td><td>Short</td><td>100</td><td>154.293</td><td>154.172</td><td class="td-pos">+$12.10</td><td><span class="badge badge-sl">SL</span></td><td class="trade-note">Counterintuitive — SL hit but trade was profitable (wrong side of SL set)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="analysis-grid">
+      <div class="analysis-box red">
+        <h4>✕ Errors Identified</h4>
+        <ul>
+          <li>After the 200-lot margin stop-out at 17:44, immediately reopened with 300 lots — position escalation under stress is the most dangerous pattern in this account.</li>
+          <li>Rapid directional flipping: sold at 16:55, bought at 17:01 within 6 minutes — no reassessment of market structure.</li>
+          <li>SL placement inconsistent — some trades have no SL, some have very tight SLs that get hit on noise.</li>
+          <li>Win rate reasonable (7/16=44%) but avg loss ($26.4) >> avg win ($11.8) — negative expectancy.</li>
+        </ul>
+      </div>
+      <div class="analysis-box green">
+        <h4>✓ What Worked</h4>
+        <ul>
+          <li>After second deposit, 18:36 trade was well-placed at support and caught a +$23 move.</li>
+          <li>Tried using very small size (10 lots) at 19:38 — shows some self-awareness.</li>
+          <li>GOLDgr short at 16:55 had good momentum read (+$9.80).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- APR 16 -->
+  <div class="day-panel" id="panel-2">
+    <div class="day-header">
+      <div>
+        <div class="day-title">Wednesday, April 16 — Account Blown to Zero</div>
+        <div style="color:var(--muted);font-size:12px;margin-top:4px;">Starting balance: $76.72 · Ending balance: $0.00</div>
+        <div class="day-stats-row">
+          <div class="ds"><div class="ds-v">4</div><div class="ds-l">Closed Trades</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--win)">1</div><div class="ds-l">Winners</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--loss)">3</div><div class="ds-l">Losers</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--loss)">1</div><div class="ds-l">Margin SO</div></div>
+        </div>
+      </div>
+      <div class="day-pnl-badge neg">-$81.51</div>
+    </div>
+
+    <div class="flags-row">
+      <span class="flag flag-danger">⚠ Account Blown</span>
+      <span class="flag flag-danger">⚠ Bitcoin Margin Stop-Out (-$69)</span>
+      <span class="flag flag-warn">⚡ New Asset — No Preparation</span>
+    </div>
+
+    <div class="trades-table-wrap">
+      <table>
+        <thead><tr>
+          <th>Time</th><th>Instrument</th><th>Dir</th><th>Size</th><th>Entry</th><th>Exit</th><th>P&L</th><th>Exit Type</th><th>Notes</th>
+        </tr></thead>
+        <tbody>
+          <tr><td>09:14</td><td>GOLDgr</td><td>Long</td><td>100</td><td>155.066</td><td>154.995</td><td class="td-neg">-$7.10</td><td><span class="badge badge-sl">SL</span></td><td class="trade-note">Gap-down open, stopped immediately</td></tr>
+          <tr><td>11:17</td><td>GOLDgr</td><td>Short</td><td>150</td><td>154.750</td><td>154.748</td><td class="td-pos">+$0.30</td><td><span class="badge badge-win">Market</span></td><td class="trade-note">Breakeven scalp</td></tr>
+          <tr><td>11:36</td><td>GOLDgr</td><td>Short</td><td>150</td><td>154.628</td><td>154.666</td><td class="td-neg">-$5.70</td><td><span class="badge badge-sl">SL</span></td><td class="trade-note">Repeat short, stopped out again</td></tr>
+          <tr><td>14:06</td><td>BITCOIN</td><td>Short</td><td>0.5</td><td>74,282</td><td>74,420</td><td class="td-neg">-$69.01</td><td><span class="badge badge-so">SO</span></td><td class="trade-note">🔴 Bitcoin short on a $76 account — position worth ~$37,000 notional. Zero margin buffer. Instant SO.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="analysis-grid">
+      <div class="analysis-box red">
+        <h4>✕ Critical Error</h4>
+        <ul>
+          <li>Opening a 0.5 BTC short position (~$37,000 notional) on a $76 account is the defining failure of this session. The margin call was mathematically inevitable — Bitcoin only needed to move 0.18% against the position.</li>
+          <li>This is a new instrument that hadn't been traded before — jumping into Bitcoin without any preparation on an already-stressed account.</li>
+          <li>GOLDgr short bias in the morning contradicted prior bullish framework with no explanation for the directional change.</li>
+          <li>Two consecutive SL hits on GOLDgr (same direction, same setup) with no session pause.</li>
+        </ul>
+      </div>
+      <div class="analysis-box green">
+        <h4>✓ Minor Positives</h4>
+        <ul>
+          <li>GOLDgr sizes were controlled (100–150 lots) before the Bitcoin disaster.</li>
+          <li>SL was used consistently on GOLDgr trades — discipline partially present.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- APR 17 -->
+  <div class="day-panel" id="panel-3">
+    <div class="day-header">
+      <div>
+        <div class="day-title">Thursday, April 17 — Best Session: Discipline Returns</div>
+        <div style="color:var(--muted);font-size:12px;margin-top:4px;">Starting balance: $0 → deposit $100 · Ending: $277.98</div>
+        <div class="day-stats-row">
+          <div class="ds"><div class="ds-v">14</div><div class="ds-l">Closed Trades</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--win)">10</div><div class="ds-l">Winners</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--loss)">4</div><div class="ds-l">Losers</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--win)">0</div><div class="ds-l">Margin SO</div></div>
+        </div>
+      </div>
+      <div class="day-pnl-badge pos">+$177.98</div>
+    </div>
+
+    <div class="flags-row">
+      <span class="flag flag-ok">✓ No Margin Stop-Outs</span>
+      <span class="flag flag-ok">✓ Diversified Instruments</span>
+      <span class="flag flag-ok">✓ Consistent Sizing</span>
+      <span class="flag flag-warn">⚡ A Few Tight SLs Got Hit</span>
+    </div>
+
+    <div class="trades-table-wrap">
+      <table>
+        <thead><tr>
+          <th>Time</th><th>Instrument</th><th>Dir</th><th>Size</th><th>Entry</th><th>Exit</th><th>P&L</th><th>Exit Type</th><th>Notes</th>
+        </tr></thead>
+        <tbody>
+          <tr><td>15:03</td><td>GOLDgr</td><td>Short</td><td>10</td><td>154.407</td><td>154.784</td><td class="td-neg">-$3.77</td><td><span class="badge badge-sl">SL</span></td><td class="trade-note">Conservative test size</td></tr>
+          <tr><td>16:50</td><td>NDAQ.O</td><td>Long</td><td>1</td><td>89.11</td><td>88.50</td><td class="td-neg">-$0.61</td><td><span class="badge badge-loss">Market</span></td><td class="trade-note">Tiny equity exposure</td></tr>
+          <tr><td>16:54</td><td>US100</td><td>Long</td><td>0.04</td><td>26,695</td><td>26,757</td><td class="td-pos">+$49.40</td><td><span class="badge badge-win">Market</span></td><td class="trade-note">★ Strong momentum read on NQ</td></tr>
+          <tr><td>17:01</td><td>Germany40</td><td>Long</td><td>0.5</td><td>24,656</td><td>24,702</td><td class="td-pos">+$27.16</td><td><span class="badge badge-win">Market</span></td><td class="trade-note">★ Multi-market approach, good DAX scalp</td></tr>
+          <tr><td>18:04</td><td>GOLDgr</td><td>Long</td><td>100</td><td>156.504</td><td>156.657</td><td class="td-pos">+$15.30</td><td><span class="badge badge-win">Market</span></td><td></td></tr>
+          <tr><td>18:14</td><td>GOLDgr</td><td>Long</td><td>100</td><td>156.481</td><td>156.585</td><td class="td-pos">+$10.40</td><td><span class="badge badge-win">Market</span></td><td></td></tr>
+          <tr><td>19:18</td><td>GOLDgr</td><td>Short</td><td>100</td><td>156.594</td><td>156.605</td><td class="td-neg">-$1.10</td><td><span class="badge badge-sl">SL</span></td><td></td></tr>
+          <tr><td>20:29</td><td>GOLDgr</td><td>Short</td><td>100</td><td>156.130</td><td>156.201</td><td class="td-neg">-$7.10</td><td><span class="badge badge-sl">SL</span></td><td class="trade-note">SL very tight, stopped on noise</td></tr>
+          <tr><td>21:07</td><td>GOLDgr</td><td>Short</td><td>100</td><td>156.418</td><td>156.372</td><td class="td-pos">+$4.60</td><td><span class="badge badge-win">Market</span></td><td></td></tr>
+          <tr><td>22:23–22:27</td><td>GOLDgr</td><td>Long</td><td>100×3</td><td>~156.10</td><td>~156.15</td><td class="td-pos">+$14.70</td><td><span class="badge badge-win">Market</span></td><td class="trade-note">3 simultaneous entries, all small wins</td></tr>
+          <tr><td>23:18–23:26</td><td>GOLDgr</td><td>Short</td><td>200+100</td><td>155.92</td><td>155.82</td><td class="td-pos">+$30.60</td><td><span class="badge badge-win">Market</span></td><td class="trade-note">Good momentum continuation short</td></tr>
+          <tr><td>23:39</td><td>GOLDgr</td><td>Short</td><td>200</td><td>155.684</td><td>155.492</td><td class="td-pos">+$38.40</td><td><span class="badge badge-tp">TP</span></td><td class="trade-note">★ Hit take-profit — proper trade management</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="analysis-grid">
+      <div class="analysis-box green">
+        <h4>✓ What Worked — Learn From This Day</h4>
+        <ul>
+          <li>Consistent lot sizing throughout (100 lots on GOLDgr, micro sizes on index futures) — no size escalation.</li>
+          <li>Diversified across GOLDgr, US100, Germany40 and even NDAQ equity — multiple market reads.</li>
+          <li>Last trade of the session hit TP at 155.493 — shows ability to set and honor take-profits.</li>
+          <li>71% win rate (10/14) with losses tightly contained (-$1 to -$7). Positive expectancy session.</li>
+          <li>No revenge behavior despite 3 losing trades — simply moved on to next setup.</li>
+        </ul>
+      </div>
+      <div class="analysis-box red">
+        <h4>✕ Room for Improvement</h4>
+        <ul>
+          <li>Some SLs were too tight (19:18, 20:29) — getting stopped on noise before the move plays out.</li>
+          <li>Running 3 simultaneous long positions at 22:23–22:27 is informal position stacking — works here but adds complexity.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- APR 20 -->
+  <div class="day-panel" id="panel-4">
+    <div class="day-header">
+      <div>
+        <div class="day-title">Monday, April 20 — Solid Trending Day</div>
+        <div style="color:var(--muted);font-size:12px;margin-top:4px;">Starting: $277.98 · Ending: $382.68</div>
+        <div class="day-stats-row">
+          <div class="ds"><div class="ds-v">10</div><div class="ds-l">Closed Trades</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--win)">7</div><div class="ds-l">Winners</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--loss)">3</div><div class="ds-l">Losers</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--win)">0</div><div class="ds-l">Margin SO</div></div>
+        </div>
+      </div>
+      <div class="day-pnl-badge pos">+$104.70</div>
+    </div>
+
+    <div class="flags-row">
+      <span class="flag flag-ok">✓ No Margin Stop-Outs</span>
+      <span class="flag flag-ok">✓ $102 Winner Held</span>
+      <span class="flag flag-warn">⚡ One Counter-Trend Trap</span>
+    </div>
+
+    <div class="trades-table-wrap">
+      <table>
+        <thead><tr>
+          <th>Time</th><th>Instrument</th><th>Dir</th><th>Size</th><th>Entry</th><th>Exit</th><th>P&L</th><th>Exit Type</th><th>Notes</th>
+        </tr></thead>
+        <tbody>
+          <tr><td>02:16</td><td>GOLDgr</td><td>Long</td><td>20</td><td>153.393</td><td>152.703</td><td class="td-neg">-$13.80</td><td><span class="badge badge-sl">SL</span></td><td class="trade-note">Asian session, gap against position</td></tr>
+          <tr><td>11:03</td><td>US100</td><td>Long</td><td>0.05</td><td>26,654</td><td>26,642</td><td class="td-neg">-$12.50</td><td><span class="badge badge-sl">SL</span></td><td class="trade-note">Quick SL hit on open</td></tr>
+          <tr><td>13:08</td><td>US100</td><td>Short</td><td>0.2</td><td>26,719</td><td>26,720</td><td class="td-neg">-$4.00</td><td><span class="badge badge-loss">Market</span></td><td class="trade-note">Scratch</td></tr>
+          <tr><td>13:18</td><td>US100</td><td>Short</td><td>0.2</td><td>26,720</td><td>26,712</td><td class="td-pos">+$33.00</td><td><span class="badge badge-sl">SL</span></td><td class="trade-note">SL on opposite side of market — trade worked</td></tr>
+          <tr><td>13:29</td><td>US100</td><td>Short</td><td>0.2</td><td>26,710</td><td>26,684</td><td class="td-pos">+$102.00</td><td><span class="badge badge-win">Market</span></td><td class="trade-note">★ Best trade of this week — held short through 26pt move</td></tr>
+          <tr><td>14:10</td><td>US100</td><td>Short</td><td>0.2</td><td>26,702</td><td>26,694</td><td class="td-pos">+$29.00</td><td><span class="badge badge-win">Market</span></td><td class="trade-note">Good continuation short</td></tr>
+          <tr><td>15:44</td><td>US100</td><td>Short</td><td>0.2</td><td>26,734</td><td>26,745</td><td class="td-neg">-$44.00</td><td><span class="badge badge-sl">SL</span></td><td class="trade-note">Counter-trend attempt after 3 winning shorts — market reversed</td></tr>
+          <tr><td>16:13</td><td>US500</td><td>Long</td><td>0.2</td><td>7141.25</td><td>7141.25</td><td class="td-neutral">$0.00</td><td><span class="badge badge-tp">TP</span></td><td class="trade-note">Breakeven TP — conservative</td></tr>
+          <tr><td>17:31</td><td>US100</td><td>Long</td><td>0.2</td><td>26,719</td><td>26,719</td><td class="td-pos">+$3.00</td><td><span class="badge badge-win">Market</span></td><td></td></tr>
+          <tr><td>18:39</td><td>GOLD</td><td>Long</td><td>0.1</td><td>4,801</td><td>4,802</td><td class="td-pos">+$12.00</td><td><span class="badge badge-win">Market</span></td><td class="trade-note">Spot GOLD — tiny size, clean scalp</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="analysis-grid">
+      <div class="analysis-box green">
+        <h4>✓ Strong Execution</h4>
+        <ul>
+          <li>Identified the US100 downtrend early and rode it for three consecutive winning shorts (+$33, +$102, +$29).</li>
+          <li>The +$102 trade — holding a short 26 points — demonstrates patience that was absent in earlier sessions.</li>
+          <li>Diversified across US100, US500, and spot GOLD appropriately.</li>
+          <li>All position sizes were proportional to account ($277). No reckless sizing.</li>
+        </ul>
+      </div>
+      <div class="analysis-box red">
+        <h4>✕ One Pattern to Watch</h4>
+        <ul>
+          <li>After 3 winning shorts, attempted another short at 15:44 which got stopped for -$44. Market had reversed — the trend had ended but the directional bias wasn't updated.</li>
+          <li>Early GOLDgr long at 02:16 Asian session was under-analyzed (-$13.80).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- APR 21 -->
+  <div class="day-panel" id="panel-5">
+    <div class="day-header">
+      <div>
+        <div class="day-title">Tuesday, April 21 — Regression: All Gains Wiped</div>
+        <div style="color:var(--muted);font-size:12px;margin-top:4px;">Starting: $382.68 · Withdrawal: -$139 · Ending: $36.53</div>
+        <div class="day-stats-row">
+          <div class="ds"><div class="ds-v">26</div><div class="ds-l">Closed Trades</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--win)">12</div><div class="ds-l">Winners</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--loss)">14</div><div class="ds-l">Losers</div></div>
+          <div class="ds"><div class="ds-v" style="color:var(--loss)">5</div><div class="ds-l">SL Cascade</div></div>
+        </div>
+      </div>
+      <div class="day-pnl-badge neg">-$207.15</div>
+    </div>
+
+    <div class="flags-row">
+      <span class="flag flag-danger">⚠ Revenge Trading (20:00–22:00)</span>
+      <span class="flag flag-danger">⚠ SL Cascade — 5 Stops in 10 Min</span>
+      <span class="flag flag-danger">⚠ 26 Trades in One Day</span>
+      <span class="flag flag-ok">✓ Morning GOLDgr Profitable</span>
+      <span class="flag flag-ok">✓ US100 Scalps Worked</span>
+    </div>
+
+    <div class="trades-table-wrap">
+      <table>
+        <thead><tr>
+          <th>Time</th><th>Instrument</th><th>Dir</th><th>Size</th><th>P&L</th><th>Exit Type</th><th>Phase</th><th>Notes</th>
+        </tr></thead>
+        <tbody>
+          <tr><td>08:54</td><td>US500</td><td>Short</td><td>0.2</td><td class="td-neg">-$37.50</td><td><span class="badge badge-sl">SL</span></td><td>Morning</td><td class="trade-note">Pre-market, stopped out</td></tr>
+          <tr><td>09:31</td><td>GOLDgr</td><td>Long</td><td>150</td><td class="td-neg">-$28.50</td><td><span class="badge badge-sl">SL</span></td><td>Morning</td><td></td></tr>
+          <tr><td>11:06</td><td>GOLDgr</td><td>Long</td><td>150</td><td class="td-neg">-$18.90</td><td><span class="badge badge-sl">SL</span></td><td>Morning</td><td class="trade-note">Limit order hit, then SL immediately</td></tr>
+          <tr><td>11:13</td><td>GOLDgr</td><td>Long</td><td>150</td><td class="td-pos">+$59.55</td><td><span class="badge badge-win">Market</span></td><td>Morning</td><td class="trade-note">★ Best GOLDgr trade of the session</td></tr>
+          <tr><td>12:17</td><td>GOLDgr</td><td>Long</td><td>150</td><td class="td-pos">+$3.75</td><td><span class="badge badge-win">Market</span></td><td>Midday</td><td></td></tr>
+          <tr><td>12:30</td><td>GOLDgr</td><td>Long</td><td>150</td><td class="td-pos">+$1.95</td><td><span class="badge badge-win">Market</span></td><td>Midday</td><td></td></tr>
+          <tr><td>14:16</td><td>GOLDgr</td><td>Long</td><td>150</td><td class="td-pos">+$21.15</td><td><span class="badge badge-tp">TP</span></td><td>Afternoon</td><td class="trade-note">★ TP hit — proper trade management</td></tr>
+          <tr><td>14:32</td><td>US100</td><td>Short</td><td>0.25</td><td class="td-neg">-$36.25</td><td><span class="badge badge-sl">SL</span></td><td>Afternoon</td><td class="trade-note">Immediately after GOLDgr TP, switched to index short</td></tr>
+          <tr><td>16:11</td><td>US100</td><td>Long</td><td>0.2</td><td class="td-pos">+$5.00</td><td><span class="badge badge-win">Market</span></td><td>Afternoon</td><td></td></tr>
+          <tr><td>16:50</td><td>US100</td><td>Long</td><td>0.05</td><td class="td-pos">+$37.50</td><td><span class="badge badge-tp">TP</span></td><td>Afternoon</td><td class="trade-note">★ TP hit on small NQ position</td></tr>
+          <tr><td>17:06</td><td>GOLDgr</td><td>Long</td><td>250</td><td class="td-pos">+$8.00</td><td><span class="badge badge-win">Market</span></td><td>Late</td><td class="trade-note">Larger size — quick scalp</td></tr>
+          <tr><td>17:44</td><td>GOLDgr</td><td>Long</td><td>150</td><td class="td-neg">-$21.15</td><td><span class="badge badge-sl">SL</span></td><td>Late</td><td></td></tr>
+          <tr style="background:rgba(255,79,79,0.04)"><td>19:53</td><td>GOLDgr</td><td>Short</td><td>100</td><td class="td-pos">+$4.50</td><td><span class="badge badge-win">Market</span></td><td>🔴 Evening</td><td class="trade-note">Gold drops — shorts begin working</td></tr>
+          <tr style="background:rgba(255,79,79,0.04)"><td>20:11</td><td>GOLDgr</td><td>Short</td><td>100</td><td class="td-pos">+$11.40</td><td><span class="badge badge-win">Market</span></td><td>🔴 Evening</td><td></td></tr>
+          <tr style="background:rgba(255,79,79,0.04)"><td>20:23</td><td>GOLDgr</td><td>Short</td><td>200</td><td class="td-neg">-$20.60</td><td><span class="badge badge-sl">SL</span></td><td>🔴 Evening</td><td class="trade-note">Size doubled after 2 wins — stops on bounce</td></tr>
+          <tr style="background:rgba(255,79,79,0.04)"><td>20:47</td><td>GOLDgr</td><td>Short</td><td>100</td><td class="td-pos">+$4.40</td><td><span class="badge badge-win">Market</span></td><td>🔴 Evening</td><td></td></tr>
+          <tr style="background:rgba(255,79,79,0.08)"><td>21:14</td><td>GOLDgr</td><td>Short</td><td>200</td><td class="td-pos">+$10.80</td><td><span class="badge badge-win">Market</span></td><td>🔴 Evening</td><td></td></tr>
+          <tr style="background:rgba(255,79,79,0.12)"><td>21:24</td><td>GOLDgr</td><td>Short</td><td>100</td><td class="td-neg">-$50.40</td><td><span class="badge badge-sl">SL</span></td><td>🔴 Cascade</td><td class="trade-note">🚨 Concurrent with 200-lot position — both SL'd simultaneously</td></tr>
+          <tr style="background:rgba(255,79,79,0.12)"><td>21:40</td><td>GOLDgr</td><td>Short</td><td>200</td><td class="td-neg">-$50.40</td><td><span class="badge badge-sl">SL</span></td><td>🔴 Cascade</td><td class="trade-note">🚨 Same timeframe — running overlapping positions</td></tr>
+          <tr style="background:rgba(255,79,79,0.16)"><td>21:55</td><td>GOLDgr</td><td>Short</td><td>200</td><td class="td-neg">-$25.80</td><td><span class="badge badge-sl">SL</span></td><td>🔴 Cascade</td><td class="trade-note">Immediately re-entered after cascade losses</td></tr>
+          <tr style="background:rgba(255,79,79,0.16)"><td>21:59</td><td>GOLDgr</td><td>Short</td><td>200</td><td class="td-neg">-$22.00</td><td><span class="badge badge-loss">Market</span></td><td>🔴 Cascade</td><td class="trade-note">4 consecutive losses, still trading</td></tr>
+          <tr><td>22:38</td><td>US100</td><td>Long</td><td>0.05</td><td class="td-neg">-$41.00</td><td><span class="badge badge-sl">SL</span></td><td>Night</td><td class="trade-note">Late night, low liquidity SL hit</td></tr>
+          <tr><td>22:38</td><td>GOLDgr</td><td>Long</td><td>50</td><td class="td-neg">-$22.65</td><td><span class="badge badge-sl">SL</span></td><td>Night</td><td class="trade-note">Final trade, direction switched to long after short losses</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="analysis-grid">
+      <div class="analysis-box green">
+        <h4>✓ Morning Session (09:00–17:00)</h4>
+        <ul>
+          <li>Net P&L approx +$40 in morning — disciplined sizing at 150 lots.</li>
+          <li>Three GOLDgr positions hit TP or near-TP. System was working.</li>
+          <li>US100 scalps at 16:11 and 16:50 both profitable.</li>
+          <li>Position sizing appropriate to account balance.</li>
+        </ul>
+      </div>
+      <div class="analysis-box red">
+        <h4>✕ Evening Cascade (21:00–22:00)</h4>
+        <ul>
+          <li>Running 100 + 200 lots simultaneously as overlapping short positions — when gold bounced, both SL'd at once creating a -$100 combined loss in seconds.</li>
+          <li>After losing -$100 in 20 minutes, continued entering new positions at 21:55 and 21:59 — textbook revenge trading.</li>
+          <li>26 total trades in one session. Trade frequency is an indicator of emotional state.</li>
+          <li>The $139 withdrawal mid-session (22:10) left even less cushion for the final trades.</li>
+          <li>This session repeated ALL the behavioral failures from Apr 14 — the good days (Apr 17, 20) showed this can be avoided.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /day-panels -->
+
+<!-- OVERALL PATTERN ANALYSIS -->
+<div style="padding: 0 48px 48px; border-top: 1px solid var(--border); margin-top: 8px; padding-top: 32px;">
+  <div class="section-title"><span>///</span> CROSS-SESSION PATTERN ANALYSIS</div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:28px;">
+    <div class="analysis-box red">
+      <h4>🔴 Pattern 1 — Position Escalation</h4>
+      <ul>
+        <li>Apr 14: 26 → 50 → 200 → <strong>2000</strong> lots (margin wipe)</li>
+        <li>Apr 15: 200 SO → immediately opens <strong>300</strong> lots</li>
+        <li>Apr 21: 100 → 200 lots concurrent → cascade</li>
+        <li>Fix: Hard rule — never exceed 150 lots per position until account exceeds $500. Never increase size after a loss.</li>
+      </ul>
+    </div>
+    <div class="analysis-box red">
+      <h4>🔴 Pattern 2 — Revenge Trading</h4>
+      <ul>
+        <li>Defined as: entering a new trade within 5 min of a losing trade without changing the setup.</li>
+        <li>Occurred on Apr 14 (twice), Apr 15, Apr 21 (4 consecutive entries after cascade).</li>
+        <li>Fix: Mandatory 30-minute break after any loss exceeding 5% of account. Close trading platform.</li>
+      </ul>
+    </div>
+    <div class="analysis-box red">
+      <h4>🔴 Pattern 3 — No Daily Loss Limit</h4>
+      <ul>
+        <li>Apr 14: -$254 on $99 account (no stop)</li>
+        <li>Apr 16: -$81 on $76 account (100% of account)</li>
+        <li>Apr 21: -$207 on $382 account (-54% in one day)</li>
+        <li>Fix: Set hard daily loss limit at 15% of account balance. When hit, session ends. No exceptions.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <div class="analysis-box" style="border-color:rgba(0,212,170,0.2);">
+      <h4 style="color:var(--accent);">✓ What the Good Days Have in Common (Apr 17 &amp; 20)</h4>
+      <ul>
+        <li>Consistent position sizing (100 lots GOLDgr, 0.05–0.2 on indices)</li>
+        <li>Multiple instruments — distributed risk across asset classes</li>
+        <li>No trades after a 3rd consecutive loss — moved on</li>
+        <li>At least one trade held to TP — profit target respected</li>
+        <li>Session ended after reasonable targets met, not after losses</li>
+      </ul>
+    </div>
+    <div class="analysis-box">
+      <h4 style="color:var(--accent3);">📋 Rules to Implement Immediately</h4>
+      <ul>
+        <li><strong>Max lot size:</strong> 150 GOLDgr / 0.25 index until account &gt; $500</li>
+        <li><strong>Daily loss limit:</strong> 15% of balance — session ends, no override</li>
+        <li><strong>Cooldown rule:</strong> 30 min break after any single loss &gt; 5% of balance</li>
+        <li><strong>No new instrument rule:</strong> Never trade a new instrument (Bitcoin, NDAQ) without a test trade session</li>
+        <li><strong>Max trades per session:</strong> 15 trades — if exceeded, review and stop</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <span>TRADING JOURNAL</span>
+  <span style="color:var(--muted)">Apr 14 – Apr 21, 2026 · 6 sessions · 88 orders analyzed</span>
+  <span>NET: <span style="color:var(--loss)">-$199.57</span></span>
+</footer>
+
+<script>
+(function() {
+  const canvas = document.getElementById('equity-chart');
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.offsetWidth || 900;
+  canvas.height = 180;
+
+  const data = [
+    { label: 'Apr 14 open', val: 99.20 },
+    { label: 'Apr 14 close', val: 99.20 - 254.43 + 353.63 },
+    { label: 'Apr 15 close', val: 76.72 },
+    { label: 'Apr 16 close', val: 0 },
+    { label: 'Apr 17 close', val: 277.98 },
+    { label: 'Apr 20 close', val: 382.68 },
+    { label: 'Apr 21 (noon)', val: 382.68 + 90 },
+    { label: 'Apr 21 close', val: 36.53 }
+  ];
+
+  const W = canvas.width;
+  const H = canvas.height;
+  const pad = { top: 20, right: 30, bottom: 40, left: 50 };
+  const chartW = W - pad.left - pad.right;
+  const chartH = H - pad.top - pad.bottom;
+
+  const vals = data.map(d => d.val);
+  const minV = 0;
+  const maxV = Math.max(...vals) * 1.1;
+
+  const xScale = i => pad.left + (i / (data.length - 1)) * chartW;
+  const yScale = v => pad.top + chartH - ((v - minV) / (maxV - minV)) * chartH;
+
+  ctx.strokeStyle = 'rgba(30,35,48,1)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (i / 4) * chartH;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(W - pad.right, y);
+    ctx.stroke();
+    const val = maxV - (i / 4) * (maxV - minV);
+    ctx.fillStyle = '#3a4060';
+    ctx.font = '10px Space Mono';
+    ctx.textAlign = 'right';
+    ctx.fillText('$' + Math.round(val), pad.left - 6, y + 4);
+  }
+
+  const zeroY = yScale(0);
+  ctx.strokeStyle = 'rgba(255,79,79,0.2)';
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(pad.left, zeroY);
+  ctx.lineTo(W - pad.right, zeroY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const grad = ctx.createLinearGradient(0, pad.top, 0, H);
+  grad.addColorStop(0, 'rgba(0,212,170,0.15)');
+  grad.addColorStop(1, 'rgba(0,212,170,0)');
+  ctx.beginPath();
+  ctx.moveTo(xScale(0), yScale(data[0].val));
+  data.forEach((d, i) => ctx.lineTo(xScale(i), yScale(d.val)));
+  ctx.lineTo(xScale(data.length - 1), H - pad.bottom);
+  ctx.lineTo(xScale(0), H - pad.bottom);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.strokeStyle = '#00d4aa';
+  ctx.lineWidth = 2;
+  data.forEach((d, i) => {
+    if (i === 0) ctx.moveTo(xScale(i), yScale(d.val));
+    else ctx.lineTo(xScale(i), yScale(d.val));
+  });
+  ctx.stroke();
+
+  data.forEach((d, i) => {
+    const x = xScale(i);
+    const y = yScale(d.val);
+    const isLow = d.val < 50;
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = isLow ? '#ff4f4f' : '#00d4aa';
+    ctx.fill();
+    ctx.strokeStyle = '#0a0b0e';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = '#5a6080';
+    ctx.font = '9px Space Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText(d.label, x, H - pad.bottom + 14);
+  });
+})();
+
+function showDay(idx) {
+  document.querySelectorAll('.day-panel').forEach((p, i) => {
+    p.classList.toggle('active', i === idx);
+  });
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', i === idx);
+  });
+}
+</script>
+</body>
+</html>
