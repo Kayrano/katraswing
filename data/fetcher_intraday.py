@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo
 
 _US_TZ   = ZoneInfo("America/New_York")
 _BIST_TZ = ZoneInfo("Europe/Istanbul")
+_JST_TZ  = ZoneInfo("Asia/Tokyo")
 
 SESSION_CONFIG: dict[str, dict] = {
     "US": {
@@ -38,6 +39,13 @@ SESSION_CONFIG: dict[str, dict] = {
         "open_minute":  0,
         "close_hour":   18,
         "close_minute": 0,
+    },
+    "JAPAN": {
+        "tz":           _JST_TZ,
+        "open_hour":    9,
+        "open_minute":  0,
+        "close_hour":   15,
+        "close_minute": 30,
     },
 }
 
@@ -107,15 +115,19 @@ def fetch_daily_trend(ticker: str) -> dict:
     }
 
 
+_JAPAN_FUTURES = {"NKD=F"}
+
 def detect_market(ticker: str) -> str:
     """
-    Return "BIST", "FOREX", or "US" — mirrors the logic in fetcher_hourly.
+    Return "BIST", "FOREX", "JAPAN", or "US" — mirrors the logic in fetcher_hourly.
     """
     sym = ticker.upper()
     if sym.endswith(".IS"):
         return "BIST"
     if sym.endswith("=X"):
         return "FOREX"
+    if sym in _JAPAN_FUTURES:
+        return "JAPAN"
     if sym.endswith("=F"):
         return "US"   # futures: clip to US session (9:30-16:00 ET) for ORB
     if "-USD" in sym or "-BTC" in sym or "-ETH" in sym:

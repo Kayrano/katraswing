@@ -13,19 +13,24 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 
-_ET = ZoneInfo("America/New_York")
+_ET  = ZoneInfo("America/New_York")
+_JST = ZoneInfo("Asia/Tokyo")
 
 # Markets that follow regular stock exchange hours (NYSE/NASDAQ)
 _STOCK_TICKERS = {"AAPL", "MSFT", "AMZN"}
 
-# Futures that trade nearly 24/7 on CME Globex
-_FUTURES_TICKERS = {"NQ=F", "ES=F", "NKD=F"}
+# US futures on CME Globex (nearly 24/7 except weekend break)
+_US_FUTURES_TICKERS = {"NQ=F", "ES=F"}
+
+# Japanese futures — primary session is Tokyo Stock Exchange hours
+_JAPAN_FUTURES_TICKERS = {"NKD=F"}
 
 
 def _market_status(ticker: str, df) -> tuple[bool, str]:
     """
     Returns (is_closed, status_label).
     Uses the last bar timestamp as primary signal; time-based rules as fallback.
+    NKD=F uses Tokyo session hours (09:00–15:30 JST) not US ET rules.
     """
     # Primary: check data staleness — most reliable cross-instrument signal
     if df is not None and not df.empty:
@@ -34,19 +39,23 @@ def _market_status(ticker: str, df) -> tuple[bool, str]:
             if last_ts.tzinfo is None:
                 last_ts = last_ts.tz_localize("UTC")
             age_min = (datetime.now(timezone.utc) - last_ts).total_seconds() / 60
-            # Stocks: stale after 20 min; futures: stale after 10 min (high liquidity)
-            threshold = 20 if ticker in _STOCK_TICKERS else 10
+            # Stocks / US futures: stale after 20 / 10 min
+            # Japan futures: stale after 20 min (session bars are JST-clipped)
+            if ticker in _STOCK_TICKERS:
+                threshold = 20
+            elif ticker in _JAPAN_FUTURES_TICKERS:
+                threshold = 20
+            else:
+                threshold = 10
             if age_min > threshold:
                 return True, f"Market closed  ·  last bar {int(age_min)}m ago"
         except Exception:
             pass
 
     # Fallback: explicit time rules
-    now = datetime.now(_ET)
-    wd  = now.weekday()   # 0 Mon … 6 Sun
-    hm  = now.hour * 60 + now.minute
-
     if ticker in _STOCK_TICKERS:
+        now = datetime.now(_ET)
+        wd, hm = now.weekday(), now.hour * 60 + now.minute
         if wd >= 5:
             return True, "Market closed  ·  weekend"
         if hm < 9 * 60 + 30:
@@ -55,17 +64,33 @@ def _market_status(ticker: str, df) -> tuple[bool, str]:
         if hm >= 16 * 60:
             return True, "After hours  ·  closed at 16:00 ET"
 
-    elif ticker in _FUTURES_TICKERS:
+    elif ticker in _US_FUTURES_TICKERS:
+        now = datetime.now(_ET)
+        wd, hm = now.weekday(), now.hour * 60 + now.minute
         # CME Globex closed: Fri 17:00 → Sun 18:00 ET; daily break 16:00-17:00 ET
-        if wd == 5:  # Saturday
+        if wd == 5:
             return True, "Market closed  ·  CME weekend break"
-        if wd == 6 and hm < 18 * 60:  # Sunday before 18:00 ET
+        if wd == 6 and hm < 18 * 60:
             opens_in = 18 * 60 - hm
             return True, f"Market closed  ·  CME opens Sun 18:00 ET (in {opens_in}m)"
-        if wd == 4 and hm >= 17 * 60:  # Friday after 17:00
+        if wd == 4 and hm >= 17 * 60:
             return True, "Market closed  ·  CME weekend break starts"
         if 16 * 60 <= hm < 17 * 60:
             return True, "Daily maintenance  ·  CME break 16:00-17:00 ET"
+
+    elif ticker in _JAPAN_FUTURES_TICKERS:
+        now = datetime.now(_JST)
+        wd, hm = now.weekday(), now.hour * 60 + now.minute
+        if wd >= 5:
+            return True, "Market closed  ·  TSE weekend"
+        # TSE morning: 09:00–11:30 JST, afternoon: 12:30–15:30 JST
+        if hm < 9 * 60:
+            opens_in = 9 * 60 - hm
+            return True, f"Pre-market  ·  TSE opens in {opens_in}m (09:00 JST)"
+        if 11 * 60 + 30 <= hm < 12 * 60 + 30:
+            return True, "Lunch break  ·  TSE 11:30–12:30 JST"
+        if hm >= 15 * 60 + 30:
+            return True, "After hours  ·  TSE closed at 15:30 JST"
 
     return False, ""
 
