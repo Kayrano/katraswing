@@ -13,6 +13,37 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 
+# ── Background backtest cache (module-level, thread-safe reads) ───────────────
+# Runs one backtest thread per ticker; main thread never blocks waiting for it.
+_BT_CACHE: dict = {
+    "rates":    {},    # ticker -> dict[strategy, win_rate]
+    "ts":       {},    # ticker -> float (unix timestamp of last completed run)
+    "running":  set(), # tickers currently being computed in background
+}
+_BT_LOCK = threading.Lock()
+
+
+def _bt_background(ticker: str) -> None:
+    """Run backtest for one ticker and store results in _BT_CACHE."""
+    try:
+        from agents.intraday_backtester import run_intraday_backtest
+        summary = run_intraday_backtest(ticker, timeframe="5m")
+        rates = {
+            r.strategy: r.win_rate
+            for r in summary.results
+            if r.total_trades >= 5
+        }
+        with _BT_LOCK:
+            _BT_CACHE["rates"][ticker] = rates or None
+            _BT_CACHE["ts"][ticker]    = time.time()
+    except Exception:
+        with _BT_LOCK:
+            _BT_CACHE["rates"][ticker] = None
+            _BT_CACHE["ts"][ticker]    = time.time()
+    finally:
+        with _BT_LOCK:
+            _BT_CACHE["running"].discard(ticker)
+
 _ET  = ZoneInfo("America/New_York")
 _JST = ZoneInfo("Asia/Tokyo")
 
@@ -354,6 +385,13 @@ with st.sidebar:
         value=st.session_state.get("use_bt_calibration", True),
         help="Adjust confidence based on recent 59-day backtest win rates per strategy",
     )
+    with _BT_LOCK:
+        bt_running = list(_BT_CACHE["running"])
+        bt_done    = [t for t in [i["ticker"] for i in INSTRUMENTS] if _BT_CACHE["ts"].get(t, 0) > 0]
+    if bt_running:
+        st.caption(f"⏳ Backtest computing: {', '.join(bt_running)}")
+    elif bt_done:
+        st.caption(f"✓ Backtest cached: {len(bt_done)}/{len(INSTRUMENTS)} tickers")
     st.markdown("---")
 
     # Signal scan controls
@@ -480,24 +518,24 @@ def _refresh_daily_trend(ticker: str) -> dict | None:
 
 
 def _refresh_backtest_rates(ticker: str) -> dict[str, float] | None:
-    """Return cached per-strategy win rates (60-min TTL) or run backtest."""
-    cache_key = f"_bt_{ticker}"
-    ts_key    = f"_bt_ts_{ticker}"
-    if time.time() - st.session_state.get(ts_key, 0) > 3600:
-        try:
-            from agents.intraday_backtester import run_intraday_backtest
-            summary = run_intraday_backtest(ticker, timeframe="5m")
-            rates = {
-                r.strategy: r.win_rate
-                for r in summary.results
-                if r.total_trades >= 5
-            }
-            st.session_state[cache_key] = rates or None
-            st.session_state[ts_key]    = time.time()
-        except Exception:
-            st.session_state[cache_key] = None
-            st.session_state[ts_key]    = time.time()
-    return st.session_state.get(cache_key)
+    """
+    Return cached per-strategy win rates (60-min TTL).
+    Never blocks — launches a background thread if the cache is stale.
+    Returns None on first call (bt_adjustment will be 0 until thread completes).
+    """
+    with _BT_LOCK:
+        last_ts  = _BT_CACHE["ts"].get(ticker, 0)
+        stale    = time.time() - last_ts > 3600
+        running  = ticker in _BT_CACHE["running"]
+        cached   = _BT_CACHE["rates"].get(ticker)
+
+    if stale and not running:
+        t = threading.Thread(target=_bt_background, args=(ticker,), daemon=True)
+        with _BT_LOCK:
+            _BT_CACHE["running"].add(ticker)
+        t.start()
+
+    return cached
 
 
 if needs_run:
