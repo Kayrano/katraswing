@@ -21,7 +21,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 try:
-    import MetaTrader5 as mt5
+    import MetaTrader5 as mt5  # type: ignore[import]
     MT5_AVAILABLE = True
 except ImportError:
     mt5 = None
@@ -30,17 +30,28 @@ except ImportError:
 # ── Symbol mapping: yfinance ticker → your MT5 broker symbol ─────────────────
 # Edit these to match your broker's exact symbol names.
 SYMBOL_MAP: dict[str, str] = {
-    "NQ=F":     "#US100_M26",    # NQ Mini Futures (CME)
-    "ES=F":     "#US500_M26",          # ES Mini Futures (CME)
+    # Futures
+    "NQ=F":     "#US100_M26",   # Nasdaq 100 E-mini (CME) — verify name with FxPro
+    "ES=F":     "#US500_M26",   # S&P 500 E-mini (CME)   — verify name with FxPro
+    "NKD=F":    "JP225",        # Nikkei 225 Futures      — verify name with FxPro
+    # Stocks (CFD)
+    "AAPL":     "#AAPL",        # Apple Inc.
+    "MSFT":     "#MSFT",        # Microsoft Corp.
+    "AMZN":     "#AMZN",        # Amazon.com Inc.
+    # Forex
     "EURUSD=X": "EURUSD",
     "GBPUSD=X": "GBPUSD",
-    "USDJPY=X": "USDJPY"
+    "USDJPY=X": "USDJPY",
 }
 
 # Default lot sizes by MT5 symbol (adjust for your account/risk tolerance)
 DEFAULT_LOTS: dict[str, float] = {
     "#US100_M26": 0.20,
     "#US500_M26": 0.20,
+    "JP225":      0.10,
+    "#AAPL":      1.0,
+    "#MSFT":      1.0,
+    "#AMZN":      1.0,
     "EURUSD":     0.1,
     "GBPUSD":     0.1,
     "USDJPY":     0.1,

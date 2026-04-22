@@ -30,9 +30,11 @@ _ADX_TRENDING = 25.0
 _ADX_RANGING  = 20.0
 
 # Mean-reversion strategies (penalised in trending markets)
-_MR_STRATEGIES = {"VWAP_RSI_5M"}
-# Trend-following strategies (penalised in ranging markets)
-_TREND_STRATEGIES = {"ORB_5M", "TREND_MOM_5M", "EMA_PB_15M", "SQUEEZE_15M"}
+# PDH_PDL_SWEEP fades institutional sweeps — breaks down when trend is strongly directional
+_MR_STRATEGIES = {"VWAP_RSI_5M", "PDH_PDL_SWEEP_5M"}
+# Trend-following / breakout strategies (penalised in ranging markets)
+# NR7 breakouts fail in choppy low-ADX conditions
+_TREND_STRATEGIES = {"ORB_5M", "TREND_MOM_5M", "EMA_PB_15M", "SQUEEZE_15M", "NR7_BREAKOUT_5M"}
 # ABSORB is order-flow based — regime-independent, never penalised
 
 # Minimum final confidence to issue a signal (raised from 0.35 → 0.60)
