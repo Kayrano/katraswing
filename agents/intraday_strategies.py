@@ -139,31 +139,31 @@ def vwap_rsi_5m(df: pd.DataFrame) -> IntradaySignal:
     if any(np.isnan(v) for v in [cur_rsi, cur_ema20, cur_atr, cur_vwap]) or cur_atr == 0:
         return _flat(NAME, TF, "NaN indicator — warmup incomplete")
 
-    band   = 0.15 * cur_atr
+    band    = 0.5 * cur_atr   # widened from 0.15 — price doesn't need to sit exactly on VWAP
     in_band = abs(cur_close - cur_vwap) <= band
 
     rvol_note = f"RVOL {cur_rvol:.1f}x"
 
-    # Long
-    if cur_rsi < 20 and in_band and cur_close > cur_ema20:
-        conf = 0.75 if cur_rsi < 10 else 0.65
+    # Long: RSI(2) < 30 (relaxed from 20) + near VWAP + above EMA20
+    if cur_rsi < 30 and in_band and cur_close > cur_ema20:
+        conf = 0.75 if cur_rsi < 15 else 0.65
         if cur_rvol >= 1.5:
             conf = min(conf + 0.10, 0.95)
         return _make_signal(
             NAME, TF, "LONG", conf, cur_close, cur_atr,
             sl_atr_mult=1.0, tp_atr_mult=2.0,
-            reason=f"RSI(2)={cur_rsi:.1f}<20 | VWAP band {cur_vwap:.2f}±{band:.2f} | EMA20↑ | {rvol_note}",
+            reason=f"RSI(2)={cur_rsi:.1f}<30 | VWAP band {cur_vwap:.2f}±{band:.2f} | EMA20↑ | {rvol_note}",
         )
 
-    # Short
-    if cur_rsi > 80 and in_band and cur_close < cur_ema20:
-        conf = 0.75 if cur_rsi > 90 else 0.65
+    # Short: RSI(2) > 70 (relaxed from 80) + near VWAP + below EMA20
+    if cur_rsi > 70 and in_band and cur_close < cur_ema20:
+        conf = 0.75 if cur_rsi > 85 else 0.65
         if cur_rvol >= 1.5:
             conf = min(conf + 0.10, 0.95)
         return _make_signal(
             NAME, TF, "SHORT", conf, cur_close, cur_atr,
             sl_atr_mult=1.0, tp_atr_mult=2.0,
-            reason=f"RSI(2)={cur_rsi:.1f}>80 | VWAP band {cur_vwap:.2f}±{band:.2f} | EMA20↓ | {rvol_note}",
+            reason=f"RSI(2)={cur_rsi:.1f}>70 | VWAP band {cur_vwap:.2f}±{band:.2f} | EMA20↓ | {rvol_note}",
         )
 
     side = "above" if cur_close > cur_ema20 else "below"
@@ -199,8 +199,8 @@ def orb_5m(df: pd.DataFrame) -> IntradaySignal:
         return _flat(NAME, TF, "Session metadata missing")
 
     cur_bar_num = int(df["session_bar_number"].iloc[-1])
-    if cur_bar_num < 4 or cur_bar_num > 18:
-        return _flat(NAME, TF, f"Outside ORB entry window (bar {cur_bar_num}; valid 4–18)")
+    if cur_bar_num < 4:
+        return _flat(NAME, TF, f"Opening range not yet complete (bar {cur_bar_num}; need ≥4)")
 
     today      = df["session_date"].iloc[-1]
     today_bars = df[df["session_date"] == today]
@@ -279,7 +279,105 @@ def orb_5m(df: pd.DataFrame) -> IntradaySignal:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# STRATEGY 3 — EMA Ribbon Pullback  (15m)
+# STRATEGY 3 — Trend Momentum  (5m, universal — works 24/7 on any instrument)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def trend_momentum_5m(df: pd.DataFrame) -> IntradaySignal:
+    """
+    Multi-factor trend + momentum filter that works on any instrument at any hour.
+
+    Long:  EMA(9) > EMA(21)  AND  MACD hist > 0  AND  RSI(14) in [40, 72]
+           AND  close > EMA(9)
+    Short: EMA(9) < EMA(21)  AND  MACD hist < 0  AND  RSI(14) in [28, 60]
+           AND  close < EMA(9)
+
+    Confidence: base 0.62 — boosted by:
+      +0.08 if RVOL ≥ 1.5 (volume confirmation)
+      +0.05 if RSI > 55 (LONG) or RSI < 45 (SHORT) (momentum strength)
+      +0.05 if EMA gap > 0.3×ATR (trend strength)
+
+    SL: 1.2×ATR  TP: 2.4×ATR  → 1:2 R:R
+    """
+    TF   = "5m"
+    NAME = "TREND_MOM_5M"
+
+    if len(df) < 30:
+        return _flat(NAME, TF, "Insufficient bars (need 30)")
+
+    ema9  = ta.ema(df["Close"], length=9)
+    ema21 = ta.ema(df["Close"], length=21)
+    rsi14 = ta.rsi(df["Close"], length=14)
+    mac   = ta.macd(df["Close"], fast=12, slow=26, signal=9)
+    atr14 = ta.atr(df["High"], df["Low"], df["Close"], length=14)
+
+    if ema9 is None or ema21 is None or rsi14 is None or atr14 is None:
+        return _flat(NAME, TF, "Indicator unavailable")
+
+    cur_ema9  = float(ema9.iloc[-1])
+    cur_ema21 = float(ema21.iloc[-1])
+    cur_rsi   = float(rsi14.iloc[-1])
+    cur_atr   = float(atr14.iloc[-1])
+    cur_close = float(df["Close"].iloc[-1])
+    cur_rvol  = float(df["rvol"].iloc[-1]) if "rvol" in df.columns else 1.0
+
+    if any(np.isnan(v) for v in [cur_ema9, cur_ema21, cur_rsi, cur_atr]) or cur_atr == 0:
+        return _flat(NAME, TF, "NaN indicator — warmup incomplete")
+
+    macd_hist = 0.0
+    if mac is not None and not mac.empty and len(mac) > 0:
+        try:
+            macd_hist = float(mac.iloc[-1, 1])
+            if np.isnan(macd_hist):
+                macd_hist = 0.0
+        except Exception:
+            pass
+
+    ema_gap   = abs(cur_ema9 - cur_ema21)
+    rvol_ok   = cur_rvol >= 1.5
+    trend_str = ema_gap > 0.3 * cur_atr
+
+    def _conf(rsi_strong: bool) -> float:
+        c = 0.62
+        if rvol_ok:   c += 0.08
+        if rsi_strong: c += 0.05
+        if trend_str:  c += 0.05
+        return min(c, 0.92)
+
+    # Long
+    if (cur_ema9 > cur_ema21 and macd_hist > 0
+            and 40 <= cur_rsi <= 72 and cur_close > cur_ema9):
+        return _make_signal(
+            NAME, TF, "LONG", _conf(cur_rsi > 55), cur_close, cur_atr,
+            sl_atr_mult=1.2, tp_atr_mult=2.4,
+            reason=(f"EMA9({cur_ema9:.2f})>EMA21({cur_ema21:.2f}) | "
+                    f"MACD hist {macd_hist:+.4f} | RSI(14)={cur_rsi:.1f} | RVOL {cur_rvol:.1f}x"),
+        )
+
+    # Short
+    if (cur_ema9 < cur_ema21 and macd_hist < 0
+            and 28 <= cur_rsi <= 60 and cur_close < cur_ema9):
+        return _make_signal(
+            NAME, TF, "SHORT", _conf(cur_rsi < 45), cur_close, cur_atr,
+            sl_atr_mult=1.2, tp_atr_mult=2.4,
+            reason=(f"EMA9({cur_ema9:.2f})<EMA21({cur_ema21:.2f}) | "
+                    f"MACD hist {macd_hist:+.4f} | RSI(14)={cur_rsi:.1f} | RVOL {cur_rvol:.1f}x"),
+        )
+
+    reasons = []
+    if cur_ema9 > cur_ema21 and macd_hist > 0 and cur_close > cur_ema9:
+        reasons.append(f"trend up but RSI(14)={cur_rsi:.1f} outside [40–72]")
+    elif cur_ema9 < cur_ema21 and macd_hist < 0 and cur_close < cur_ema9:
+        reasons.append(f"trend down but RSI(14)={cur_rsi:.1f} outside [28–60]")
+    elif macd_hist == 0:
+        reasons.append("MACD hist = 0, no momentum direction")
+    else:
+        trend = "up" if cur_ema9 > cur_ema21 else "down"
+        reasons.append(f"EMA trend {trend} but MACD or price not aligned")
+    return _flat(NAME, TF, " | ".join(reasons))
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# STRATEGY 4 — EMA Ribbon Pullback  (15m)
 # ════════════════════════════════════════════════════════════════════════════════
 
 def ema_pullback_15m(df: pd.DataFrame) -> IntradaySignal:
@@ -523,21 +621,356 @@ def absorption_15m(df: pd.DataFrame) -> IntradaySignal:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
+# STRATEGY 7 — Previous Day High / Low Liquidity Sweep Reversal  (5m)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def pdh_pdl_sweep_5m(df: pd.DataFrame) -> IntradaySignal:
+    """
+    Previous Day High/Low Liquidity Sweep Reversal.
+
+    Institutional algorithms systematically hunt stop clusters above prior-day
+    highs (PDH) and below prior-day lows (PDL) before reversing hard.
+    The setup: the current 5m bar sweeps the level (wick beyond it) but CLOSES
+    back on the correct side — trapping breakout participants.
+
+    Long:  bar LOW dips below PDL  AND  bar CLOSE is back ABOVE PDL
+    Short: bar HIGH sweeps above PDH  AND  bar CLOSE is back BELOW PDH
+
+    SL: 0.5×ATR beyond the sweep wick extreme
+    TP: 2×risk from entry  (1:2 R:R)
+
+    Win rate: 65–75% on ES/NQ futures (Steady Turtle Trading practitioner data).
+    Source: dailypriceaction.com, steady-turtle.com
+    """
+    NAME = "PDH_PDL_SWEEP_5M"
+    TF   = "5m"
+
+    if len(df) < 50:
+        return _flat(NAME, TF, "Insufficient bars (need 50)")
+    if "session_date" not in df.columns:
+        return _flat(NAME, TF, "session_date column missing")
+
+    atr_s   = ta.atr(df["High"], df["Low"], df["Close"], length=14)
+    cur_atr = float(atr_s.dropna().iloc[-1]) if not atr_s.dropna().empty else 0.0
+    if cur_atr == 0:
+        return _flat(NAME, TF, "ATR=0")
+
+    # Previous completed session
+    today    = df["session_date"].iloc[-1]
+    prev_dates = sorted(d for d in df["session_date"].unique() if d < today)
+    if not prev_dates:
+        return _flat(NAME, TF, "No prior session in data")
+    prev_session = df[df["session_date"] == prev_dates[-1]]
+    pdh = float(prev_session["High"].max())
+    pdl = float(prev_session["Low"].min())
+
+    cur       = df.iloc[-1]
+    cur_close = float(cur["Close"])
+    cur_high  = float(cur["High"])
+    cur_low   = float(cur["Low"])
+    rvol      = float(df["rvol"].iloc[-1]) if "rvol" in df.columns else 1.0
+
+    # Skip first 5 bars of the session (pre-open noise)
+    session_bars = int((df["session_date"] == today).sum())
+    if session_bars < 5:
+        return _flat(NAME, TF, f"Too early in session (bar {session_bars})")
+
+    # Bearish sweep: wick above PDH, close back below — traps longs
+    bearish_sweep = (cur_high > pdh) and (cur_close < pdh)
+    # Bullish sweep: wick below PDL, close back above — traps shorts
+    bullish_sweep = (cur_low < pdl) and (cur_close > pdl)
+
+    if bearish_sweep:
+        conf = 0.70 + (0.07 if rvol >= 1.2 else 0.0)
+        sl   = round(cur_high + 0.5 * cur_atr, 4)
+        risk = sl - cur_close
+        if risk <= 0:
+            return _flat(NAME, TF, "Invalid bearish-sweep risk geometry")
+        tp = round(cur_close - 2.0 * risk, 4)
+        return IntradaySignal(
+            strategy=NAME, timeframe=TF, signal="SHORT",
+            confidence=round(min(conf, 0.92), 3),
+            entry=round(cur_close, 4), stop_loss=sl, take_profit=tp,
+            atr=round(cur_atr, 4), rr_ratio=2.0,
+            reason=(f"Sweep above PDH {pdh:.2f} → close {cur_close:.2f} "
+                    f"| Wick={cur_high:.2f} | RVOL={rvol:.1f}x"),
+        )
+
+    if bullish_sweep:
+        conf = 0.70 + (0.07 if rvol >= 1.2 else 0.0)
+        sl   = round(cur_low - 0.5 * cur_atr, 4)
+        risk = cur_close - sl
+        if risk <= 0:
+            return _flat(NAME, TF, "Invalid bullish-sweep risk geometry")
+        tp = round(cur_close + 2.0 * risk, 4)
+        return IntradaySignal(
+            strategy=NAME, timeframe=TF, signal="LONG",
+            confidence=round(min(conf, 0.92), 3),
+            entry=round(cur_close, 4), stop_loss=sl, take_profit=tp,
+            atr=round(cur_atr, 4), rr_ratio=2.0,
+            reason=(f"Sweep below PDL {pdl:.2f} → close {cur_close:.2f} "
+                    f"| Wick={cur_low:.2f} | RVOL={rvol:.1f}x"),
+        )
+
+    return _flat(NAME, TF,
+        f"No sweep | PDH {pdh:.2f} PDL {pdl:.2f} | H={cur_high:.2f} L={cur_low:.2f} C={cur_close:.2f}")
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# STRATEGY 8 — Camarilla Pivot S3/R3 Bounce + S4/R4 Breakout  (5m)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def camarilla_pivot_5m(df: pd.DataFrame) -> IntradaySignal:
+    """
+    Camarilla Pivot Points — Mean Reversion at S3/R3, Breakout at S4/R4.
+
+    Camarilla pivots (Nick Scott, 1989) divide prior-day range into 8 levels.
+    The inner levels S3/R3 are reversal zones: when price reaches them in a
+    range-bound session it tends to snap back.  The outer S4/R4 signal a trending
+    day: if price pushes through them a directional move is in progress.
+
+    Mean reversion (S3 / R3):
+        Long at S3 touch + rejection close above S3   → SL at S4, TP 2×risk
+        Short at R3 touch + rejection close below R3  → SL at R4, TP 2×risk
+
+    Breakout (S4 / R4):
+        Long when bar CLOSES above R4                 → SL just below R4, TP 2×risk
+        Short when bar CLOSES below S4                → SL just above S4, TP 2×risk
+
+    Win rate: 59–62% mean reversion; 55–60% breakout (10-yr backtest EUR/USD & SPY).
+    Source: QuantifiedStrategies.com, LiteFinance
+    """
+    NAME = "CAMARILLA_5M"
+    TF   = "5m"
+
+    if len(df) < 50:
+        return _flat(NAME, TF, "Insufficient bars (need 50)")
+    if "session_date" not in df.columns:
+        return _flat(NAME, TF, "session_date column missing")
+
+    atr_s   = ta.atr(df["High"], df["Low"], df["Close"], length=14)
+    cur_atr = float(atr_s.dropna().iloc[-1]) if not atr_s.dropna().empty else 0.0
+    if cur_atr == 0:
+        return _flat(NAME, TF, "ATR=0")
+
+    # Previous completed session OHLC
+    today      = df["session_date"].iloc[-1]
+    prev_dates = sorted(d for d in df["session_date"].unique() if d < today)
+    if not prev_dates:
+        return _flat(NAME, TF, "No prior session in data")
+    prev = df[df["session_date"] == prev_dates[-1]]
+    ph   = float(prev["High"].max())
+    pl   = float(prev["Low"].min())
+    pc   = float(prev["Close"].iloc[-1])
+    rng  = ph - pl
+    if rng == 0:
+        return _flat(NAME, TF, "Zero prior-day range")
+
+    # Camarilla levels (Nick Scott formula)
+    r4 = pc + rng * 1.1 / 2
+    r3 = pc + rng * 1.1 / 4
+    s3 = pc - rng * 1.1 / 4
+    s4 = pc - rng * 1.1 / 2
+
+    cur        = df.iloc[-1]
+    prev_bar   = df.iloc[-2]
+    cur_close  = float(cur["Close"])
+    cur_high   = float(cur["High"])
+    cur_low    = float(cur["Low"])
+    prev_low   = float(prev_bar["Low"])
+    prev_high  = float(prev_bar["High"])
+    rvol       = float(df["rvol"].iloc[-1]) if "rvol" in df.columns else 1.0
+
+    # ── Breakout signals (higher confidence, momentum-driven) ────────────────
+    if cur_close > r4:
+        conf = 0.72 + (0.08 if rvol >= 1.5 else 0.0)
+        sl   = round(r4 - 0.5 * cur_atr, 4)
+        risk = cur_close - sl
+        if risk <= 0:
+            return _flat(NAME, TF, "R4 breakout: invalid risk")
+        tp = round(cur_close + 2.0 * risk, 4)
+        return IntradaySignal(
+            strategy=NAME, timeframe=TF, signal="LONG",
+            confidence=round(min(conf, 0.92), 3),
+            entry=round(cur_close, 4), stop_loss=sl, take_profit=tp,
+            atr=round(cur_atr, 4), rr_ratio=2.0,
+            reason=f"R4 breakout: close {cur_close:.2f} > R4 {r4:.2f} | RVOL={rvol:.1f}x",
+        )
+
+    if cur_close < s4:
+        conf = 0.72 + (0.08 if rvol >= 1.5 else 0.0)
+        sl   = round(s4 + 0.5 * cur_atr, 4)
+        risk = sl - cur_close
+        if risk <= 0:
+            return _flat(NAME, TF, "S4 breakdown: invalid risk")
+        tp = round(cur_close - 2.0 * risk, 4)
+        if tp <= 0:
+            return _flat(NAME, TF, "S4 breakdown: TP <= 0")
+        return IntradaySignal(
+            strategy=NAME, timeframe=TF, signal="SHORT",
+            confidence=round(min(conf, 0.92), 3),
+            entry=round(cur_close, 4), stop_loss=sl, take_profit=tp,
+            atr=round(cur_atr, 4), rr_ratio=2.0,
+            reason=f"S4 breakdown: close {cur_close:.2f} < S4 {s4:.2f} | RVOL={rvol:.1f}x",
+        )
+
+    # ── Mean-reversion bounce signals ────────────────────────────────────────
+    # S3 bounce: prior bar touched S3, current bar closes above S3
+    touched_s3  = (prev_low <= s3) or (cur_low <= s3)
+    rejected_s3 = cur_close > s3
+    if touched_s3 and rejected_s3:
+        conf = 0.62 + (0.07 if rvol >= 1.3 else 0.0)
+        sl   = round(s4 - 0.3 * cur_atr, 4)
+        risk = cur_close - sl
+        if risk <= 0:
+            return _flat(NAME, TF, "S3 bounce: invalid risk")
+        tp = round(cur_close + 2.0 * risk, 4)
+        return IntradaySignal(
+            strategy=NAME, timeframe=TF, signal="LONG",
+            confidence=round(min(conf, 0.85), 3),
+            entry=round(cur_close, 4), stop_loss=sl, take_profit=tp,
+            atr=round(cur_atr, 4), rr_ratio=2.0,
+            reason=f"S3 bounce: low {cur_low:.2f}→S3 {s3:.2f}, reject above | RVOL={rvol:.1f}x",
+        )
+
+    # R3 bounce: prior bar touched R3, current bar closes below R3
+    touched_r3  = (prev_high >= r3) or (cur_high >= r3)
+    rejected_r3 = cur_close < r3
+    if touched_r3 and rejected_r3:
+        conf = 0.62 + (0.07 if rvol >= 1.3 else 0.0)
+        sl   = round(r4 + 0.3 * cur_atr, 4)
+        risk = sl - cur_close
+        if risk <= 0:
+            return _flat(NAME, TF, "R3 bounce: invalid risk")
+        tp = round(cur_close - 2.0 * risk, 4)
+        if tp <= 0:
+            return _flat(NAME, TF, "R3 bounce: TP <= 0")
+        return IntradaySignal(
+            strategy=NAME, timeframe=TF, signal="SHORT",
+            confidence=round(min(conf, 0.85), 3),
+            entry=round(cur_close, 4), stop_loss=sl, take_profit=tp,
+            atr=round(cur_atr, 4), rr_ratio=2.0,
+            reason=f"R3 bounce: high {cur_high:.2f}→R3 {r3:.2f}, reject below | RVOL={rvol:.1f}x",
+        )
+
+    return _flat(NAME, TF,
+        f"No Camarilla trigger | S3={s3:.2f} R3={r3:.2f} S4={s4:.2f} R4={r4:.2f} | C={cur_close:.2f}")
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# STRATEGY 9 — NR7 Volatility Compression Breakout  (5m)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def nr7_breakout_5m(df: pd.DataFrame) -> IntradaySignal:
+    """
+    NR7 Volatility Compression Breakout.
+
+    Detects the Narrow Range 7 bar: a bar whose high-low range is the smallest
+    of the preceding 7 bars.  The NR7 signals extreme compression before a
+    volatility expansion.  Signal fires when the very next bar closes BEYOND the
+    NR7 bar's high (long) or low (short), confirming the breakout direction.
+
+    Long:  close of current bar > NR7 bar's high
+    Short: close of current bar < NR7 bar's low
+
+    SL: opposite end of NR7 bar + 0.3×ATR buffer
+    TP: 2×risk from entry
+
+    Win rate: 57% bull-market up breakout, 54% down breakout.
+    Source: Bulkowski, Encyclopedia of Chart Patterns, 29,021 trades (1990-2013)
+    """
+    NAME = "NR7_BREAKOUT_5M"
+    TF   = "5m"
+
+    if len(df) < 20:
+        return _flat(NAME, TF, "Insufficient bars (need 20)")
+
+    atr_s   = ta.atr(df["High"], df["Low"], df["Close"], length=14)
+    cur_atr = float(atr_s.dropna().iloc[-1]) if not atr_s.dropna().empty else 0.0
+    if cur_atr == 0:
+        return _flat(NAME, TF, "ATR=0")
+
+    highs  = df["High"].values
+    lows   = df["Low"].values
+    closes = df["Close"].values
+    n      = len(df)
+
+    # Setup bar is df.iloc[-2]; current bar is df.iloc[-1]
+    nr7_idx = n - 2
+    if nr7_idx < 6:
+        return _flat(NAME, TF, "Not enough bars for NR7 lookback")
+
+    nr7_range = float(highs[nr7_idx] - lows[nr7_idx])
+    window_ranges = [float(highs[i] - lows[i]) for i in range(nr7_idx - 6, nr7_idx + 1)]
+    if nr7_range > min(window_ranges):
+        return _flat(NAME, TF,
+            f"No NR7: prev bar range {nr7_range:.4f} > min {min(window_ranges):.4f}")
+
+    nr7_high  = float(highs[nr7_idx])
+    nr7_low   = float(lows[nr7_idx])
+    cur_close = float(closes[-1])
+    rvol      = float(df["rvol"].iloc[-1]) if "rvol" in df.columns else 1.0
+
+    breakout_long  = cur_close > nr7_high
+    breakout_short = cur_close < nr7_low
+
+    if breakout_long:
+        conf = 0.60 + (0.10 if rvol >= 1.5 else 0.0)
+        sl   = round(nr7_low - 0.3 * cur_atr, 4)
+        risk = cur_close - sl
+        if risk <= 0:
+            return _flat(NAME, TF, "NR7 long: invalid risk")
+        tp = round(cur_close + 2.0 * risk, 4)
+        return IntradaySignal(
+            strategy=NAME, timeframe=TF, signal="LONG",
+            confidence=round(min(conf, 0.88), 3),
+            entry=round(cur_close, 4), stop_loss=sl, take_profit=tp,
+            atr=round(cur_atr, 4), rr_ratio=2.0,
+            reason=(f"NR7 breakout ↑: close {cur_close:.4f} > NR7-high {nr7_high:.4f} "
+                    f"| NR7-range={nr7_range:.4f} | RVOL={rvol:.1f}x"),
+        )
+
+    if breakout_short:
+        conf = 0.60 + (0.10 if rvol >= 1.5 else 0.0)
+        sl   = round(nr7_high + 0.3 * cur_atr, 4)
+        risk = sl - cur_close
+        if risk <= 0:
+            return _flat(NAME, TF, "NR7 short: invalid risk")
+        tp = round(cur_close - 2.0 * risk, 4)
+        if tp <= 0:
+            return _flat(NAME, TF, "NR7 short: TP <= 0")
+        return IntradaySignal(
+            strategy=NAME, timeframe=TF, signal="SHORT",
+            confidence=round(min(conf, 0.88), 3),
+            entry=round(cur_close, 4), stop_loss=sl, take_profit=tp,
+            atr=round(cur_atr, 4), rr_ratio=2.0,
+            reason=(f"NR7 breakdown ↓: close {cur_close:.4f} < NR7-low {nr7_low:.4f} "
+                    f"| NR7-range={nr7_range:.4f} | RVOL={rvol:.1f}x"),
+        )
+
+    return _flat(NAME, TF,
+        f"NR7 set up (range={nr7_range:.4f}) — no breakout yet "
+        f"| C={cur_close:.4f} in [{nr7_low:.4f}, {nr7_high:.4f}]")
+
+
+# ════════════════════════════════════════════════════════════════════════════════
 # ORCHESTRATOR — run_intraday_signals
 # ════════════════════════════════════════════════════════════════════════════════
 
-_STRATEGIES_5M  = [vwap_rsi_5m, orb_5m]
+_STRATEGIES_5M  = [vwap_rsi_5m, orb_5m, trend_momentum_5m,
+                   pdh_pdl_sweep_5m, camarilla_pivot_5m, nr7_breakout_5m]
 _STRATEGIES_15M = [ema_pullback_15m, squeeze_15m, absorption_15m]
 
-# ── Strategy name registry ────────────────────────────────────────────────────
-# fn.__name__.upper() gives wrong names for ema_pullback_15m → "EMA_PULLBACK_15M"
-# and absorption_15m → "ABSORPTION_15M".  Use this map everywhere instead.
 _STRATEGY_NAME_MAP: dict[str, str] = {
-    "vwap_rsi_5m":     "VWAP_RSI_5M",
-    "orb_5m":          "ORB_5M",
-    "ema_pullback_15m": "EMA_PB_15M",
-    "squeeze_15m":     "SQUEEZE_15M",
-    "absorption_15m":  "ABSORB_15M",
+    "vwap_rsi_5m":       "VWAP_RSI_5M",
+    "orb_5m":            "ORB_5M",
+    "trend_momentum_5m": "TREND_MOM_5M",
+    "ema_pullback_15m":  "EMA_PB_15M",
+    "squeeze_15m":       "SQUEEZE_15M",
+    "absorption_15m":    "ABSORB_15M",
+    "pdh_pdl_sweep_5m":  "PDH_PDL_SWEEP_5M",
+    "camarilla_pivot_5m":"CAMARILLA_5M",
+    "nr7_breakout_5m":   "NR7_BREAKOUT_5M",
 }
 
 
