@@ -317,6 +317,20 @@ with st.sidebar:
     )
     st.markdown("---")
 
+    # Signal filter toggles
+    st.markdown("**Signal Filters**")
+    use_daily_gate = st.checkbox(
+        "Daily trend gate",
+        value=st.session_state.get("use_daily_gate", True),
+        help="Hard-veto signals that oppose the daily EMA20/50 trend direction",
+    )
+    use_bt_calibration = st.checkbox(
+        "Backtest calibration",
+        value=st.session_state.get("use_bt_calibration", True),
+        help="Adjust confidence based on recent 59-day backtest win rates per strategy",
+    )
+    st.markdown("---")
+
     # Signal scan controls
     run_btn = st.button("🔄 Scan Signals Now", use_container_width=True, type="primary")
     auto_refresh = st.checkbox(
@@ -396,12 +410,14 @@ with st.sidebar:
 
 # ── Persist settings ──────────────────────────────────────────────────────────
 st.session_state.update({
-    "finnhub_key":  finnhub_key,
-    "account_size": account_size,
-    "risk_pct":     risk_pct,
-    "auto_refresh": auto_refresh,
-    "mt5_tickers":  mt5_tickers,
-    "mt5_min_conf": mt5_min_conf,
+    "finnhub_key":       finnhub_key,
+    "account_size":      account_size,
+    "risk_pct":          risk_pct,
+    "auto_refresh":      auto_refresh,
+    "mt5_tickers":       mt5_tickers,
+    "mt5_min_conf":      mt5_min_conf,
+    "use_daily_gate":    use_daily_gate,
+    "use_bt_calibration": use_bt_calibration,
 })
 
 # ── MT5 action handler (outside sidebar) ─────────────────────────────────────
@@ -422,17 +438,59 @@ if auto_refresh:
 needs_run = run_btn or ("results" not in st.session_state)
 
 # ── Fetch signals ─────────────────────────────────────────────────────────────
+def _refresh_daily_trend(ticker: str) -> dict | None:
+    """Return cached daily trend dict (15-min TTL) or fetch fresh."""
+    cache_key = f"_dt_{ticker}"
+    ts_key    = f"_dt_ts_{ticker}"
+    if time.time() - st.session_state.get(ts_key, 0) > 900:
+        try:
+            from data.fetcher_intraday import fetch_daily_trend
+            trend = fetch_daily_trend(ticker)
+            st.session_state[cache_key] = trend
+            st.session_state[ts_key]    = time.time()
+        except Exception:
+            st.session_state[cache_key] = None
+            st.session_state[ts_key]    = time.time()
+    return st.session_state.get(cache_key)
+
+
+def _refresh_backtest_rates(ticker: str) -> dict[str, float] | None:
+    """Return cached per-strategy win rates (60-min TTL) or run backtest."""
+    cache_key = f"_bt_{ticker}"
+    ts_key    = f"_bt_ts_{ticker}"
+    if time.time() - st.session_state.get(ts_key, 0) > 3600:
+        try:
+            from agents.intraday_backtester import run_intraday_backtest
+            summary = run_intraday_backtest(ticker, timeframe="5m")
+            rates = {
+                r.strategy: r.win_rate
+                for r in summary.results
+                if r.total_trades >= 5
+            }
+            st.session_state[cache_key] = rates or None
+            st.session_state[ts_key]    = time.time()
+        except Exception:
+            st.session_state[cache_key] = None
+            st.session_state[ts_key]    = time.time()
+    return st.session_state.get(cache_key)
+
+
 if needs_run:
     from agents.signal_engine import run_signal
     results = {}
     with st.spinner("Scanning signals…"):
         for inst in INSTRUMENTS:
-            results[inst["ticker"]] = run_signal(
-                ticker=inst["ticker"],
+            ticker = inst["ticker"]
+            daily_trend     = _refresh_daily_trend(ticker)     if use_daily_gate    else None
+            bt_win_rates    = _refresh_backtest_rates(ticker)  if use_bt_calibration else None
+            results[ticker] = run_signal(
+                ticker=ticker,
                 display_name=inst["name"],
                 finnhub_api_key=finnhub_key,
                 account_size=account_size,
                 risk_pct=risk_pct,
+                daily_trend=daily_trend,
+                backtest_win_rates=bt_win_rates,
             )
     st.session_state["results"] = results
     st.session_state["last_refresh_ts"] = time.time()
@@ -470,16 +528,57 @@ def _signal_card(result, pending_keys: set):
     pending_badge = " &nbsp;<span style='background:#f59e0b;color:#000;border-radius:4px;padding:1px 6px;font-size:11px;'>AWAITING APPROVAL</span>" if is_pending else ""
 
     # Direction + confidence
+    # Build veto badge if daily trend gate suppressed the signal
+    veto_badge = ""
+    if getattr(result, "daily_trend_vetoed", False):
+        veto_badge = " &nbsp;<span style='background:#7c3aed;color:#fff;border-radius:4px;padding:1px 6px;font-size:11px;'>VETOED</span>"
+
+    # ADX regime badge
+    _adx_regime = getattr(result, "adx_regime", "NEUTRAL")
+    _adx_val    = getattr(result, "adx_value", 0.0)
+    _regime_colors = {"TRENDING": "#f59e0b", "RANGING": "#60a5fa", "NEUTRAL": "#4b5563"}
+    _regime_c = _regime_colors.get(_adx_regime, "#4b5563")
+    regime_badge = (
+        f"<span style='background:{_regime_c}22;color:{_regime_c};border:1px solid {_regime_c}55;"
+        f"border-radius:4px;padding:1px 7px;font-size:10px;letter-spacing:.5px;'>"
+        f"{_adx_regime} ADX {_adx_val:.0f}</span>"
+    )
+
+    # Daily trend badge
+    _dtd = getattr(result, "daily_trend_direction", "NEUTRAL")
+    _dt_colors = {"BULLISH": "#22c55e", "BEARISH": "#ef4444", "NEUTRAL": "#4b5563"}
+    _dt_c = _dt_colors.get(_dtd, "#4b5563")
+    dt_badge = (
+        f"<span style='background:{_dt_c}22;color:{_dt_c};border:1px solid {_dt_c}55;"
+        f"border-radius:4px;padding:1px 7px;font-size:10px;letter-spacing:.5px;'>"
+        f"D {_dtd}</span>"
+    ) if _dtd != "NEUTRAL" else ""
+
+    # Consensus badge
+    _agree = getattr(result, "strategy_agreement", "")
+    _consensus_boost = getattr(result, "consensus_boost", 0.0)
+    _cb_c = "#22c55e" if _consensus_boost > 0 else "#ef4444" if _consensus_boost < 0 else "#4b5563"
+    agree_badge = (
+        f"<span style='background:{_cb_c}22;color:{_cb_c};border:1px solid {_cb_c}55;"
+        f"border-radius:4px;padding:1px 7px;font-size:10px;'>"
+        f"{_agree}</span>"
+    ) if _agree else ""
+
     st.markdown(
         f"<div class='sig-card' style='background:{bg};border:1px solid {border};'>"
         f"<div style='font-size:26px;font-weight:800;color:{color};'>"
-        f"{arrow}{pending_badge}</div>"
+        f"{arrow}{pending_badge}{veto_badge}</div>"
         f"<div style='margin:10px 0 4px;background:#1a1a2e;border-radius:4px;height:8px;'>"
         f"<div style='background:{color};width:{conf}%;height:100%;border-radius:4px;'></div></div>"
-        f"<div style='font-size:13px;color:#9ca3af;margin-bottom:14px;'>"
+        f"<div style='font-size:13px;color:#9ca3af;margin-bottom:8px;'>"
         f"Confidence: <b style='color:{color};'>{conf}%</b>"
         f"&nbsp;·&nbsp;Base {int(result.base_confidence*100)}%"
-        f"&nbsp;·&nbsp;News boost {result.news_boost:+.0%}</div>"
+        f"&nbsp;·&nbsp;News boost {result.news_boost:+.0%}"
+        + (f"&nbsp;·&nbsp;BT {getattr(result,'bt_adjustment',0):+.0%}" if abs(getattr(result,'bt_adjustment',0)) > 0.001 else "")
+        + f"</div>"
+        f"<div style='display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;'>"
+        f"{regime_badge} {dt_badge} {agree_badge}"
+        f"</div>"
         f"</div>",
         unsafe_allow_html=True,
     )

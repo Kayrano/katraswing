@@ -43,6 +43,69 @@ SESSION_CONFIG: dict[str, dict] = {
 
 VALID_INTERVALS = ("5m", "15m")
 
+# EMA lengths used for daily trend direction
+_DAILY_EMA_FAST = 20
+_DAILY_EMA_SLOW = 50
+
+
+def fetch_daily_trend(ticker: str) -> dict:
+    """
+    Fetch daily bars and return a trend summary dict:
+        trend_direction : "BULLISH" | "BEARISH" | "NEUTRAL"
+        ema20           : float — last EMA(20) daily value
+        ema50           : float — last EMA(50) daily value
+        adx_daily       : float — last ADX(14) daily value
+        close           : float — last daily close
+
+    BULLISH  = close > ema20 > ema50
+    BEARISH  = close < ema20 < ema50
+    NEUTRAL  = anything else (transitioning / ranging)
+
+    Raises ValueError if fewer than 50 daily bars are available.
+    """
+    raw = yf.Ticker(ticker).history(period="90d", interval="1d", auto_adjust=True)
+    if raw is None or raw.empty or len(raw) < 50:
+        raise ValueError(f"Insufficient daily data for '{ticker}' (need ≥50 bars)")
+
+    close = raw["Close"].dropna()
+
+    ema20 = close.ewm(span=_DAILY_EMA_FAST, adjust=False).mean()
+    ema50 = close.ewm(span=_DAILY_EMA_SLOW, adjust=False).mean()
+
+    last_close = float(close.iloc[-1])
+    last_ema20 = float(ema20.iloc[-1])
+    last_ema50 = float(ema50.iloc[-1])
+
+    # ADX on daily bars
+    adx_daily = 0.0
+    try:
+        high  = raw["High"].dropna()
+        low   = raw["Low"].dropna()
+        # align index lengths after dropna
+        idx   = close.index.intersection(high.index).intersection(low.index)
+        from utils.ta_compat import adx as _adx
+        adx_s = _adx(high.loc[idx], low.loc[idx], close.loc[idx], length=14)
+        valid = adx_s.dropna()
+        if not valid.empty:
+            adx_daily = float(valid.iloc[-1])
+    except Exception:
+        adx_daily = 0.0
+
+    if last_close > last_ema20 and last_ema20 > last_ema50:
+        direction = "BULLISH"
+    elif last_close < last_ema20 and last_ema20 < last_ema50:
+        direction = "BEARISH"
+    else:
+        direction = "NEUTRAL"
+
+    return {
+        "trend_direction": direction,
+        "ema20": round(last_ema20, 4),
+        "ema50": round(last_ema50, 4),
+        "adx_daily": round(adx_daily, 1),
+        "close": round(last_close, 4),
+    }
+
 
 def detect_market(ticker: str) -> str:
     """
