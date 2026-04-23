@@ -60,30 +60,12 @@ _JAPAN_FUTURES_TICKERS = {"NKD=F"}
 def _market_status(ticker: str, df) -> tuple[bool, str]:
     """
     Returns (is_closed, status_label).
-    Uses the last bar timestamp as primary signal; time-based rules as fallback.
+    Primary: calendar/clock check (always accurate).
+    Secondary: data staleness check only when the clock says the market IS open
+               (catches rare yfinance outages or very stale cached data).
     NKD=F uses Tokyo session hours (09:00–15:30 JST) not US ET rules.
     """
-    # Primary: check data staleness — most reliable cross-instrument signal
-    if df is not None and not df.empty:
-        last_ts = df.index[-1]
-        try:
-            if last_ts.tzinfo is None:
-                last_ts = last_ts.tz_localize("UTC")
-            age_min = (datetime.now(timezone.utc) - last_ts).total_seconds() / 60
-            # Stocks / US futures: stale after 20 / 10 min
-            # Japan futures: stale after 20 min (session bars are JST-clipped)
-            if ticker in _STOCK_TICKERS:
-                threshold = 20
-            elif ticker in _JAPAN_FUTURES_TICKERS:
-                threshold = 20
-            else:
-                threshold = 10
-            if age_min > threshold:
-                return True, f"Market closed  ·  last bar {int(age_min)}m ago"
-        except Exception:
-            pass
-
-    # Fallback: explicit time rules
+    # ── Clock-based check (primary) ───────────────────────────────────────────
     if ticker in _STOCK_TICKERS:
         now = datetime.now(_ET)
         wd, hm = now.weekday(), now.hour * 60 + now.minute
@@ -122,6 +104,20 @@ def _market_status(ticker: str, df) -> tuple[bool, str]:
             return True, "Lunch break  ·  TSE 11:30–12:30 JST"
         if hm >= 15 * 60 + 30:
             return True, "After hours  ·  TSE closed at 15:30 JST"
+
+    # ── Staleness check (secondary — only fires when clock says market is open) -
+    # yfinance 5m data has a ~15 min delay; use 30 min threshold to avoid false
+    # positives while still catching genuine data feed outages.
+    if df is not None and not df.empty:
+        try:
+            last_ts = df.index[-1]
+            if last_ts.tzinfo is None:
+                last_ts = last_ts.tz_localize("UTC")
+            age_min = (datetime.now(timezone.utc) - last_ts).total_seconds() / 60
+            if age_min > 30:
+                return True, f"Data stale  ·  last bar {int(age_min)}m ago"
+        except Exception:
+            pass
 
     return False, ""
 
