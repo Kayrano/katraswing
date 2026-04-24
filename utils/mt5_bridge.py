@@ -13,9 +13,12 @@ MT5 symbol names vary by broker — edit SYMBOL_MAP to match your broker's namin
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import pandas as pd
@@ -60,6 +63,119 @@ DEFAULT_LOTS: dict[str, float] = {
 }
 
 MAGIC_NUMBER = 234100   # unique ID for Katraswing orders
+
+# Persisted per-symbol stop minimums learned from live broker feedback
+_STOP_LEARNING_PATH = Path(__file__).parent.parent / "data" / "stop_minimums.json"
+
+
+def _load_learned_min(symbol: str) -> float:
+    """Return the last successful effective_min for this symbol, or 0.0."""
+    try:
+        if _STOP_LEARNING_PATH.exists():
+            data = json.loads(_STOP_LEARNING_PATH.read_text(encoding="utf-8"))
+            return float(data.get(symbol, {}).get("min_pts", 0.0))
+    except Exception:
+        pass
+    return 0.0
+
+
+def _save_learned_min(symbol: str, min_pts: float) -> None:
+    """Save the effective_min that worked for this symbol (only increases)."""
+    try:
+        data: dict = {}
+        if _STOP_LEARNING_PATH.exists():
+            data = json.loads(_STOP_LEARNING_PATH.read_text(encoding="utf-8"))
+        existing = float(data.get(symbol, {}).get("min_pts", 0.0))
+        if min_pts > existing:
+            data[symbol] = {
+                "min_pts": round(min_pts, 8),
+                "updated": datetime.utcnow().isoformat(timespec="seconds"),
+            }
+            _STOP_LEARNING_PATH.write_text(
+                json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            logger.info(f"Learned min stop for {symbol}: {min_pts:.5f}")
+    except Exception as exc:
+        logger.debug(f"_save_learned_min: {exc}")
+
+
+def _find_safe_stops(
+    symbol: str,
+    price: float,
+    direction: str,
+    sl_dist: float,
+    tp_dist: float,
+    effective_min: float,
+    sym_info,
+    fill_type: int,
+    provisional_lots: float,
+    order_type: int,
+    digits: int,
+) -> tuple[float, float, float]:
+    """
+    Pre-validate SL/TP with mt5.order_check() before ever calling order_send.
+    Expands effective_min by 20% each iteration until the broker accepts or
+    10 attempts are exhausted.  Returns (sl, tp, effective_min_used).
+    """
+    if not MT5_AVAILABLE:
+        # No MT5 — just apply the geometric minimum and return
+        cur_sl_dist = max(sl_dist, effective_min)
+        cur_tp_dist = max(tp_dist, effective_min)
+        if direction == "LONG":
+            return (round(price - cur_sl_dist, digits),
+                    round(price + cur_tp_dist, digits), effective_min)
+        return (round(price + cur_sl_dist, digits),
+                round(price - cur_tp_dist, digits), effective_min)
+
+    for attempt in range(10):
+        cur_sl_dist = max(sl_dist, effective_min)
+        cur_tp_dist = max(tp_dist, effective_min)
+        if direction == "LONG":
+            trial_sl = round(price - cur_sl_dist, digits)
+            trial_tp = round(price + cur_tp_dist, digits)
+        else:
+            trial_sl = round(price + cur_sl_dist, digits)
+            trial_tp = round(price - cur_tp_dist, digits)
+
+        check = mt5.order_check({
+            "action":       mt5.TRADE_ACTION_DEAL,
+            "symbol":       symbol,
+            "volume":       float(provisional_lots),
+            "type":         order_type,
+            "price":        price,
+            "sl":           trial_sl,
+            "tp":           trial_tp,
+            "deviation":    20,
+            "type_filling": fill_type,
+        })
+
+        if check is None:
+            logger.debug(f"order_check returned None for {symbol} — proceeding with current stops")
+            return trial_sl, trial_tp, effective_min
+
+        if check.retcode != 10016:
+            if attempt > 0:
+                logger.info(
+                    f"Stop precheck: {symbol} accepted after {attempt} expansion(s) "
+                    f"(effective_min={effective_min:.5f})"
+                )
+            return trial_sl, trial_tp, effective_min
+
+        logger.debug(
+            f"Stop precheck attempt {attempt + 1}: {symbol} 10016 — "
+            f"expanding min {effective_min:.5f} → {effective_min * 1.2:.5f}"
+        )
+        effective_min *= 1.2
+
+    # Max iterations hit — use the last expanded values
+    logger.warning(f"Stop precheck: max iterations for {symbol}, min={effective_min:.5f}")
+    cur_sl_dist = max(sl_dist, effective_min)
+    cur_tp_dist = max(tp_dist, effective_min)
+    if direction == "LONG":
+        return (round(price - cur_sl_dist, digits),
+                round(price + cur_tp_dist, digits), effective_min)
+    return (round(price + cur_sl_dist, digits),
+            round(price - cur_tp_dist, digits), effective_min)
 
 
 def _filling_mode(sym_info) -> int:
@@ -468,26 +584,22 @@ def send_signal(
         live_sl = price + sl_dist
         live_tp = price - tp_dist
 
-    # Compute effective minimum stop distance.
-    # Many brokers set trade_stops_level=0 for CFDs/indices but still enforce
-    # a spread-based minimum on the server side.  We use the larger of:
+    # Compute effective minimum stop distance, blending three sources:
     #   • broker's stated stops level (trade_stops_level × point)
     #   • 2× current spread + 5 points (spread-aware safety buffer)
+    #   • previously learned minimum for this symbol (from successful trades)
+    # Then pre-validate with order_check loop so we never send a doomed order.
     point = (sym_info.point or 0.00001) if sym_info else 0.00001
     spread = abs(tick.ask - tick.bid)
     stops_dist = (sym_info.trade_stops_level * point) if sym_info else 0.0
-    effective_min = max(stops_dist, spread * 2.0 + point * 5)
+    learned_min = _load_learned_min(symbol)
+    effective_min = max(stops_dist, spread * 2.0 + point * 5, learned_min)
 
-    if direction == "LONG":
-        if live_sl > price - effective_min:
-            live_sl = price - effective_min
-        if live_tp < price + effective_min:
-            live_tp = price + effective_min
-    else:
-        if live_sl < price + effective_min:
-            live_sl = price + effective_min
-        if live_tp > price - effective_min:
-            live_tp = price - effective_min
+    provisional_lots = lots if lots is not None else DEFAULT_LOTS.get(symbol, 0.1)
+    live_sl, live_tp, effective_min = _find_safe_stops(
+        symbol, price, direction, sl_dist, tp_dist,
+        effective_min, sym_info, fill_type, provisional_lots, order_type, digits,
+    )
 
     # ── 3. Lot sizing from account balance ────────────────────────────────────
     acct   = mt5.account_info()
@@ -531,28 +643,32 @@ def send_signal(
         logger.error(f"order_send returned None: {err}")
         return MT5OrderResult(False, 0, symbol, direction, lots, price, live_sl, live_tp, err)
 
-    # Retry once with 3× spread buffer if stops were still too close.
-    # Always keep the original SL/TP distances — only expand if they happen
-    # to be smaller than the broker's dynamic minimum (rare but possible).
+    # If 10016 still fires despite pre-validation (rare: price moved between check and send),
+    # do one final retry with 2× the effective_min and update the learned minimum.
     if result.retcode == 10016:
-        retry_min = max(stops_dist, spread * 3.0 + point * 10)
-        retry_sl_dist = max(sl_dist, retry_min)
-        retry_tp_dist = max(tp_dist, retry_min)
+        fallback_min = effective_min * 2.0
+        fb_sl_dist = max(sl_dist, fallback_min)
+        fb_tp_dist = max(tp_dist, fallback_min)
         if direction == "LONG":
-            live_sl = price - retry_sl_dist
-            live_tp = price + retry_tp_dist
+            live_sl = round(price - fb_sl_dist, digits)
+            live_tp = round(price + fb_tp_dist, digits)
         else:
-            live_sl = price + retry_sl_dist
-            live_tp = price - retry_tp_dist
-        request["sl"] = round(live_sl, digits)
-        request["tp"] = round(live_tp, digits)
-        logger.warning(f"10016 retry: expanding stops — SL={request['sl']} TP={request['tp']}")
+            live_sl = round(price + fb_sl_dist, digits)
+            live_tp = round(price - fb_tp_dist, digits)
+        request["sl"] = live_sl
+        request["tp"] = live_tp
+        effective_min = fallback_min
+        logger.warning(
+            f"10016 after precheck — price moved? Retrying with 2× min="
+            f"{fallback_min:.5f}: SL={live_sl} TP={live_tp}"
+        )
         result = mt5.order_send(request)
         if result is None:
             return MT5OrderResult(False, 0, symbol, direction, lots, price, live_sl, live_tp,
                                   str(mt5.last_error()))
 
     if result.retcode == mt5.TRADE_RETCODE_DONE:
+        _save_learned_min(symbol, effective_min)   # remember working min for next time
         logger.info(
             f"✓ #{result.order} | {direction} {symbol} vol={lots} @ {price:.{digits}f} "
             f"SL={live_sl:.{digits}f} TP={live_tp:.{digits}f} margin≈{required_margin}"
