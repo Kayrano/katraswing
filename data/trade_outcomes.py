@@ -152,6 +152,101 @@ def compute_win_rates(min_trades: int = _MIN_TRADES) -> dict[str, float]:
     }
 
 
+def import_all_mt5_history(days: int = 90) -> int:
+    """
+    Import ALL closed trades from MT5 history (any magic number / manually opened trades).
+
+    Pairs IN deals (entry=0, opening) with OUT deals (entry=1, closing) by position_id.
+    Trades already in the log have their outcome filled in if still open.
+    New trades (not sent by Katraswing) are added with strategy='MT5_IMPORT'.
+
+    Returns the number of records newly added or updated.
+    """
+    try:
+        import MetaTrader5 as mt5  # type: ignore[import]
+    except ImportError:
+        return 0
+
+    from collections import defaultdict
+    from datetime import timedelta
+
+    since    = datetime.utcnow() - timedelta(days=days)
+    raw      = mt5.history_deals_get(since, datetime.utcnow())
+    if raw is None:
+        return 0
+
+    # Group deals by position_id → {in: deal, out: deal}
+    by_pos: dict[int, dict] = defaultdict(lambda: {"in": None, "out": None})
+    for d in raw:
+        if d.entry == 0:
+            by_pos[d.position_id]["in"] = d
+        elif d.entry == 1:
+            by_pos[d.position_id]["out"] = d
+
+    trades          = _load()
+    existing_by_tk  = {t["ticket"]: t for t in trades}
+    imported        = 0
+
+    for pos_id, pair in by_pos.items():
+        out_d = pair["out"]
+        in_d  = pair["in"]
+        if out_d is None:
+            continue   # position still open
+
+        # Ticket of the opening order = position_id in MT5
+        ticket = int(pos_id)
+        gross  = round(float(out_d.profit), 2)
+        comm   = round(float(getattr(out_d, "commission", 0.0)), 2)
+        swap   = round(float(getattr(out_d, "swap", 0.0)), 2)
+        net    = round(gross + comm + swap, 2)
+        outcome = "WIN" if net > 0 else ("LOSS" if net < 0 else "BREAKEVEN")
+        close_iso = datetime.utcfromtimestamp(out_d.time).isoformat(timespec="seconds")
+
+        if ticket in existing_by_tk:
+            rec = existing_by_tk[ticket]
+            if rec["outcome"] is None:
+                rec["profit"]    = net
+                rec["closed_at"] = close_iso
+                rec["outcome"]   = outcome
+                # enrich with actual exit price if present
+                rec.setdefault("close_price", round(float(out_d.price), 5))
+                imported += 1
+            continue
+
+        direction  = "LONG" if (in_d and in_d.type == 0) else "SHORT"
+        entry_p    = round(float(in_d.price), 5)  if in_d else 0.0
+        open_iso   = datetime.utcfromtimestamp(in_d.time).isoformat(timespec="seconds") if in_d else close_iso
+        volume     = float(in_d.volume) if in_d else float(out_d.volume)
+        symbol     = str(out_d.symbol)
+
+        trades.append({
+            "ticket":      ticket,
+            "ticker":      symbol,
+            "strategy":    "MT5_IMPORT",
+            "direction":   direction,
+            "confidence":  0.0,
+            "entry":       entry_p,
+            "sl":          0.0,
+            "tp":          0.0,
+            "close_price": round(float(out_d.price), 5),
+            "volume":      volume,
+            "gross":       gross,
+            "commission":  comm,
+            "swap":        swap,
+            "sent_at":     open_iso,
+            "closed_at":   close_iso,
+            "profit":      net,
+            "outcome":     outcome,
+        })
+        existing_by_tk[ticket] = trades[-1]
+        imported += 1
+
+    if imported:
+        _save(trades)
+        logger.info(f"Imported/updated {imported} trade(s) from MT5 history ({days}d)")
+    return imported
+
+
 def get_summary() -> dict:
     """Return a summary dict for display in the UI."""
     trades = _load()

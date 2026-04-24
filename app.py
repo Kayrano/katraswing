@@ -238,25 +238,55 @@ def _stop_mt5():
 
 
 def _fetch_mt5_history(days: int = 30):
+    """Return fully paired open+close trade records from MT5 history."""
     try:
         import MetaTrader5 as mt5
+        from collections import defaultdict
         from_dt = datetime.now() - timedelta(days=days)
-        deals = mt5.history_deals_get(from_dt, datetime.now())
+        deals   = mt5.history_deals_get(from_dt, datetime.now())
         if deals is None:
             return []
-        rows = []
+
+        by_pos = defaultdict(lambda: {"in": None, "out": None})
         for d in deals:
             if d.entry == 0:
+                by_pos[d.position_id]["in"]  = d
+            elif d.entry == 1:
+                by_pos[d.position_id]["out"] = d
+
+        rows = []
+        for pos_id, pair in by_pos.items():
+            out_d = pair["out"]
+            in_d  = pair["in"]
+            if out_d is None:
                 continue
+            gross     = float(out_d.profit)
+            comm      = float(getattr(out_d, "commission", 0.0))
+            swap      = float(getattr(out_d, "swap",       0.0))
+            net       = round(gross + comm + swap, 2)
+            direction = "LONG" if (in_d and in_d.type == 0) else "SHORT"
+            entry_p   = float(in_d.price) if in_d else 0.0
+            open_ts   = in_d.time  if in_d else out_d.time
+            dur_m     = int((out_d.time - open_ts) / 60)
             rows.append({
-                "ticket": d.deal, "symbol": d.symbol,
-                "type": "BUY" if d.type == 0 else "SELL",
-                "volume": d.volume, "price": d.price,
-                "profit": d.profit,
-                "time": datetime.fromtimestamp(d.time).strftime("%Y-%m-%d %H:%M"),
-                "comment": d.comment,
+                "ticket":     int(pos_id),
+                "symbol":     str(out_d.symbol),
+                "type":       "BUY" if direction == "LONG" else "SELL",
+                "direction":  direction,
+                "volume":     float(out_d.volume),
+                "entry":      round(entry_p,         5),
+                "exit":       round(float(out_d.price), 5),
+                "profit":     net,
+                "gross":      round(gross, 2),
+                "commission": round(comm,  2),
+                "swap":       round(swap,  2),
+                "open_time":  datetime.fromtimestamp(open_ts).strftime("%Y-%m-%d %H:%M"),
+                "close_time": datetime.fromtimestamp(out_d.time).strftime("%Y-%m-%d %H:%M"),
+                "date":       datetime.fromtimestamp(out_d.time).strftime("%Y-%m-%d"),
+                "duration_m": dur_m,
+                "comment":    str(getattr(out_d, "comment", "")),
             })
-        return sorted(rows, key=lambda x: x["time"], reverse=True)
+        return sorted(rows, key=lambda x: x["close_time"], reverse=True)
     except Exception:
         return []
 
@@ -784,49 +814,249 @@ with tab_trades:
 
 # ── Tab 3: History ────────────────────────────────────────────────────────────
 with tab_history:
-    days_back = st.selectbox("Show last", [7, 14, 30, 60, 90], index=2,
-                             format_func=lambda x: f"{x} days")
-    if st.button("Load History", type="primary"):
-        st.session_state["trade_history"] = _fetch_mt5_history(days_back)
+    hc1, hc2 = st.columns([2, 5])
+    with hc1:
+        days_back = st.selectbox("Show last", [7, 14, 30, 60, 90], index=2,
+                                 format_func=lambda x: f"{x} days")
+    with hc2:
+        st.markdown("<div style='padding-top:28px;'>", unsafe_allow_html=True)
+        if st.button("Load from MT5", type="primary"):
+            st.session_state["trade_history"] = _fetch_mt5_history(days_back)
+        st.markdown("</div>", unsafe_allow_html=True)
+
     history = st.session_state.get("trade_history")
     if history is None:
-        st.info("Click **Load History** to fetch closed trades from MT5.")
+        st.info("Click **Load from MT5** to fetch closed trades.")
     elif not history:
         st.caption("No closed trades in this period.")
     else:
         wins  = [t for t in history if t["profit"] > 0]
         total = sum(t["profit"] for t in history)
         wr    = len(wins) / len(history) * 100 if history else 0
-        m1, m2, m3, m4 = st.columns(4)
+        m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("Trades", len(history))
         m2.metric("Win Rate", f"{wr:.1f}%")
         m3.metric("Total P&L", f"{total:+.2f}")
         m4.metric("Avg P&L", f"{total/len(history):+.2f}" if history else "—")
+        avg_win  = sum(t["profit"] for t in wins) / len(wins) if wins else 0
+        losses   = [t for t in history if t["profit"] <= 0]
+        avg_loss = sum(t["profit"] for t in losses) / len(losses) if losses else 0
+        m5.metric("Avg Win/Loss", f"{avg_win:+.2f} / {avg_loss:+.2f}")
         st.markdown("---")
-        for t in history[:50]:
+        for t in history[:100]:
             pnl_c  = "#22c55e" if t["profit"] > 0 else "#ef4444"
-            type_c = "#22c55e" if t["type"] == "BUY" else "#ef4444"
+            dir_c  = "#22c55e" if t["type"] == "BUY" else "#ef4444"
+            dur    = f"{t['duration_m']}m" if t.get("duration_m") is not None else "—"
             st.markdown(
                 f"<div style='background:#111827;border-radius:6px;padding:8px 14px;"
-                f"margin-bottom:3px;border:1px solid #1e2330;"
-                f"display:flex;justify-content:space-between;font-size:13px;'>"
-                f"<span><span style='color:{type_c};font-weight:600;'>{t['type']}</span>"
-                f" <span style='color:#e0e0e0;'>{t['symbol']}</span>"
-                f" <span style='color:#6b7280;'>vol {t['volume']} @ {t['price']:.4f}"
-                f" · {t['time']}</span></span>"
-                f"<span style='color:{pnl_c};font-weight:700;'>{t['profit']:+.2f}</span>"
+                f"margin-bottom:3px;border:1px solid #1e2330;font-size:13px;'>"
+                f"<div style='display:flex;justify-content:space-between;'>"
+                f"<span>"
+                f"<span style='color:{dir_c};font-weight:700;'>{t['type']}</span>"
+                f" <span style='color:#e0e0e0;font-weight:600;'>{t['symbol']}</span>"
+                f" <span style='color:#6b7280;'>vol {t['volume']}"
+                f" · entry {t['entry']} → exit {t['exit']}"
+                f" · {dur} · {t['close_time']}</span>"
+                f"</span>"
+                f"<span style='color:{pnl_c};font-weight:700;font-size:15px;'>{t['profit']:+.2f}</span>"
+                f"</div>"
+                f"<div style='color:#4b5563;font-size:11px;margin-top:2px;'>"
+                f"gross {t['gross']:+.2f} · comm {t['commission']:+.2f} · swap {t['swap']:+.2f}"
+                f"&nbsp;&nbsp;#{t['ticket']}"
+                + (f"&nbsp;&nbsp;{t['comment']}" if t.get("comment") else "") +
+                f"</div>"
                 f"</div>",
                 unsafe_allow_html=True)
 
 
 # ── Tab 4: Journal ────────────────────────────────────────────────────────────
 with tab_journal:
-    import pathlib
-    _journal_path = pathlib.Path(__file__).parent / "static" / "trading-journal.html"
-    if _journal_path.exists():
-        st.html(_journal_path.read_text(encoding="utf-8"))
+    from data.trade_outcomes import (
+        import_all_mt5_history, get_summary as _get_summary,
+        compute_win_rates as _cwr,
+    )
+
+    # ── Import controls ───────────────────────────────────────────────────────
+    jc1, jc2, jc3 = st.columns([1, 1, 4])
+    with jc1:
+        j_days = st.selectbox("Lookback", [30, 60, 90, 180, 365], index=2,
+                              format_func=lambda x: f"{x} days", key="j_days")
+    with jc2:
+        st.markdown("<div style='padding-top:28px;'>", unsafe_allow_html=True)
+        if st.button("⬇ Import from MT5", type="primary", key="j_import"):
+            with st.spinner("Importing…"):
+                n = import_all_mt5_history(days=j_days)
+            st.success(f"Imported / updated {n} trade(s).")
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    summary = _get_summary()
+
+    if summary["total_sent"] == 0 and summary["total_closed"] == 0:
+        st.info("No trades in the journal yet. Click **Import from MT5** to pull your history.")
     else:
-        st.info("Journal file not found at static/trading-journal.html")
+        closed = [t for t in summary["all_trades"] if t.get("outcome") in ("WIN","LOSS","BREAKEVEN")]
+
+        # ── Top-level metrics ─────────────────────────────────────────────────
+        total_pnl  = sum(t["profit"] for t in closed if t.get("profit") is not None)
+        wins_c     = [t for t in closed if t["outcome"] == "WIN"]
+        losses_c   = [t for t in closed if t["outcome"] == "LOSS"]
+        wr_c       = len(wins_c) / len(closed) if closed else 0
+        avg_win_c  = sum(t["profit"] for t in wins_c)  / len(wins_c)  if wins_c  else 0
+        avg_loss_c = sum(t["profit"] for t in losses_c)/ len(losses_c) if losses_c else 0
+        pf         = abs(avg_win_c * len(wins_c) / (avg_loss_c * len(losses_c))) if losses_c and avg_loss_c != 0 else None
+
+        wr_col  = "#22c55e" if wr_c >= 0.55 else ("#f59e0b" if wr_c >= 0.45 else "#ef4444")
+        pnl_col = "#22c55e" if total_pnl >= 0 else "#ef4444"
+
+        jm1, jm2, jm3, jm4, jm5, jm6 = st.columns(6)
+        jm1.metric("Total trades", len(closed))
+        jm2.markdown(
+            f"<div style='font-size:12px;color:#6b7280;'>Win rate</div>"
+            f"<div style='font-size:24px;font-weight:700;color:{wr_col};'>{wr_c:.1%}</div>",
+            unsafe_allow_html=True)
+        jm3.markdown(
+            f"<div style='font-size:12px;color:#6b7280;'>Total P&L</div>"
+            f"<div style='font-size:24px;font-weight:700;color:{pnl_col};'>{total_pnl:+.2f}</div>",
+            unsafe_allow_html=True)
+        jm4.metric("Avg win",  f"{avg_win_c:+.2f}")
+        jm5.metric("Avg loss", f"{avg_loss_c:+.2f}")
+        jm6.metric("Profit factor", f"{pf:.2f}" if pf else "—")
+
+        st.markdown("---")
+
+        # ── Monthly P&L chart ─────────────────────────────────────────────────
+        try:
+            import plotly.graph_objects as go
+            from collections import defaultdict
+
+            monthly: dict[str, float] = defaultdict(float)
+            for t in closed:
+                if t.get("closed_at") and t.get("profit") is not None:
+                    mo = t["closed_at"][:7]   # "YYYY-MM"
+                    monthly[mo] += t["profit"]
+
+            if monthly:
+                mos  = sorted(monthly.keys())
+                vals = [monthly[m] for m in mos]
+                colors = ["#22c55e" if v >= 0 else "#ef4444" for v in vals]
+                fig = go.Figure(go.Bar(x=mos, y=vals, marker_color=colors,
+                                       text=[f"{v:+.0f}" for v in vals],
+                                       textposition="outside"))
+                fig.update_layout(
+                    title="Monthly P&L", height=260,
+                    plot_bgcolor="#0b0e17", paper_bgcolor="#0b0e17",
+                    font_color="#9ca3af", showlegend=False,
+                    margin=dict(l=0, r=0, t=36, b=0),
+                    xaxis=dict(gridcolor="#1e2330"),
+                    yaxis=dict(gridcolor="#1e2330", zeroline=True, zerolinecolor="#374151"),
+                )
+                st.plotly_chart(fig, use_container_width=True)
+        except Exception:
+            pass
+
+        # ── By symbol + by strategy (side by side) ────────────────────────────
+        sc1, sc2 = st.columns(2)
+
+        with sc1:
+            st.markdown("**By Symbol**")
+            sym_stats: dict[str, dict] = {}
+            for t in closed:
+                s = t.get("ticker", "?")
+                if s not in sym_stats:
+                    sym_stats[s] = {"trades": 0, "wins": 0, "profit": 0.0}
+                sym_stats[s]["trades"] += 1
+                if t["outcome"] == "WIN":
+                    sym_stats[s]["wins"] += 1
+                if t.get("profit") is not None:
+                    sym_stats[s]["profit"] += t["profit"]
+            for sym, v in sorted(sym_stats.items(), key=lambda x: -abs(x[1]["profit"])):
+                wr_s = v["wins"] / v["trades"] if v["trades"] else 0
+                pc   = "#22c55e" if v["profit"] >= 0 else "#ef4444"
+                wc   = "#22c55e" if wr_s >= 0.55 else ("#f59e0b" if wr_s >= 0.45 else "#ef4444")
+                st.markdown(
+                    f"<div style='display:flex;justify-content:space-between;"
+                    f"font-size:13px;padding:5px 0;border-bottom:1px solid #1e2330;'>"
+                    f"<span style='color:#e0e0e0;font-weight:600;'>{sym}</span>"
+                    f"<span style='color:#6b7280;'>{v['trades']} trades &nbsp; "
+                    f"<span style='color:{wc};'>{wr_s:.0%}</span> &nbsp; "
+                    f"<span style='color:{pc};font-weight:700;'>{v['profit']:+.2f}</span></span>"
+                    f"</div>",
+                    unsafe_allow_html=True)
+
+        with sc2:
+            st.markdown("**By Strategy**")
+            for row in summary["by_strategy"]:
+                s    = row["strategy"]
+                wr_s = row["win_rate"]
+                pc   = "#22c55e" if row["profit"] >= 0 else "#ef4444"
+                wc   = "#22c55e" if wr_s >= 0.55 else ("#f59e0b" if wr_s >= 0.45 else "#ef4444")
+                st.markdown(
+                    f"<div style='display:flex;justify-content:space-between;"
+                    f"font-size:13px;padding:5px 0;border-bottom:1px solid #1e2330;'>"
+                    f"<span style='color:#e0e0e0;font-weight:600;'>{s}</span>"
+                    f"<span style='color:#6b7280;'>{row['trades']} trades &nbsp; "
+                    f"<span style='color:{wc};'>{wr_s:.0%}</span> &nbsp; "
+                    f"<span style='color:{pc};font-weight:700;'>{row['profit']:+.2f}</span></span>"
+                    f"</div>",
+                    unsafe_allow_html=True)
+
+        # ── Full trade log ────────────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("**Trade Log**")
+
+        # Enrich with strategy/confidence from closed if available
+        log_by_ticket = {t["ticket"]: t for t in summary["all_trades"]}
+
+        col_h = st.columns([2, 1, 1, 1, 1, 1, 1, 1, 2])
+        for lbl, col in zip(["Date","Symbol","Dir","Entry","Exit","P&L","Gross","Dur","Strategy"], col_h):
+            col.markdown(f"<span style='color:#6b7280;font-size:10px;font-weight:700;"
+                         f"text-transform:uppercase;letter-spacing:1px;'>{lbl}</span>",
+                         unsafe_allow_html=True)
+        st.markdown("<div style='border-top:1px solid #1e2330;margin:2px 0 4px;'></div>",
+                    unsafe_allow_html=True)
+
+        for t in closed[:200]:
+            pnl_c  = "#22c55e" if (t.get("profit") or 0) > 0 else "#ef4444"
+            dir_c  = "#22c55e" if t["direction"] == "LONG" else "#ef4444"
+            arrow  = "▲" if t["direction"] == "LONG" else "▼"
+            profit = t.get("profit")
+            gross  = t.get("gross", profit)
+            dur_m  = t.get("duration_m")
+            if dur_m is None and t.get("sent_at") and t.get("closed_at"):
+                try:
+                    dt_open  = datetime.fromisoformat(t["sent_at"])
+                    dt_close = datetime.fromisoformat(t["closed_at"])
+                    dur_m = int((dt_close - dt_open).total_seconds() / 60)
+                except Exception:
+                    dur_m = None
+            dur_str = f"{dur_m}m" if dur_m is not None else "—"
+            date_str = (t.get("closed_at") or t.get("sent_at") or "")[:10]
+            entry_v  = t.get("entry",       0.0) or 0.0
+            exit_v   = t.get("close_price", 0.0) or 0.0
+            strategy = t.get("strategy", "—")
+
+            cl = st.columns([2, 1, 1, 1, 1, 1, 1, 1, 2])
+            cl[0].markdown(f"<span style='font-size:12px;color:#9ca3af;'>{date_str}</span>",
+                           unsafe_allow_html=True)
+            cl[1].markdown(f"<span style='font-size:12px;color:#e0e0e0;font-weight:600;'>{t.get('ticker','?')}</span>",
+                           unsafe_allow_html=True)
+            cl[2].markdown(f"<span style='font-size:12px;color:{dir_c};font-weight:700;'>{arrow} {t['direction']}</span>",
+                           unsafe_allow_html=True)
+            cl[3].markdown(f"<span style='font-size:12px;color:#9ca3af;'>{entry_v:.4f}</span>",
+                           unsafe_allow_html=True)
+            cl[4].markdown(f"<span style='font-size:12px;color:#9ca3af;'>{exit_v:.4f}</span>",
+                           unsafe_allow_html=True)
+            cl[5].markdown(f"<span style='font-size:13px;color:{pnl_c};font-weight:700;'>"
+                           f"{profit:+.2f}</span>" if profit is not None else "—",
+                           unsafe_allow_html=True)
+            cl[6].markdown(f"<span style='font-size:12px;color:#6b7280;'>"
+                           f"{gross:+.2f}</span>" if gross is not None else "—",
+                           unsafe_allow_html=True)
+            cl[7].markdown(f"<span style='font-size:12px;color:#6b7280;'>{dur_str}</span>",
+                           unsafe_allow_html=True)
+            cl[8].markdown(f"<span style='font-size:11px;color:#6b7280;'>{strategy}</span>",
+                           unsafe_allow_html=True)
 
 
 # ── Tab 5: Learning ───────────────────────────────────────────────────────────
