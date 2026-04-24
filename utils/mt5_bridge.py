@@ -215,7 +215,7 @@ def fetch_bars(
         return None
 
     if not mt5.symbol_select(symbol, True):
-        logger.warning(f"fetch_bars: cannot select symbol '{symbol}'")
+        logger.debug(f"fetch_bars: symbol '{symbol}' not available in broker — falling back to yfinance")
         return None
 
     rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, count)

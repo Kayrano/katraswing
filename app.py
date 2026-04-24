@@ -1166,9 +1166,8 @@ with tab_history:
 # ── Tab 4: Journal ────────────────────────────────────────────────────────────
 with tab_journal:
     import pathlib
-    import streamlit.components.v1 as components
     _journal_path = pathlib.Path(__file__).parent / "static" / "trading-journal.html"
-    components.html(_journal_path.read_text(encoding="utf-8"), height=4800, scrolling=True)
+    st.html(_journal_path.read_text(encoding="utf-8"))
 
 # ── Tab 5: Learning ───────────────────────────────────────────────────────────
 with tab_learning:
