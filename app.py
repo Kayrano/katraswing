@@ -259,6 +259,7 @@ def _mt5_loop_inner(stop_event: threading.Event, config: dict):
     risk_pct     = config["risk_pct"]
     finnhub_key  = config["finnhub_key"]
     interval     = config["interval"]
+    auto_trade   = config.get("auto_trade", True)
 
     # Per-ticker daily trend cache (15-min TTL) — avoids redundant fetches
     _dt_cache: dict[str, tuple[dict, float]] = {}
@@ -315,7 +316,7 @@ def _mt5_loop_inner(stop_event: threading.Event, config: dict):
                 continue
 
             top_patterns = [(p.name, p.win_rate) for p in sr.patterns.patterns[:3]]
-            _MT5["pending"].append({
+            item = {
                 "sr":         sr,
                 "key":        key,
                 "ticker":     ticker,
@@ -329,8 +330,24 @@ def _mt5_loop_inner(stop_event: threading.Event, config: dict):
                 "news":       sr.news_sentiment,
                 "indicators": sr.indicators,
                 "time":       datetime.now().strftime("%H:%M:%S"),
-            })
-            _log(f"★ APPROVAL NEEDED — {sr.direction} {ticker} {sr.confidence:.0%}")
+            }
+
+            if auto_trade:
+                # Send immediately without approval
+                try:
+                    from utils.mt5_bridge import send_from_signal_result
+                    res = send_from_signal_result(sr)
+                    if res.success:
+                        _MT5["sent"].add(key)
+                        _MT5["last_sent"] = {**item, "ticket": res.ticket}
+                        _log(f"✅ AUTO-TRADE #{res.ticket} — {sr.direction} {ticker} {sr.confidence:.0%}")
+                    else:
+                        _log(f"⚠ Auto-trade rejected: {res.error}")
+                except Exception as exc:
+                    _log(f"⚠ Auto-trade error: {exc}")
+            else:
+                _MT5["pending"].append(item)
+                _log(f"★ APPROVAL NEEDED — {sr.direction} {ticker} {sr.confidence:.0%}")
 
         try:
             _MT5["positions"] = get_open_positions()
@@ -442,7 +459,7 @@ with st.sidebar:
     st.markdown("---")
 
     # MT5 monitor
-    st.markdown("### MT5 Monitor")
+    st.markdown("### MT5 Auto-Trade")
     mt5_tickers = st.multiselect(
         "Watch",
         options=["NQ=F", "ES=F", "NKD=F", "AAPL", "MSFT", "AMZN", "EURUSD=X", "GBPUSD=X"],
@@ -453,12 +470,12 @@ with st.sidebar:
         min_value=0.50, max_value=0.95, step=0.05,
         value=st.session_state.get("mt5_min_conf", 0.65),
     )
-    mt5_interval = st.selectbox(
-        "Poll interval",
-        options=[30, 60, 120, 300],
-        index=1,
-        format_func=lambda x: f"{x}s" if x < 60 else f"{x//60}m",
+    auto_trade = st.checkbox(
+        "🤖 Auto-trade (no approval)",
+        value=st.session_state.get("auto_trade", True),
+        help="When ON, qualifying signals are sent to MT5 immediately. When OFF, they queue for manual approval.",
     )
+    mt5_interval = 900  # fixed 15-minute scan
 
     from utils.mt5_bridge import is_available as _mt5_pkg_ok
     if not _mt5_pkg_ok():
@@ -476,6 +493,7 @@ with st.sidebar:
                     "risk_pct":     risk_pct,
                     "finnhub_key":  finnhub_key,
                     "interval":     mt5_interval,
+                    "auto_trade":   auto_trade,
                 },
             }
     else:
@@ -491,9 +509,14 @@ with st.sidebar:
     # Status
     if is_running:
         if _MT5["connected"]:
-            st.markdown("🟢 **Connected**")
+            mode = "🤖 AUTO-TRADE" if st.session_state.get("auto_trade", True) else "👁 Watch-only"
+            st.markdown(f"🟢 **{mode}**")
             if _MT5["last_check"]:
-                st.caption(f"Last poll: {_MT5['last_check'].strftime('%H:%M:%S')}")
+                next_scan = _MT5["last_check"] + timedelta(seconds=900)
+                st.caption(
+                    f"Last scan: {_MT5['last_check'].strftime('%H:%M:%S')}\n"
+                    f"Next scan: {next_scan.strftime('%H:%M:%S')}"
+                )
         else:
             st.markdown("🟡 **Connecting…**")
     if _MT5["error"]:
@@ -512,14 +535,15 @@ with st.sidebar:
 
 # ── Persist settings ──────────────────────────────────────────────────────────
 st.session_state.update({
-    "finnhub_key":       finnhub_key,
-    "account_size":      account_size,
-    "risk_pct":          risk_pct,
-    "auto_refresh":      auto_refresh,
-    "mt5_tickers":       mt5_tickers,
-    "mt5_min_conf":      mt5_min_conf,
-    "use_daily_gate":    use_daily_gate,
+    "finnhub_key":        finnhub_key,
+    "account_size":       account_size,
+    "risk_pct":           risk_pct,
+    "auto_refresh":       auto_refresh,
+    "mt5_tickers":        mt5_tickers,
+    "mt5_min_conf":       mt5_min_conf,
+    "use_daily_gate":     use_daily_gate,
     "use_bt_calibration": use_bt_calibration,
+    "auto_trade":         auto_trade,
 })
 
 # ── MT5 action handler (outside sidebar) ─────────────────────────────────────
