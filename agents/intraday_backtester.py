@@ -14,9 +14,9 @@ Design choices
 - Time stop: 20 bars max for 5m (100 min), 10 bars max for 15m (150 min).
 - Slippage: 0.02% per entry/exit (market order approximation).
 - Only one trade open per strategy at a time; no pyramiding.
-- Only LONG signals are backtested by default (same as the H1 gate logic used
-  in the live bot) because short-selling US equities intraday requires margin.
-  Set long_only=False to test both directions.
+- Both LONG and SHORT signals are backtested (long_only=False by default).
+  All instruments traded are CFDs/futures via FxPro, so short selling is fully
+  supported. Pass long_only=True explicitly if needed for equities.
 """
 
 from __future__ import annotations
@@ -96,7 +96,7 @@ def _backtest_strategy(
     df: pd.DataFrame,
     strategy_fn,
     timeframe: str,
-    long_only: bool = True,
+    long_only: bool = False,
 ) -> StrategyBacktestResult:
     """
     Walk-forward simulation for one strategy on the full intraday DataFrame.
@@ -276,7 +276,7 @@ def _backtest_strategy(
 def run_intraday_backtest(
     ticker: str,
     timeframe: str = "15m",
-    long_only: bool = True,
+    long_only: bool = False,
 ) -> IntradayBacktestSummary:
     """
     Run a walk-forward backtest of all intraday strategies for the given
