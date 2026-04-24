@@ -67,15 +67,16 @@ def _market_status(ticker: str, df) -> tuple[bool, str]:
     Fallback: calendar/clock check + data staleness.
     """
     # ── MT5 symbol status (most accurate — broker knows its own hours) ────────
+    # Use the cached _MT5["connected"] flag — avoids a terminal_info() RPC call
+    # on every card render.
     try:
-        from utils.mt5_bridge import is_connected, is_market_open, SYMBOL_MAP
-        if is_connected():
+        if _MT5.get("connected"):
+            from utils.mt5_bridge import is_market_open, SYMBOL_MAP
             mt5_sym = SYMBOL_MAP.get(ticker.upper(), ticker)
             closed, reason = is_market_open(mt5_sym)
             if closed:
                 return True, reason
             if reason == "":
-                # MT5 says open (or unknown) — skip clock check, trust the broker
                 return False, ""
     except Exception:
         pass
@@ -635,21 +636,36 @@ def _refresh_backtest_rates(ticker: str) -> dict[str, float] | None:
 
 if needs_run:
     from agents.signal_engine import run_signal
+    from concurrent.futures import ThreadPoolExecutor
+
+    # Pre-fetch cached inputs on the main thread (session_state is not thread-safe)
+    ticker_inputs = {}
+    for inst in INSTRUMENTS:
+        t = inst["ticker"]
+        ticker_inputs[t] = {
+            "inst":        inst,
+            "daily_trend": _refresh_daily_trend(t)    if use_daily_gate     else None,
+            "bt_rates":    _refresh_backtest_rates(t) if use_bt_calibration else None,
+        }
+
+    def _scan_one(ticker: str):
+        inp = ticker_inputs[ticker]
+        return ticker, run_signal(
+            ticker=ticker,
+            display_name=inp["inst"]["name"],
+            finnhub_api_key=finnhub_key,
+            account_size=account_size,
+            risk_pct=risk_pct,
+            daily_trend=inp["daily_trend"],
+            backtest_win_rates=inp["bt_rates"],
+        )
+
     results = {}
-    with st.spinner("Scanning signals…"):
-        for inst in INSTRUMENTS:
-            ticker = inst["ticker"]
-            daily_trend     = _refresh_daily_trend(ticker)     if use_daily_gate    else None
-            bt_win_rates    = _refresh_backtest_rates(ticker)  if use_bt_calibration else None
-            results[ticker] = run_signal(
-                ticker=ticker,
-                display_name=inst["name"],
-                finnhub_api_key=finnhub_key,
-                account_size=account_size,
-                risk_pct=risk_pct,
-                daily_trend=daily_trend,
-                backtest_win_rates=bt_win_rates,
-            )
+    with st.spinner(f"Scanning {len(INSTRUMENTS)} instruments in parallel…"):
+        with ThreadPoolExecutor(max_workers=len(INSTRUMENTS)) as executor:
+            for ticker, sr in executor.map(_scan_one, [i["ticker"] for i in INSTRUMENTS]):
+                results[ticker] = sr
+
     st.session_state["results"] = results
     st.session_state["last_refresh_ts"] = time.time()
 else:
@@ -1038,17 +1054,23 @@ with tab_signals:
 
 # ── Tab 2: Open Trades ────────────────────────────────────────────────────────
 with tab_trades:
-    # Always fetch live positions if MT5 package is available — don't rely on
-    # the background monitoring loop being active.
-    from utils.mt5_bridge import is_available as _mt5_avail, ensure_connected, get_open_positions as _gop
+    from utils.mt5_bridge import is_available as _mt5_avail, is_connected as _mt5_ic, get_open_positions as _gop
     if _mt5_avail():
-        if ensure_connected():
-            _MT5["connected"] = True
+        # Auto-refresh positions at most every 30s — never call ensure_connected()
+        # (which blocks the render) unless the user explicitly clicks Refresh.
+        _pos_ts = st.session_state.get("_pos_fetch_ts", 0)
+        if _mt5_ic() and time.time() - _pos_ts > 30:
             _MT5["positions"] = _gop()
+            st.session_state["_pos_fetch_ts"] = time.time()
+
         col_ref, _ = st.columns([1, 5])
         with col_ref:
             if st.button("🔄 Refresh", key="refresh_positions"):
-                _MT5["positions"] = _gop()
+                from utils.mt5_bridge import ensure_connected
+                if ensure_connected():
+                    _MT5["connected"] = True
+                    _MT5["positions"] = _gop()
+                    st.session_state["_pos_fetch_ts"] = time.time()
                 st.rerun()
 
     positions = _MT5["positions"]
@@ -1258,7 +1280,7 @@ with tab_learning:
                 )
 
 
-# ── Auto-refresh while monitoring (5s — fast enough for approvals, not wasteful)
+# ── Auto-refresh while monitoring (30s interval — monitoring loop is 15 min)
 if _MT5["running"]:
-    time.sleep(5)
+    time.sleep(30)
     st.rerun()

@@ -16,12 +16,19 @@ yfinance limits:
 
 from __future__ import annotations
 
+import time
 from typing import Optional
 
 import numpy as np
 import pandas as pd
 import yfinance as yf
 from zoneinfo import ZoneInfo
+
+# ── In-memory OHLCV cache (5-min TTL) ────────────────────────────────────────
+# Avoids redundant yfinance/MT5 fetches when multiple scan cycles run close
+# together (e.g. during backtest warm-up or rapid UI refreshes).
+_OHLCV_CACHE: dict[str, tuple[pd.DataFrame, float]] = {}
+_OHLCV_TTL = 300   # seconds — matches the 5-min bar interval
 
 _US_TZ   = ZoneInfo("America/New_York")
 _BIST_TZ = ZoneInfo("Europe/Istanbul")
@@ -194,6 +201,12 @@ def fetch_intraday_data(
     if interval not in VALID_INTERVALS:
         raise ValueError(f"interval must be one of {VALID_INTERVALS}, got {interval!r}")
 
+    # ── Cache check ───────────────────────────────────────────────────────────
+    cache_key = f"{ticker}:{interval}:{days}"
+    _cached = _OHLCV_CACHE.get(cache_key)
+    if _cached is not None and time.time() - _cached[1] < _OHLCV_TTL:
+        return _cached[0]
+
     market = detect_market(ticker)
     tz     = SESSION_CONFIG.get(market, SESSION_CONFIG["US"])["tz"] if market != "FOREX" else ZoneInfo("America/New_York")
 
@@ -261,4 +274,5 @@ def fetch_intraday_data(
     df.drop(columns=["_bar_num"], inplace=True)
 
     df["market"] = market
+    _OHLCV_CACHE[cache_key] = (df, time.time())
     return df

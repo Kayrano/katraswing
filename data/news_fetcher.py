@@ -3,6 +3,11 @@ from datetime import datetime, timezone
 import time
 import requests
 
+# ── In-memory news cache (10-min TTL) ────────────────────────────────────────
+# Prevents hammering Finnhub on every scan cycle.
+_NEWS_CACHE: dict[str, tuple[list, float]] = {}
+_NEWS_TTL = 600  # seconds
+
 # Keywords that indicate macro/NQ-relevant news for futures
 _MACRO_KEYWORDS = [
     "fed", "federal reserve", "fomc", "cpi", "inflation", "nfp", "jobs",
@@ -79,9 +84,14 @@ def _is_relevant(text: str, ticker: str) -> bool:
 
 
 def fetch_news(ticker: str, api_key: str, lookback_hours: int = 6) -> list[NewsItem]:
-    """Fetch news from Finnhub. For futures tickers, fetches general market news filtered by macro keywords."""
+    """Fetch news from Finnhub. Cached for 10 minutes per ticker."""
     if not api_key:
         return []
+
+    cache_key = f"{ticker}:{lookback_hours}"
+    cached = _NEWS_CACHE.get(cache_key)
+    if cached is not None and time.time() - cached[1] < _NEWS_TTL:
+        return cached[0]
 
     headers = {"X-Finnhub-Token": api_key}
     now = int(time.time())
@@ -160,7 +170,9 @@ def fetch_news(ticker: str, api_key: str, lookback_hours: int = 6) -> list[NewsI
             pass
 
     items.sort(key=lambda x: x.published_at, reverse=True)
-    return items[:30]
+    result = items[:30]
+    _NEWS_CACHE[cache_key] = (result, time.time())
+    return result
 
 
 def aggregate_sentiment(news_items: list[NewsItem]) -> tuple[str, float]:
