@@ -131,31 +131,52 @@ def fetch_daily_trend(ticker: str) -> dict:
 
 _JAPAN_FUTURES = {"NKD=F"}
 
+# Known forex currency codes for MT5 symbol detection
+_FX_CODES = {
+    "EUR","USD","GBP","JPY","AUD","NZD","CAD","CHF",
+    "SGD","HKD","NOK","SEK","DKK","MXN","ZAR","TRY",
+}
+
 def detect_market(ticker: str) -> str:
     """
-    Return "BIST", "FOREX", "JAPAN", or "US" — mirrors the logic in fetcher_hourly.
+    Return "BIST", "FOREX", "JAPAN", or "US".
+    Handles both yfinance tickers (NQ=F, EURUSD=X) and raw MT5 symbol names (EURUSD, #US100_M26).
     """
     sym = ticker.upper()
     if sym.endswith(".IS"):
         return "BIST"
     if sym.endswith("=X"):
         return "FOREX"
-    if sym in _JAPAN_FUTURES:
+    if sym in _JAPAN_FUTURES or any(x in sym for x in ("JP225", "NIKKEI", "JPN225")):
         return "JAPAN"
     if sym.endswith("=F"):
-        return "US"   # futures: clip to US session (9:30-16:00 ET) for ORB
+        return "US"
     if "-USD" in sym or "-BTC" in sym or "-ETH" in sym:
+        return "FOREX"
+    # Raw MT5 forex pairs: 6 chars, both halves are known currency codes
+    if len(sym) == 6 and sym[:3] in _FX_CODES and sym[3:] in _FX_CODES:
+        return "FOREX"
+    # Precious metals / commodities traded 24h
+    if any(x in sym for x in ("XAU", "XAG", "GOLD", "SILVER", "OIL", "BRENT", "WTI")):
+        return "FOREX"
+    # Anything else from MT5 (indices, CFDs): treat as continuous to skip session clipping
+    # MT5 already only returns bars during valid trading hours.
+    if sym.startswith("#") or any(x in sym for x in ("US100","US500","UK100","GER40","AUS200","HK50")):
         return "FOREX"
     return "US"
 
 
-def _fetch_from_mt5(ticker: str, interval: str, days: int) -> Optional[pd.DataFrame]:
-    """Try to fetch OHLCV bars from MT5. Returns raw DataFrame or None."""
+def _fetch_from_mt5(ticker: str, interval: str, days: int,
+                     mt5_symbol: Optional[str] = None) -> Optional[pd.DataFrame]:
+    """Try to fetch OHLCV bars from MT5. Returns raw DataFrame or None.
+
+    If mt5_symbol is provided it is used directly, bypassing SYMBOL_MAP.
+    """
     try:
         from utils.mt5_bridge import SYMBOL_MAP, fetch_bars, is_connected
         if not is_connected():
             return None
-        symbol = SYMBOL_MAP.get(ticker.upper(), ticker)
+        symbol = mt5_symbol or SYMBOL_MAP.get(ticker.upper(), ticker)
         # Estimate bar count: 288 bars/day for 5m (24h), 96 for 15m; add buffer
         bars_per_day = {"5m": 300, "15m": 100, "1h": 25, "1d": 1}.get(interval, 300)
         count = days * bars_per_day
@@ -168,6 +189,7 @@ def fetch_intraday_data(
     ticker: str,
     interval: str = "5m",
     days: int = 59,
+    mt5_symbol: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Fetch intraday OHLCV bars (5m or 15m) and enrich with session metadata.
@@ -211,7 +233,7 @@ def fetch_intraday_data(
     tz     = SESSION_CONFIG.get(market, SESSION_CONFIG["US"])["tz"] if market != "FOREX" else ZoneInfo("America/New_York")
 
     # ── Try MT5 first ────────────────────────────────────────────────────────
-    raw_mt5 = _fetch_from_mt5(ticker, interval, days)
+    raw_mt5 = _fetch_from_mt5(ticker, interval, days, mt5_symbol=mt5_symbol)
     if raw_mt5 is not None and not raw_mt5.empty:
         raw = raw_mt5
         # MT5 returns UTC; convert to session tz

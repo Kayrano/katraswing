@@ -84,6 +84,7 @@ def run_signal(
     display_name: str = "",
     daily_trend: dict | None = None,
     backtest_win_rates: dict[str, float] | None = None,
+    mt5_symbol: str | None = None,
 ) -> SignalResult:
     """
     Full 5m signal pipeline:
@@ -103,7 +104,7 @@ def run_signal(
         from data.fetcher_intraday import fetch_intraday_data
         from utils.position_sizing import calculate as calc_position
 
-        df = fetch_intraday_data(ticker, interval="5m", days=59)
+        df = fetch_intraday_data(ticker, interval="5m", days=59, mt5_symbol=mt5_symbol)
         if df is None or df.empty:
             return SignalResult(ticker=ticker, display_name=label,
                                 error="No 5m data available for this ticker.")

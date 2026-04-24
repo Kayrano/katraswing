@@ -164,6 +164,33 @@ def ensure_connected(path: str = "") -> bool:
     return connect(path)
 
 
+# ── Symbol discovery ─────────────────────────────────────────────────────────
+
+def get_tradeable_symbols() -> list[dict]:
+    """
+    Return all symbols available in the broker that allow trading.
+    Each dict: {name, description, category}.
+    Returns [] if MT5 not connected.
+    """
+    if not MT5_AVAILABLE or not is_connected():
+        return []
+    symbols = mt5.symbols_get()
+    if not symbols:
+        return []
+    result = []
+    for s in symbols:
+        if s.trade_mode == 0:      # SYMBOL_TRADE_MODE_DISABLED
+            continue
+        path = getattr(s, "path", "") or ""
+        category = path.split("\\")[0] if "\\" in path else path
+        result.append({
+            "name":        s.name,
+            "description": getattr(s, "description", s.name),
+            "category":    category,
+        })
+    return sorted(result, key=lambda x: x["name"])
+
+
 # ── Market data ──────────────────────────────────────────────────────────────
 
 _TF_MAP: dict[str, int] = {}   # populated lazily once mt5 is available
