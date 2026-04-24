@@ -644,9 +644,12 @@ def send_signal(
         return MT5OrderResult(False, 0, symbol, direction, lots, price, live_sl, live_tp, err)
 
     # If 10016 still fires despite pre-validation (rare: price moved between check and send),
-    # do one final retry with 2× the effective_min and update the learned minimum.
+    # do one final retry with 2× the effective_min.
+    # Regardless of whether the retry succeeds, save the expanded min so the next
+    # trade on this symbol starts from a proven-sufficient floor.
     if result.retcode == 10016:
         fallback_min = effective_min * 2.0
+        _save_learned_min(symbol, fallback_min)   # learn from failure immediately
         fb_sl_dist = max(sl_dist, fallback_min)
         fb_tp_dist = max(tp_dist, fallback_min)
         if direction == "LONG":

@@ -156,7 +156,7 @@ def _mt5_loop_inner(stop_event, config):
                     account_size=account_size,
                     risk_pct=risk_pct,
                     daily_trend=daily_trend,
-                    backtest_win_rates=_MT5.get("live_win_rates") or None,
+                    live_win_rates=_MT5.get("live_win_rates") or None,
                     mt5_symbol=mt5_symbol,
                 )
             except Exception as exc:
@@ -204,11 +204,11 @@ def _mt5_loop_inner(stop_event, config):
             pass
 
         try:
-            from data.trade_outcomes import update_outcomes_from_mt5, compute_win_rates
+            from data.trade_outcomes import update_outcomes_from_mt5, compute_detailed_win_rates
             updated = update_outcomes_from_mt5()
             if updated:
                 _log(f"📚 {updated} outcome(s) recorded")
-            _MT5["live_win_rates"] = compute_win_rates()
+            _MT5["live_win_rates"] = compute_detailed_win_rates()
         except Exception:
             pass
 
@@ -553,6 +553,14 @@ if needs_run:
                 st.session_state[k_ts]  = time.time()
         return st.session_state.get(k_val)
 
+    # Load live win rates once for all instruments
+    _live_wr: dict = {}
+    try:
+        from data.trade_outcomes import compute_detailed_win_rates
+        _live_wr = compute_detailed_win_rates()
+    except Exception:
+        pass
+
     # Pre-fetch inputs on main thread
     ticker_inputs = {}
     for inst in instruments:
@@ -574,6 +582,7 @@ if needs_run:
             risk_pct=risk_pct,
             daily_trend=inp["daily"],
             backtest_win_rates=inp["bt_rates"],
+            live_win_rates=_live_wr or None,
             mt5_symbol=inst.get("mt5_symbol"),
         )
 

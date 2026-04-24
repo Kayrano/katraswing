@@ -71,6 +71,8 @@ class SignalResult:
     adx_regime: str = "NEUTRAL"    # TRENDING / RANGING / NEUTRAL
     adx_value: float = 0.0
     bt_adjustment: float = 0.0     # backtest-informed calibration delta
+    live_adjustment: float = 0.0   # adjustment from actual closed trade outcomes
+    live_wr_key: str = ""          # which granularity key was matched (e.g. TREND_MOM:EURUSD:LONG)
     daily_trend_direction: str = "NEUTRAL"  # BULLISH / BEARISH / NEUTRAL
     daily_trend_vetoed: bool = False
 
@@ -85,6 +87,7 @@ def run_signal(
     display_name: str = "",
     daily_trend: dict | None = None,
     backtest_win_rates: dict[str, float] | None = None,
+    live_win_rates: dict[str, float] | None = None,
     mt5_symbol: str | None = None,
 ) -> SignalResult:
     """
@@ -238,6 +241,28 @@ def run_signal(
             raw_adj = (recent_wr - _BACKTEST_BASELINE_WR) * 0.5
             bt_adjustment = max(-0.10, min(0.10, raw_adj))
 
+        # ── Live trade outcome calibration (stronger weight — real money results) ─
+        # Looks up the most specific key first: strategy:symbol:direction → strategy:direction
+        # → strategy:symbol → strategy.  Losses penalise harder than wins reward
+        # (raw multiplier 0.8 vs backtest 0.5) to keep the model conservative.
+        live_adjustment = 0.0
+        live_wr_key = ""
+        if live_win_rates:
+            sym_clean = ticker.replace("=X", "").upper()
+            lookup_keys = [
+                f"{best.strategy}:{sym_clean}:{direction}",
+                f"{best.strategy}:{direction}",
+                f"{best.strategy}:{sym_clean}",
+                best.strategy,
+            ]
+            for key in lookup_keys:
+                if key in live_win_rates:
+                    live_wr = live_win_rates[key]
+                    raw_adj = (live_wr - _BACKTEST_BASELINE_WR) * 0.8
+                    live_adjustment = max(-0.15, min(0.15, raw_adj))
+                    live_wr_key = key
+                    break
+
         # News boost ±0.10
         news_boost = 0.0
         if news_sentiment != "NEUTRAL":
@@ -257,7 +282,7 @@ def run_signal(
             pattern_boost = 0.05 if p_aligns else -0.05
 
         final_conf = max(0.0, min(1.0,
-            base_conf + consensus_boost + bt_adjustment + news_boost + pattern_boost
+            base_conf + consensus_boost + bt_adjustment + live_adjustment + news_boost + pattern_boost
         ))
 
         # ── Improvement 1: Daily trend gate (hard veto) ──────────────────────
@@ -295,6 +320,8 @@ def run_signal(
             adx_regime=adx_regime,
             adx_value=round(adx_val, 1),
             bt_adjustment=round(bt_adjustment, 3),
+            live_adjustment=round(live_adjustment, 3),
+            live_wr_key=live_wr_key,
             daily_trend_direction=daily_trend_direction,
             daily_trend_vetoed=daily_trend_vetoed,
             mt5_symbol=mt5_symbol or "",

@@ -152,6 +152,48 @@ def compute_win_rates(min_trades: int = _MIN_TRADES) -> dict[str, float]:
     }
 
 
+def compute_detailed_win_rates(min_trades: int = 3) -> dict[str, float]:
+    """
+    Return win rates at multiple granularities so the signal engine can look up
+    the most specific match for (strategy, symbol, direction):
+
+      "STRATEGY"                  — overall per strategy
+      "STRATEGY:SYMBOL"           — per strategy + symbol
+      "STRATEGY:LONG"             — per strategy + direction
+      "STRATEGY:SYMBOL:LONG"      — most specific (used first)
+
+    min_trades=3 (lower than compute_win_rates) because granular buckets fill up slower.
+    Losses drag the rate down just as much as wins raise it — no special weighting needed;
+    the signal engine applies an asymmetric penalty multiplier at calibration time.
+    """
+    from collections import defaultdict
+    trades = _load()
+    buckets: dict[str, list[bool]] = defaultdict(list)
+
+    for t in trades:
+        if t["outcome"] not in ("WIN", "LOSS"):
+            continue
+        win      = t["outcome"] == "WIN"
+        strat    = t.get("strategy", "UNKNOWN")
+        # Normalise ticker: strip yfinance suffix so EURUSD=X and EURUSD map to same key
+        sym      = t.get("ticker", "").replace("=X", "").upper()
+        direction = t.get("direction", "")
+
+        buckets[strat].append(win)
+        if sym:
+            buckets[f"{strat}:{sym}"].append(win)
+        if direction:
+            buckets[f"{strat}:{direction}"].append(win)
+        if sym and direction:
+            buckets[f"{strat}:{sym}:{direction}"].append(win)
+
+    return {
+        k: round(sum(v) / len(v), 4)
+        for k, v in buckets.items()
+        if len(v) >= min_trades
+    }
+
+
 def import_all_mt5_history(days: int = 90) -> int:
     """
     Import ALL closed trades from MT5 history (any magic number / manually opened trades).
