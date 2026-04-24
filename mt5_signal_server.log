@@ -1,0 +1,18 @@
+23:34:06  INFO     ============================================================
+23:34:06  INFO       Katraswing MT5 Signal Server  |  katraswing.io
+23:34:06  INFO     ============================================================
+23:34:06  INFO     DRY RUN mode — signals will be logged but NOT sent to MT5.
+23:34:06  INFO     Monitoring: ['NQ=F', 'ES=F', 'XAUUSD=X']
+23:34:06  INFO     Poll interval: 60s | Min confidence: 60%
+23:34:06  INFO     Press Ctrl+C to stop.
+
+23:34:06  INFO     Polling NQ Mini (NQ=F)...
+23:34:08  INFO     NQ Mini: NO TRADE (conf=0.0%)
+23:34:08  INFO     Polling ES Mini (ES=F)...
+23:34:08  INFO     ES Mini: NO TRADE (conf=0.0%)
+23:34:08  INFO     Polling Gram Gold (XAUUSD=X)...
+23:34:09  ERROR    HTTP Error 404: {"quoteSummary":{"result":null,"error":{"code":"Not Found","description":"Quote not found for symbol: XAUUSD=X"}}}
+23:34:10  ERROR    $XAUUSD=X: possibly delisted; no price data found  (period=59d) (Yahoo error = "No data found, symbol may be delisted")
+23:34:10  WARNING  XAUUSD=X error: yfinance returned no 5m data for 'XAUUSD=X'
+23:34:10  INFO     Next poll in 56s...
+

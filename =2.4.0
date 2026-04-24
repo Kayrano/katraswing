@@ -1,0 +1,165 @@
+Defaulting to user installation because normal site-packages is not writeable
+Collecting supabase
+  Downloading supabase-2.28.3-py3-none-any.whl.metadata (4.6 kB)
+Collecting realtime==2.28.3 (from supabase)
+  Downloading realtime-2.28.3-py3-none-any.whl.metadata (7.0 kB)
+Collecting supabase-functions==2.28.3 (from supabase)
+  Downloading supabase_functions-2.28.3-py3-none-any.whl.metadata (2.4 kB)
+Collecting storage3==2.28.3 (from supabase)
+  Downloading storage3-2.28.3-py3-none-any.whl.metadata (2.1 kB)
+Collecting supabase-auth==2.28.3 (from supabase)
+  Downloading supabase_auth-2.28.3-py3-none-any.whl.metadata (6.4 kB)
+Collecting postgrest==2.28.3 (from supabase)
+  Downloading postgrest-2.28.3-py3-none-any.whl.metadata (3.4 kB)
+Collecting httpx<0.29,>=0.26 (from supabase)
+  Using cached httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
+Collecting yarl>=1.22.0 (from supabase)
+  Downloading yarl-1.23.0-cp314-cp314-win_amd64.whl.metadata (82 kB)
+Collecting deprecation>=2.1.0 (from postgrest==2.28.3->supabase)
+  Downloading deprecation-2.1.0-py2.py3-none-any.whl.metadata (4.6 kB)
+Collecting pydantic<3.0,>=1.9 (from postgrest==2.28.3->supabase)
+  Using cached pydantic-2.12.5-py3-none-any.whl.metadata (90 kB)
+Requirement already satisfied: typing-extensions>=4.14.0 in c:\users\kayra\appdata\roaming\python\python314\site-packages (from realtime==2.28.3->supabase) (4.15.0)
+Collecting websockets<16,>=11 (from realtime==2.28.3->supabase)
+  Downloading websockets-15.0.1-py3-none-any.whl.metadata (6.8 kB)
+Collecting pyiceberg>=0.10.0 (from storage3==2.28.3->supabase)
+  Downloading pyiceberg-0.11.1.tar.gz (1.1 MB)
+     ---------------------------------------- 1.1/1.1 MB 6.4 MB/s  0:00:00
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Collecting pyjwt>=2.10.1 (from pyjwt[crypto]>=2.10.1->supabase-auth==2.28.3->supabase)
+  Downloading pyjwt-2.12.1-py3-none-any.whl.metadata (4.1 kB)
+Collecting strenum>=0.4.15 (from supabase-functions==2.28.3->supabase)
+  Downloading StrEnum-0.4.15-py3-none-any.whl.metadata (5.3 kB)
+Collecting anyio (from httpx<0.29,>=0.26->supabase)
+  Downloading anyio-4.13.0-py3-none-any.whl.metadata (4.5 kB)
+Requirement already satisfied: certifi in c:\users\kayra\appdata\roaming\python\python314\site-packages (from httpx<0.29,>=0.26->supabase) (2026.2.25)
+Collecting httpcore==1.* (from httpx<0.29,>=0.26->supabase)
+  Using cached httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+Requirement already satisfied: idna in c:\users\kayra\appdata\roaming\python\python314\site-packages (from httpx<0.29,>=0.26->supabase) (3.11)
+Collecting h11>=0.16 (from httpcore==1.*->httpx<0.29,>=0.26->supabase)
+  Using cached h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+Collecting h2<5,>=3 (from httpx[http2]<0.29,>=0.26->postgrest==2.28.3->supabase)
+  Downloading h2-4.3.0-py3-none-any.whl.metadata (5.1 kB)
+Collecting hyperframe<7,>=6.1 (from h2<5,>=3->httpx[http2]<0.29,>=0.26->postgrest==2.28.3->supabase)
+  Downloading hyperframe-6.1.0-py3-none-any.whl.metadata (4.3 kB)
+Collecting hpack<5,>=4.1 (from h2<5,>=3->httpx[http2]<0.29,>=0.26->postgrest==2.28.3->supabase)
+  Downloading hpack-4.1.0-py3-none-any.whl.metadata (4.6 kB)
+Collecting annotated-types>=0.6.0 (from pydantic<3.0,>=1.9->postgrest==2.28.3->supabase)
+  Using cached annotated_types-0.7.0-py3-none-any.whl.metadata (15 kB)
+Collecting pydantic-core==2.41.5 (from pydantic<3.0,>=1.9->postgrest==2.28.3->supabase)
+  Downloading pydantic_core-2.41.5-cp314-cp314-win_amd64.whl.metadata (7.4 kB)
+Collecting typing-inspection>=0.4.2 (from pydantic<3.0,>=1.9->postgrest==2.28.3->supabase)
+  Using cached typing_inspection-0.4.2-py3-none-any.whl.metadata (2.6 kB)
+Requirement already satisfied: packaging in c:\users\kayra\appdata\roaming\python\python314\site-packages (from deprecation>=2.1.0->postgrest==2.28.3->supabase) (26.0)
+Collecting mmh3<6.0.0,>=4.0.0 (from pyiceberg>=0.10.0->storage3==2.28.3->supabase)
+  Downloading mmh3-5.2.1-cp314-cp314-win_amd64.whl.metadata (15 kB)
+Requirement already satisfied: requests<3.0.0,>=2.20.0 in c:\users\kayra\appdata\roaming\python\python314\site-packages (from pyiceberg>=0.10.0->storage3==2.28.3->supabase) (2.33.0)
+Requirement already satisfied: click<9.0.0,>=7.1.1 in c:\users\kayra\appdata\roaming\python\python314\site-packages (from pyiceberg>=0.10.0->storage3==2.28.3->supabase) (8.3.1)
+Collecting rich<15.0.0,>=10.11.0 (from pyiceberg>=0.10.0->storage3==2.28.3->supabase)
+  Downloading rich-14.3.3-py3-none-any.whl.metadata (18 kB)
+Collecting strictyaml<2.0.0,>=1.7.0 (from pyiceberg>=0.10.0->storage3==2.28.3->supabase)
+  Downloading strictyaml-1.7.3-py3-none-any.whl.metadata (11 kB)
+Collecting fsspec>=2023.1.0 (from pyiceberg>=0.10.0->storage3==2.28.3->supabase)
+  Downloading fsspec-2026.3.0-py3-none-any.whl.metadata (10 kB)
+Collecting pyparsing<4.0.0,>=3.1.0 (from pyiceberg>=0.10.0->storage3==2.28.3->supabase)
+  Downloading pyparsing-3.3.2-py3-none-any.whl.metadata (5.8 kB)
+Requirement already satisfied: tenacity<10.0.0,>=8.2.3 in c:\users\kayra\appdata\roaming\python\python314\site-packages (from pyiceberg>=0.10.0->storage3==2.28.3->supabase) (9.1.4)
+Collecting pyroaring<2.0.0,>=1.0.0 (from pyiceberg>=0.10.0->storage3==2.28.3->supabase)
+  Downloading pyroaring-1.0.4-cp314-cp314-win_amd64.whl.metadata (12 kB)
+Collecting cachetools<7.0,>=5.5 (from pyiceberg>=0.10.0->storage3==2.28.3->supabase)
+  Downloading cachetools-6.2.6-py3-none-any.whl.metadata (5.6 kB)
+Collecting zstandard<1.0.0,>=0.13.0 (from pyiceberg>=0.10.0->storage3==2.28.3->supabase)
+  Downloading zstandard-0.25.0-cp314-cp314-win_amd64.whl.metadata (3.3 kB)
+Requirement already satisfied: colorama in c:\users\kayra\appdata\roaming\python\python314\site-packages (from click<9.0.0,>=7.1.1->pyiceberg>=0.10.0->storage3==2.28.3->supabase) (0.4.6)
+Requirement already satisfied: charset_normalizer<4,>=2 in c:\users\kayra\appdata\roaming\python\python314\site-packages (from requests<3.0.0,>=2.20.0->pyiceberg>=0.10.0->storage3==2.28.3->supabase) (3.4.6)
+Requirement already satisfied: urllib3<3,>=1.26 in c:\users\kayra\appdata\roaming\python\python314\site-packages (from requests<3.0.0,>=2.20.0->pyiceberg>=0.10.0->storage3==2.28.3->supabase) (2.6.3)
+Collecting markdown-it-py>=2.2.0 (from rich<15.0.0,>=10.11.0->pyiceberg>=0.10.0->storage3==2.28.3->supabase)
+  Downloading markdown_it_py-4.0.0-py3-none-any.whl.metadata (7.3 kB)
+Collecting pygments<3.0.0,>=2.13.0 (from rich<15.0.0,>=10.11.0->pyiceberg>=0.10.0->storage3==2.28.3->supabase)
+  Downloading pygments-2.20.0-py3-none-any.whl.metadata (2.5 kB)
+Requirement already satisfied: python-dateutil>=2.6.0 in c:\users\kayra\appdata\roaming\python\python314\site-packages (from strictyaml<2.0.0,>=1.7.0->pyiceberg>=0.10.0->storage3==2.28.3->supabase) (2.9.0.post0)
+Collecting mdurl~=0.1 (from markdown-it-py>=2.2.0->rich<15.0.0,>=10.11.0->pyiceberg>=0.10.0->storage3==2.28.3->supabase)
+  Downloading mdurl-0.1.2-py3-none-any.whl.metadata (1.6 kB)
+Collecting cryptography>=3.4.0 (from pyjwt[crypto]>=2.10.1->supabase-auth==2.28.3->supabase)
+  Downloading cryptography-46.0.7-cp311-abi3-win_amd64.whl.metadata (5.7 kB)
+Requirement already satisfied: cffi>=2.0.0 in c:\users\kayra\appdata\roaming\python\python314\site-packages (from cryptography>=3.4.0->pyjwt[crypto]>=2.10.1->supabase-auth==2.28.3->supabase) (2.0.0)
+Requirement already satisfied: pycparser in c:\users\kayra\appdata\roaming\python\python314\site-packages (from cffi>=2.0.0->cryptography>=3.4.0->pyjwt[crypto]>=2.10.1->supabase-auth==2.28.3->supabase) (3.0)
+Requirement already satisfied: six>=1.5 in c:\users\kayra\appdata\roaming\python\python314\site-packages (from python-dateutil>=2.6.0->strictyaml<2.0.0,>=1.7.0->pyiceberg>=0.10.0->storage3==2.28.3->supabase) (1.17.0)
+Collecting multidict>=4.0 (from yarl>=1.22.0->supabase)
+  Downloading multidict-6.7.1-cp314-cp314-win_amd64.whl.metadata (5.5 kB)
+Collecting propcache>=0.2.1 (from yarl>=1.22.0->supabase)
+  Downloading propcache-0.4.1-cp314-cp314-win_amd64.whl.metadata (14 kB)
+Downloading supabase-2.28.3-py3-none-any.whl (16 kB)
+Downloading postgrest-2.28.3-py3-none-any.whl (21 kB)
+Downloading realtime-2.28.3-py3-none-any.whl (22 kB)
+Downloading storage3-2.28.3-py3-none-any.whl (28 kB)
+Downloading supabase_auth-2.28.3-py3-none-any.whl (48 kB)
+Downloading supabase_functions-2.28.3-py3-none-any.whl (8.8 kB)
+Using cached httpx-0.28.1-py3-none-any.whl (73 kB)
+Using cached httpcore-1.0.9-py3-none-any.whl (78 kB)
+Downloading h2-4.3.0-py3-none-any.whl (61 kB)
+Downloading hpack-4.1.0-py3-none-any.whl (34 kB)
+Downloading hyperframe-6.1.0-py3-none-any.whl (13 kB)
+Using cached pydantic-2.12.5-py3-none-any.whl (463 kB)
+Downloading pydantic_core-2.41.5-cp314-cp314-win_amd64.whl (2.0 MB)
+   ---------------------------------------- 2.0/2.0 MB 21.5 MB/s  0:00:00
+Downloading websockets-15.0.1-py3-none-any.whl (169 kB)
+Using cached annotated_types-0.7.0-py3-none-any.whl (13 kB)
+Downloading deprecation-2.1.0-py2.py3-none-any.whl (11 kB)
+Using cached h11-0.16.0-py3-none-any.whl (37 kB)
+Downloading cachetools-6.2.6-py3-none-any.whl (11 kB)
+Downloading mmh3-5.2.1-cp314-cp314-win_amd64.whl (42 kB)
+Downloading pyparsing-3.3.2-py3-none-any.whl (122 kB)
+Downloading pyroaring-1.0.4-cp314-cp314-win_amd64.whl (264 kB)
+Downloading rich-14.3.3-py3-none-any.whl (310 kB)
+Downloading pygments-2.20.0-py3-none-any.whl (1.2 MB)
+   ---------------------------------------- 1.2/1.2 MB 4.3 MB/s  0:00:00
+Downloading strictyaml-1.7.3-py3-none-any.whl (123 kB)
+Downloading zstandard-0.25.0-cp314-cp314-win_amd64.whl (516 kB)
+Downloading fsspec-2026.3.0-py3-none-any.whl (202 kB)
+Downloading markdown_it_py-4.0.0-py3-none-any.whl (87 kB)
+Downloading mdurl-0.1.2-py3-none-any.whl (10.0 kB)
+Downloading pyjwt-2.12.1-py3-none-any.whl (29 kB)
+Downloading cryptography-46.0.7-cp311-abi3-win_amd64.whl (3.5 MB)
+   ---------------------------------------- 3.5/3.5 MB 25.1 MB/s  0:00:00
+Downloading StrEnum-0.4.15-py3-none-any.whl (8.9 kB)
+Using cached typing_inspection-0.4.2-py3-none-any.whl (14 kB)
+Downloading yarl-1.23.0-cp314-cp314-win_amd64.whl (89 kB)
+Downloading multidict-6.7.1-cp314-cp314-win_amd64.whl (45 kB)
+Downloading propcache-0.4.1-cp314-cp314-win_amd64.whl (41 kB)
+Downloading anyio-4.13.0-py3-none-any.whl (114 kB)
+Building wheels for collected packages: pyiceberg
+  Building wheel for pyiceberg (pyproject.toml): started
+  Building wheel for pyiceberg (pyproject.toml): finished with status 'done'
+  Created wheel for pyiceberg: filename=pyiceberg-0.11.1-cp314-cp314-win_amd64.whl size=522575 sha256=bff8aebc339ae9b4d05c1283ad0080784accd6d8ff747be6517097ce2d0f23c9
+  Stored in directory: c:\users\kayra\appdata\local\pip\cache\wheels\ba\99\76\91784b0431c6750b719274074d84b9ae60bb9541089624090e
+Successfully built pyiceberg
+Installing collected packages: strenum, pyroaring, zstandard, websockets, typing-inspection, pyparsing, pyjwt, pygments, pydantic-core, propcache, multidict, mmh3, mdurl, hyperframe, hpack, h11, fsspec, deprecation, cachetools, anyio, annotated-types, yarl, strictyaml, pydantic, markdown-it-py, httpcore, h2, cryptography, rich, realtime, httpx, pyiceberg, supabase-functions, supabase-auth, storage3, postgrest, supabase
+  Attempting uninstall: websockets
+    Found existing installation: websockets 16.0
+    Uninstalling websockets-16.0:
+      Successfully uninstalled websockets-16.0
+  WARNING: The script websockets.exe is installed in 'C:\Users\Kayra\AppData\Roaming\Python\Python314\Scripts' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+  WARNING: The script pygmentize.exe is installed in 'C:\Users\Kayra\AppData\Roaming\Python\Python314\Scripts' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+  Attempting uninstall: cachetools
+    Found existing installation: cachetools 7.0.5
+    Uninstalling cachetools-7.0.5:
+      Successfully uninstalled cachetools-7.0.5
+  WARNING: The script markdown-it.exe is installed in 'C:\Users\Kayra\AppData\Roaming\Python\Python314\Scripts' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+  WARNING: The script httpx.exe is installed in 'C:\Users\Kayra\AppData\Roaming\Python\Python314\Scripts' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+  WARNING: The script pyiceberg.exe is installed in 'C:\Users\Kayra\AppData\Roaming\Python\Python314\Scripts' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+
+Successfully installed annotated-types-0.7.0 anyio-4.13.0 cachetools-6.2.6 cryptography-46.0.7 deprecation-2.1.0 fsspec-2026.3.0 h11-0.16.0 h2-4.3.0 hpack-4.1.0 httpcore-1.0.9 httpx-0.28.1 hyperframe-6.1.0 markdown-it-py-4.0.0 mdurl-0.1.2 mmh3-5.2.1 multidict-6.7.1 postgrest-2.28.3 propcache-0.4.1 pydantic-2.12.5 pydantic-core-2.41.5 pygments-2.20.0 pyiceberg-0.11.1 pyjwt-2.12.1 pyparsing-3.3.2 pyroaring-1.0.4 realtime-2.28.3 rich-14.3.3 storage3-2.28.3 strenum-0.4.15 strictyaml-1.7.3 supabase-2.28.3 supabase-auth-2.28.3 supabase-functions-2.28.3 typing-inspection-0.4.2 websockets-15.0.1 yarl-1.23.0 zstandard-0.25.0
+
+[notice] A new release of pip is available: 25.3 -> 26.0.1
+[notice] To update, run: C:\Python314\python.exe -m pip install --upgrade pip
