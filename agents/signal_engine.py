@@ -34,7 +34,7 @@ _ADX_RANGING  = 20.0
 _MR_STRATEGIES = {"VWAP_RSI_5M", "PDH_PDL_SWEEP_5M"}
 # Trend-following / breakout strategies (penalised in ranging markets)
 # NR7 breakouts fail in choppy low-ADX conditions
-_TREND_STRATEGIES = {"ORB_5M", "TREND_MOM_5M", "EMA_PB_15M", "SQUEEZE_15M", "NR7_BREAKOUT_5M"}
+_TREND_STRATEGIES = {"ORB_5M", "TREND_MOM_5M", "EMA_PB_15M", "SQUEEZE_15M", "NR7_BREAKOUT_5M", "MSS_FOREX_15M"}
 # ABSORB is order-flow based — regime-independent, never penalised
 
 # Minimum final confidence to issue a signal (raised from 0.35 → 0.60)

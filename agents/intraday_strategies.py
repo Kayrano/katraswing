@@ -954,11 +954,171 @@ def nr7_breakout_5m(df: pd.DataFrame) -> IntradaySignal:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
+# STRATEGY 10 — Market Structure Shift  (Forex only, 15m entry / daily trend)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def mss_forex_15m(df: pd.DataFrame) -> IntradaySignal:
+    """
+    Market Structure Shift (MSS) entry — Forex pairs only (=X tickers).
+
+    Higher-timeframe trend  (daily bars, 2-bar swing lookback):
+        2× Higher High + 2× Higher Low → UPTREND
+        2× Lower  High + 2× Lower  Low → DOWNTREND
+        Mixed / no clear structure      → FLAT (no trade)
+
+    Entry timeframe  (15m bars resampled from the 5m df, 6-bar lookback):
+        UPTREND   + current 15m close > recent confirmed 15m swing high → LONG
+        DOWNTREND + current 15m close < recent confirmed 15m swing low  → SHORT
+
+    SL: opposing 15m swing level (swing low for LONG, swing high for SHORT)
+    TP: 2× risk from entry  →  1:2 R:R
+
+    Source: classical ICT/SMC Market Structure Shift; pullback entry on MSS
+    confirmation.  Win-rate estimate: 60–65% (BabyPips community backtest data).
+    """
+    NAME = "MSS_FOREX_15M"
+    TF   = "15m"
+
+    # FOREX-only guard
+    if "market" in df.columns and df["market"].iloc[-1] != "FOREX":
+        return _flat(NAME, TF, "Non-FOREX ticker — MSS strategy skipped")
+
+    if len(df) < 100:
+        return _flat(NAME, TF, "Insufficient bars (need 100)")
+
+    # ── Daily swing structure ─────────────────────────────────────────────────
+    daily = (
+        df[["Open", "High", "Low", "Close"]]
+        .resample("1D")
+        .agg({"Open": "first", "High": "max", "Low": "min", "Close": "last"})
+        .dropna()
+    )
+    if len(daily) < 6:
+        return _flat(NAME, TF, "Insufficient daily bars for swing structure")
+
+    d_highs = daily["High"].values
+    d_lows  = daily["Low"].values
+    n_d     = len(d_highs)
+
+    # 2-bar lookback pivot: high[i] > high[i-1] AND high[i] > high[i+1]
+    swing_highs: list[float] = []
+    swing_lows:  list[float] = []
+    for i in range(1, n_d - 1):
+        if d_highs[i] > d_highs[i - 1] and d_highs[i] > d_highs[i + 1]:
+            swing_highs.append(float(d_highs[i]))
+        if d_lows[i] < d_lows[i - 1] and d_lows[i] < d_lows[i + 1]:
+            swing_lows.append(float(d_lows[i]))
+
+    if len(swing_highs) < 2 or len(swing_lows) < 2:
+        return _flat(NAME, TF,
+            f"Not enough daily swing points (SH={len(swing_highs)}, SL={len(swing_lows)})")
+
+    sh_prev, sh_last = swing_highs[-2], swing_highs[-1]
+    sl_prev, sl_last = swing_lows[-2],  swing_lows[-1]
+
+    hh_hl = sh_last > sh_prev and sl_last > sl_prev  # uptrend
+    lh_ll = sh_last < sh_prev and sl_last < sl_prev  # downtrend
+
+    if not hh_hl and not lh_ll:
+        return _flat(NAME, TF,
+            f"No clear daily structure | SH {sh_prev:.5f}→{sh_last:.5f} "
+            f"SL {sl_prev:.5f}→{sl_last:.5f}")
+
+    daily_dir = "UP" if hh_hl else "DOWN"
+
+    # ── 15m swing points (resample 5m → 15m, 6-bar lookback confirmation) ────
+    df_15 = (
+        df[["High", "Low", "Close"]]
+        .resample("15min")
+        .agg({"High": "max", "Low": "min", "Close": "last"})
+        .dropna()
+    )
+    if len(df_15) < 20:
+        return _flat(NAME, TF, "Insufficient 15m bars after resample")
+
+    h15 = df_15["High"].values
+    l15 = df_15["Low"].values
+    c15 = df_15["Close"].values
+    n15 = len(h15)
+    LB  = 6   # lookback / confirmation bars each side
+
+    # Scan from the most recently confirmed bar backwards
+    recent_sh: float | None = None
+    recent_sl: float | None = None
+    for i in range(n15 - LB - 1, LB - 1, -1):
+        window_h = h15[i - LB : i + LB + 1]
+        window_l = l15[i - LB : i + LB + 1]
+        if recent_sh is None and float(h15[i]) == float(max(window_h)):
+            recent_sh = float(h15[i])
+        if recent_sl is None and float(l15[i]) == float(min(window_l)):
+            recent_sl = float(l15[i])
+        if recent_sh is not None and recent_sl is not None:
+            break
+
+    if recent_sh is None or recent_sl is None:
+        return _flat(NAME, TF, "Could not find confirmed 15m swing points")
+
+    cur_close = float(c15[-1])
+
+    atr14   = ta.atr(df["High"], df["Low"], df["Close"], length=14)
+    cur_atr = float(atr14.dropna().iloc[-1]) if atr14 is not None and not atr14.dropna().empty else 0.0
+    if cur_atr == 0:
+        return _flat(NAME, TF, "ATR=0")
+
+    rvol = float(df["rvol"].iloc[-1]) if "rvol" in df.columns else 1.0
+
+    # ── LONG: uptrend + MSS close above 15m swing high ───────────────────────
+    if daily_dir == "UP" and cur_close > recent_sh:
+        sl_price = recent_sl
+        risk     = cur_close - sl_price
+        if risk <= 0 or risk > 10 * cur_atr:
+            return _flat(NAME, TF, f"Invalid long risk geometry (risk={risk:.5f})")
+        conf = min(0.78 + (0.07 if rvol >= 1.3 else 0.0), 0.92)
+        tp   = round(cur_close + 2.0 * risk, 5)
+        return IntradaySignal(
+            strategy=NAME, timeframe=TF, signal="LONG",
+            confidence=round(conf, 3),
+            entry=round(cur_close, 5),
+            stop_loss=round(sl_price, 5),
+            take_profit=tp,
+            atr=round(cur_atr, 5),
+            rr_ratio=2.0,
+            reason=(f"Daily HH+HL ↑ | MSS: close {cur_close:.5f} > 15m SwingH {recent_sh:.5f} "
+                    f"| SL=SwingL {recent_sl:.5f} | RVOL={rvol:.1f}x"),
+        )
+
+    # ── SHORT: downtrend + MSS close below 15m swing low ─────────────────────
+    if daily_dir == "DOWN" and cur_close < recent_sl:
+        sl_price = recent_sh
+        risk     = sl_price - cur_close
+        if risk <= 0 or risk > 10 * cur_atr:
+            return _flat(NAME, TF, f"Invalid short risk geometry (risk={risk:.5f})")
+        conf = min(0.78 + (0.07 if rvol >= 1.3 else 0.0), 0.92)
+        tp   = round(cur_close - 2.0 * risk, 5)
+        return IntradaySignal(
+            strategy=NAME, timeframe=TF, signal="SHORT",
+            confidence=round(conf, 3),
+            entry=round(cur_close, 5),
+            stop_loss=round(sl_price, 5),
+            take_profit=tp,
+            atr=round(cur_atr, 5),
+            rr_ratio=2.0,
+            reason=(f"Daily LH+LL ↓ | MSS: close {cur_close:.5f} < 15m SwingL {recent_sl:.5f} "
+                    f"| SL=SwingH {recent_sh:.5f} | RVOL={rvol:.1f}x"),
+        )
+
+    return _flat(NAME, TF,
+        f"Daily {daily_dir} trend confirmed | no MSS trigger | "
+        f"C={cur_close:.5f} 15m[SwingH={recent_sh:.5f} SwingL={recent_sl:.5f}]")
+
+
+# ════════════════════════════════════════════════════════════════════════════════
 # ORCHESTRATOR — run_intraday_signals
 # ════════════════════════════════════════════════════════════════════════════════
 
 _STRATEGIES_5M  = [vwap_rsi_5m, orb_5m, trend_momentum_5m,
-                   pdh_pdl_sweep_5m, camarilla_pivot_5m, nr7_breakout_5m]
+                   pdh_pdl_sweep_5m, camarilla_pivot_5m, nr7_breakout_5m,
+                   mss_forex_15m]
 _STRATEGIES_15M = [ema_pullback_15m, squeeze_15m, absorption_15m]
 
 _STRATEGY_NAME_MAP: dict[str, str] = {
@@ -971,6 +1131,7 @@ _STRATEGY_NAME_MAP: dict[str, str] = {
     "pdh_pdl_sweep_5m":  "PDH_PDL_SWEEP_5M",
     "camarilla_pivot_5m":"CAMARILLA_5M",
     "nr7_breakout_5m":   "NR7_BREAKOUT_5M",
+    "mss_forex_15m":     "MSS_FOREX_15M",
 }
 
 
