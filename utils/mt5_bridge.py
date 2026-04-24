@@ -256,7 +256,16 @@ def send_signal(
         )
         return MT5OrderResult(True, result.order, symbol, direction, vol, price, sl, tp)
 
-    err = f"retcode={result.retcode} | {result.comment}"
+    _RETCODE_HINTS = {
+        10027: "AutoTrading disabled — click the 'Algo Trading' button in the MT5 toolbar to enable it.",
+        10018: "Market closed for this symbol.",
+        10019: "Not enough money in account.",
+        10014: "Invalid volume — check lot size.",
+        10016: "Invalid stops — SL/TP may be too close to price.",
+        10030: "Filling mode not supported — broker rejected the order type.",
+    }
+    hint = _RETCODE_HINTS.get(result.retcode, "")
+    err = f"retcode={result.retcode} | {result.comment}" + (f" → {hint}" if hint else "")
     logger.warning(f"Order rejected: {err}")
     return MT5OrderResult(False, 0, symbol, direction, vol, price, sl, tp, err)
 
