@@ -56,6 +56,9 @@ _US_FUTURES_TICKERS = {"NQ=F", "ES=F"}
 # Japanese futures — primary session is Tokyo Stock Exchange hours
 _JAPAN_FUTURES_TICKERS = {"NKD=F"}
 
+# Forex pairs — open Mon 00:00 UTC through Fri 22:00 UTC (weekdays only)
+_FOREX_TICKERS = {"EURUSD=X", "GBPUSD=X", "USDJPY=X", "XAUUSD=X"}
+
 
 def _market_status(ticker: str, df) -> tuple[bool, str]:
     """
@@ -104,6 +107,18 @@ def _market_status(ticker: str, df) -> tuple[bool, str]:
             return True, "Lunch break  ·  TSE 11:30–12:30 JST"
         if hm >= 15 * 60 + 30:
             return True, "After hours  ·  TSE closed at 15:30 JST"
+
+    elif ticker in _FOREX_TICKERS:
+        # Forex is open Mon 00:00 → Fri 22:00 UTC
+        now = datetime.now(timezone.utc)
+        wd  = now.weekday()
+        if wd == 5:  # Saturday
+            return True, "Forex closed  ·  weekend"
+        if wd == 6:  # Sunday — opens ~22:00 UTC
+            if now.hour < 22:
+                return True, f"Forex closed  ·  opens Sun 22:00 UTC"
+        if wd == 4 and now.hour >= 22:  # Friday after 22:00 UTC
+            return True, "Forex closed  ·  weekly close (Fri 22:00 UTC)"
 
     # ── Staleness check (secondary — only fires when clock says market is open) -
     # yfinance 5m data has a ~15 min delay; use 30 min threshold to avoid false
@@ -160,12 +175,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 INSTRUMENTS = [
-    {"ticker": "NQ=F",  "label": "NQ Mini",   "name": "Nasdaq 100 E-mini Futures"},
-    {"ticker": "ES=F",  "label": "ES Mini",   "name": "S&P 500 E-mini Futures"},
-    {"ticker": "NKD=F", "label": "Nikkei 225","name": "Nikkei 225 Futures"},
-    {"ticker": "AAPL",  "label": "Apple",     "name": "Apple Inc."},
-    {"ticker": "MSFT",  "label": "Microsoft", "name": "Microsoft Corp."},
-    {"ticker": "AMZN",  "label": "Amazon",    "name": "Amazon.com Inc."},
+    # Futures
+    {"ticker": "NQ=F",     "label": "NQ Mini",    "name": "Nasdaq 100 E-mini Futures", "group": "Futures"},
+    {"ticker": "ES=F",     "label": "ES Mini",    "name": "S&P 500 E-mini Futures",    "group": "Futures"},
+    {"ticker": "NKD=F",    "label": "Nikkei 225", "name": "Nikkei 225 Futures",        "group": "Futures"},
+    # Stocks
+    {"ticker": "AAPL",     "label": "Apple",      "name": "Apple Inc.",                "group": "Stocks"},
+    {"ticker": "MSFT",     "label": "Microsoft",  "name": "Microsoft Corp.",           "group": "Stocks"},
+    {"ticker": "AMZN",     "label": "Amazon",     "name": "Amazon.com Inc.",           "group": "Stocks"},
+    # Forex
+    {"ticker": "EURUSD=X", "label": "EUR/USD",    "name": "Euro / US Dollar",          "group": "Forex"},
+    {"ticker": "GBPUSD=X", "label": "GBP/USD",    "name": "British Pound / US Dollar", "group": "Forex"},
 ]
 
 # ── MT5 shared state ──────────────────────────────────────────────────────────
@@ -235,6 +255,9 @@ def _mt5_loop_inner(stop_event: threading.Event, config: dict):
     finnhub_key  = config["finnhub_key"]
     interval     = config["interval"]
 
+    # Per-ticker daily trend cache (15-min TTL) — avoids redundant fetches
+    _dt_cache: dict[str, tuple[dict, float]] = {}
+
     while not stop_event.is_set():
         today = date.today()
         _MT5["sent"]     = {k for k in _MT5["sent"]     if k.endswith(str(today))}
@@ -244,12 +267,27 @@ def _mt5_loop_inner(stop_event: threading.Event, config: dict):
             if stop_event.is_set():
                 break
             _log(f"Polling {ticker}…")
+
+            # Refresh daily trend with 15-min TTL
+            daily_trend = None
+            try:
+                from data.fetcher_intraday import fetch_daily_trend
+                cached = _dt_cache.get(ticker)
+                if cached is None or time.time() - cached[1] > 900:
+                    daily_trend = fetch_daily_trend(ticker)
+                    _dt_cache[ticker] = (daily_trend, time.time())
+                else:
+                    daily_trend = cached[0]
+            except Exception:
+                daily_trend = None
+
             try:
                 sr = run_signal(
                     ticker=ticker,
                     finnhub_api_key=finnhub_key,
                     account_size=account_size,
                     risk_pct=risk_pct,
+                    daily_trend=daily_trend,
                 )
             except Exception as exc:
                 _log(f"ERROR {ticker}: {exc}")
@@ -402,7 +440,7 @@ with st.sidebar:
     st.markdown("### MT5 Monitor")
     mt5_tickers = st.multiselect(
         "Watch",
-        options=["NQ=F", "ES=F", "NKD=F", "AAPL", "MSFT", "AMZN"],
+        options=["NQ=F", "ES=F", "NKD=F", "AAPL", "MSFT", "AMZN", "EURUSD=X", "GBPUSD=X"],
         default=st.session_state.get("mt5_tickers", ["NQ=F", "ES=F"]),
     )
     mt5_min_conf = st.slider(
@@ -829,33 +867,103 @@ with tab_signals:
         st.error(_MT5["error"])
 
     pending_tickers = {p["ticker"] for p in _MT5["pending"]}
-    cols = st.columns(len(INSTRUMENTS))
 
-    for col, inst in zip(cols, INSTRUMENTS):
-        with col:
-            result = results.get(inst["ticker"])
-            closed, _ = _market_status(inst["ticker"], result.df_5m if result else None)
-            status_badge = (
-                "<span style='background:#1f2937;color:#6b7280;border-radius:4px;"
-                "padding:1px 7px;font-size:10px;font-weight:600;margin-left:6px;'>CLOSED</span>"
-                if closed else
-                "<span style='background:#052e16;color:#22c55e;border-radius:4px;"
-                "padding:1px 7px;font-size:10px;font-weight:600;margin-left:6px;'>LIVE</span>"
-            )
-            st.markdown(
-                f"<div style='font-size:15px;font-weight:700;color:#e0e0e0;"
-                f"margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #1e2330;'>"
-                f"{inst['label']}{status_badge}"
-                f"&nbsp;<span style='color:#6b7280;font-size:12px;'>{inst['ticker']}</span>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-            if result is None:
-                st.caption("Not loaded — click Scan Signals Now")
-            elif result.error:
-                st.error(result.error)
-            else:
-                _signal_card(result, pending_tickers)
+    # ── Top Signals — best actionable trades sorted by confidence ─────────────
+    active_signals = [
+        (inst, results[inst["ticker"]])
+        for inst in INSTRUMENTS
+        if inst["ticker"] in results
+        and results[inst["ticker"]]
+        and not results[inst["ticker"]].error
+        and results[inst["ticker"]].direction in ("LONG", "SHORT")
+        and not _market_status(inst["ticker"], results[inst["ticker"]].df_5m)[0]
+    ]
+    active_signals.sort(key=lambda x: x[1].confidence, reverse=True)
+
+    if active_signals:
+        st.markdown("### 🎯 Top Signals")
+        for inst, r in active_signals:
+            dir_c  = "#22c55e" if r.direction == "LONG" else "#ef4444"
+            arrow  = "▲" if r.direction == "LONG" else "▼"
+            bg     = "#0a1f14" if r.direction == "LONG" else "#1f0a0a"
+            border = "#16a34a" if r.direction == "LONG" else "#dc2626"
+            risk   = abs(r.entry - r.sl)
+            reward = abs(r.tp - r.entry)
+            rr     = reward / risk if risk > 0 else 0
+            strat  = r.chart_signals[0].strategy if r.chart_signals else "—"
+
+            c_info, c_btn = st.columns([5, 1])
+            with c_info:
+                st.markdown(
+                    f"<div style='background:{bg};border:1px solid {border};border-radius:8px;"
+                    f"padding:12px 18px;display:flex;gap:24px;align-items:center;flex-wrap:wrap;'>"
+                    f"<span style='color:{dir_c};font-size:20px;font-weight:800;min-width:100px;'>"
+                    f"{arrow} {r.direction}</span>"
+                    f"<span style='color:#e0e0e0;font-size:16px;font-weight:700;'>{inst['label']}"
+                    f"<span style='color:#6b7280;font-size:12px;font-weight:400;'> {inst['ticker']}</span></span>"
+                    f"<span style='color:{dir_c};font-size:18px;font-weight:700;'>{int(r.confidence*100)}%</span>"
+                    f"<span style='color:#9ca3af;font-size:13px;'>Entry <b style='color:#60a5fa;'>{r.entry:.4f}</b>"
+                    f"&nbsp; SL <b style='color:#ef4444;'>{r.sl:.4f}</b>"
+                    f"&nbsp; TP <b style='color:#22c55e;'>{r.tp:.4f}</b>"
+                    f"&nbsp; R:R <b>1:{rr:.1f}</b>"
+                    f"&nbsp; · &nbsp;<span style='color:#6b7280;'>{strat}</span></span>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+            with c_btn:
+                if _MT5["connected"]:
+                    if st.button("Send →", key=f"quick_{inst['ticker']}", type="primary"):
+                        from utils.mt5_bridge import ensure_connected, send_from_signal_result
+                        if ensure_connected():
+                            res = send_from_signal_result(r)
+                            if res.success:
+                                _MT5["last_sent"] = {"ticker": inst["ticker"], "ticket": res.ticket}
+                                _log(f"Quick-send order #{res.ticket} ✓")
+                                st.success(f"#{res.ticket} sent!")
+                                st.rerun()
+                            else:
+                                st.error(res.error)
+                else:
+                    st.caption("Start MT5\nto send")
+        st.markdown("---")
+    else:
+        st.info("No active signals right now. Click **Scan Signals Now** to refresh.")
+
+    # ── Instrument grid, grouped by category ──────────────────────────────────
+    groups = {}
+    for inst in INSTRUMENTS:
+        groups.setdefault(inst.get("group", "Other"), []).append(inst)
+
+    for group_name, insts in groups.items():
+        st.markdown(f"<div style='color:#6b7280;font-size:11px;font-weight:700;letter-spacing:1px;"
+                    f"text-transform:uppercase;margin:16px 0 8px;'>{group_name}</div>",
+                    unsafe_allow_html=True)
+        cols = st.columns(len(insts))
+        for col, inst in zip(cols, insts):
+            with col:
+                result = results.get(inst["ticker"])
+                closed, _ = _market_status(inst["ticker"], result.df_5m if result else None)
+                status_badge = (
+                    "<span style='background:#1f2937;color:#6b7280;border-radius:4px;"
+                    "padding:1px 7px;font-size:10px;font-weight:600;margin-left:6px;'>CLOSED</span>"
+                    if closed else
+                    "<span style='background:#052e16;color:#22c55e;border-radius:4px;"
+                    "padding:1px 7px;font-size:10px;font-weight:600;margin-left:6px;'>LIVE</span>"
+                )
+                st.markdown(
+                    f"<div style='font-size:15px;font-weight:700;color:#e0e0e0;"
+                    f"margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #1e2330;'>"
+                    f"{inst['label']}{status_badge}"
+                    f"&nbsp;<span style='color:#6b7280;font-size:12px;'>{inst['ticker']}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+                if result is None:
+                    st.caption("Not loaded — click Scan Signals Now")
+                elif result.error:
+                    st.error(result.error)
+                else:
+                    _signal_card(result, pending_tickers)
 
 # ── Tab 2: Open Trades ────────────────────────────────────────────────────────
 with tab_trades:
@@ -956,7 +1064,7 @@ with tab_journal:
     _journal_path = pathlib.Path(__file__).parent / "static" / "trading-journal.html"
     components.html(_journal_path.read_text(encoding="utf-8"), height=4800, scrolling=True)
 
-# ── Auto-refresh while monitoring ─────────────────────────────────────────────
+# ── Auto-refresh while monitoring (5s — fast enough for approvals, not wasteful)
 if _MT5["running"]:
-    time.sleep(1)
+    time.sleep(5)
     st.rerun()

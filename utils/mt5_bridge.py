@@ -60,6 +60,25 @@ DEFAULT_LOTS: dict[str, float] = {
 MAGIC_NUMBER = 234100   # unique ID for Katraswing orders
 
 
+def _filling_mode(sym_info) -> int:
+    """
+    Return the best ORDER_FILLING_* constant supported by this symbol.
+    Many brokers reject IOC (value 1) — query the symbol's filling_mode bitmask
+    and pick the first supported mode rather than hardcoding IOC.
+      filling_mode bit 0 (value 1) → FOK supported  → ORDER_FILLING_FOK = 0
+      filling_mode bit 1 (value 2) → IOC supported  → ORDER_FILLING_IOC = 1
+      neither bit set               → only RETURN    → ORDER_FILLING_RETURN = 2
+    """
+    if sym_info is None or not MT5_AVAILABLE:
+        return 2  # ORDER_FILLING_RETURN as safe fallback
+    fm = getattr(sym_info, "filling_mode", 0)
+    if fm & 2:
+        return 1  # ORDER_FILLING_IOC
+    if fm & 1:
+        return 0  # ORDER_FILLING_FOK
+    return 2       # ORDER_FILLING_RETURN
+
+
 @dataclass
 class MT5OrderResult:
     success: bool
@@ -194,26 +213,27 @@ def send_signal(
             f"No live tick data for '{symbol}'"
         )
 
-    sym_info = mt5.symbol_info(symbol)
-    digits   = sym_info.digits if sym_info else 5
-    vol      = lots if lots is not None else DEFAULT_LOTS.get(symbol, 0.1)
+    sym_info   = mt5.symbol_info(symbol)
+    digits     = sym_info.digits if sym_info else 5
+    vol        = lots if lots is not None else DEFAULT_LOTS.get(symbol, 0.1)
+    fill_type  = _filling_mode(sym_info)
 
     order_type = mt5.ORDER_TYPE_BUY if direction == "LONG" else mt5.ORDER_TYPE_SELL
     price      = tick.ask if direction == "LONG" else tick.bid
 
     request = {
-        "action":      mt5.TRADE_ACTION_DEAL,
-        "symbol":      symbol,
-        "volume":      float(vol),
-        "type":        order_type,
-        "price":       price,
-        "sl":          round(sl, digits),
-        "tp":          round(tp, digits),
-        "deviation":   20,
-        "magic":       magic,
-        "comment":     comment,
-        "type_time":   mt5.ORDER_TIME_GTC,
-        "type_filling": mt5.ORDER_FILLING_IOC,
+        "action":       mt5.TRADE_ACTION_DEAL,
+        "symbol":       symbol,
+        "volume":       float(vol),
+        "type":         order_type,
+        "price":        price,
+        "sl":           round(sl, digits),
+        "tp":           round(tp, digits),
+        "deviation":    20,
+        "magic":        magic,
+        "comment":      comment,
+        "type_time":    mt5.ORDER_TIME_GTC,
+        "type_filling": fill_type,
     }
 
     # Validate before sending
