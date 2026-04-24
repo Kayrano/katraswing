@@ -468,16 +468,26 @@ def send_signal(
         live_sl = price + sl_dist
         live_tp = price - tp_dist
 
-    if sym_info is not None:
-        point    = sym_info.point or 0.00001
-        min_dist = sym_info.trade_stops_level * point
-        if min_dist > 0:
-            if direction == "LONG":
-                live_sl = min(live_sl, price - min_dist)
-                live_tp = max(live_tp, price + min_dist)
-            else:
-                live_sl = max(live_sl, price + min_dist)
-                live_tp = min(live_tp, price - min_dist)
+    # Compute effective minimum stop distance.
+    # Many brokers set trade_stops_level=0 for CFDs/indices but still enforce
+    # a spread-based minimum on the server side.  We use the larger of:
+    #   • broker's stated stops level (trade_stops_level × point)
+    #   • 2× current spread + 5 points (spread-aware safety buffer)
+    point = (sym_info.point or 0.00001) if sym_info else 0.00001
+    spread = abs(tick.ask - tick.bid)
+    stops_dist = (sym_info.trade_stops_level * point) if sym_info else 0.0
+    effective_min = max(stops_dist, spread * 2.0 + point * 5)
+
+    if direction == "LONG":
+        if live_sl > price - effective_min:
+            live_sl = price - effective_min
+        if live_tp < price + effective_min:
+            live_tp = price + effective_min
+    else:
+        if live_sl < price + effective_min:
+            live_sl = price + effective_min
+        if live_tp > price - effective_min:
+            live_tp = price - effective_min
 
     # ── 3. Lot sizing from account balance ────────────────────────────────────
     acct   = mt5.account_info()
@@ -520,6 +530,23 @@ def send_signal(
         err = str(mt5.last_error())
         logger.error(f"order_send returned None: {err}")
         return MT5OrderResult(False, 0, symbol, direction, lots, price, live_sl, live_tp, err)
+
+    # Retry once with 3× spread buffer if stops were still too close
+    if result.retcode == 10016:
+        retry_min = max(stops_dist, spread * 3.0 + point * 10)
+        if direction == "LONG":
+            live_sl = price - retry_min
+            live_tp = price + max(tp_dist, retry_min)
+        else:
+            live_sl = price + retry_min
+            live_tp = price - max(tp_dist, retry_min)
+        request["sl"] = round(live_sl, digits)
+        request["tp"] = round(live_tp, digits)
+        logger.warning(f"10016 retry: expanding stops — SL={request['sl']} TP={request['tp']}")
+        result = mt5.order_send(request)
+        if result is None:
+            return MT5OrderResult(False, 0, symbol, direction, lots, price, live_sl, live_tp,
+                                  str(mt5.last_error()))
 
     if result.retcode == mt5.TRADE_RETCODE_DONE:
         logger.info(
