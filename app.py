@@ -235,6 +235,34 @@ def _mt5_loop_inner(stop_event, config):
         except Exception:
             pass
 
+        # Auto-assess open trades when both toggles are ON
+        try:
+            _auto_assess = st.session_state.get("_tm_auto_assess", False)
+            _live_mode   = st.session_state.get("tm_live_mode",    False)
+            if _auto_assess and _MT5["positions"]:
+                from agents.trade_manager import assess_all_open_trades as _atm
+                _cd = st.session_state.get("_tm_cooldown", {})
+                _res = _atm(
+                    _MT5["positions"],
+                    finnhub_key=config.get("finnhub_key", ""),
+                    account_size=config.get("account_size", 100_000.0),
+                    risk_pct=config.get("risk_pct", 1.0),
+                    use_daily=config.get("use_daily", True),
+                    cooldown_state=_cd,
+                    dry_run=not _live_mode,
+                )
+                st.session_state["trade_assessments"] = _res
+                st.session_state["_tm_cooldown"] = _cd
+                acted = [a for a in _res if a.acted_on]
+                if acted:
+                    _log(f"🤖 Trade Manager acted on {len(acted)} position(s)")
+                else:
+                    urgent = [a for a in _res if a.urgency == "HIGH"]
+                    if urgent:
+                        _log(f"⚠ Trade Manager: {len(urgent)} HIGH urgency position(s) — Live Mode {'OFF' if not _live_mode else 'ON'}")
+        except Exception as _atm_exc:
+            _log(f"Auto-assess error: {_atm_exc}")
+
         _MT5["last_check"] = datetime.now()
         stop_event.wait(900)  # 15-minute scan cycle
 
@@ -846,7 +874,7 @@ with tab_trades:
             _MT5["positions"] = _gop2()
             st.session_state["_pos_fetch_ts"] = time.time()
 
-        c_ref, _ = st.columns([1, 5])
+        c_ref, c_analyze, c_livemode, c_autoassess, _ = st.columns([1, 1, 1, 1, 2])
         with c_ref:
             if st.button("🔄 Refresh", key="refresh_positions"):
                 from utils.mt5_bridge import ensure_connected
@@ -855,6 +883,35 @@ with tab_trades:
                     _MT5["positions"] = _gop2()
                     st.session_state["_pos_fetch_ts"] = time.time()
                 st.rerun()
+        with c_analyze:
+            if st.button("🔍 Analyze Trades", key="analyze_trades", type="primary"):
+                _positions = _MT5["positions"]
+                if _positions:
+                    with st.spinner(f"Analyzing {len(_positions)} position(s)…"):
+                        try:
+                            from agents.trade_manager import assess_all_open_trades
+                            _cooldown = st.session_state.get("_tm_cooldown", {})
+                            _assessments = assess_all_open_trades(
+                                _positions,
+                                finnhub_key=finnhub_key,
+                                account_size=account_size,
+                                risk_pct=risk_pct,
+                                use_daily=use_daily,
+                                cooldown_state=_cooldown,
+                                dry_run=True,
+                            )
+                            st.session_state["trade_assessments"] = _assessments
+                            st.session_state["_tm_cooldown"] = _cooldown
+                        except Exception as _ex:
+                            st.error(f"Analysis error: {_ex}")
+                else:
+                    st.info("No open positions to analyze.")
+        with c_livemode:
+            tm_live = st.toggle("⚡ Live Mode", value=False, key="tm_live_mode",
+                                help="When ON, Apply buttons send real MT5 orders")
+        with c_autoassess:
+            tm_auto = st.checkbox("Auto-assess", value=False, key="tm_auto_assess",
+                                  help="Re-analyze on every 15-min scan cycle (needs Live Mode for execution)")
 
     positions = _MT5["positions"]
     if not _mt5_avail2():
@@ -870,13 +927,20 @@ with tab_trades:
             f"{len(positions)} position{'s' if len(positions)!=1 else ''} &nbsp;·&nbsp; "
             f"P&L: <b style='color:{pnl_color};'>{total_pnl:+.2f}</b></div>",
             unsafe_allow_html=True)
+
+        # Map assessments by ticket for quick lookup
+        _assessments_by_ticket: dict = {
+            a.ticket: a
+            for a in (st.session_state.get("trade_assessments") or [])
+        }
+
         for p in positions:
             dir_c = "#22c55e" if p.direction == "LONG" else "#ef4444"
             pnl_c = "#22c55e" if p.profit >= 0 else "#ef4444"
             arrow = "▲" if p.direction == "LONG" else "▼"
             st.markdown(
                 f"<div style='background:#111827;border-radius:8px;padding:12px 18px;"
-                f"margin-bottom:6px;border:1px solid #1e2330;"
+                f"margin-bottom:4px;border:1px solid #1e2330;"
                 f"display:flex;justify-content:space-between;align-items:center;'>"
                 f"<div>"
                 f"<span style='color:{dir_c};font-weight:700;'>{arrow} {p.direction}</span>"
@@ -888,11 +952,112 @@ with tab_trades:
                 f"<span style='color:{pnl_c};font-size:18px;font-weight:700;'>{p.profit:+.2f}</span>"
                 f"</div>",
                 unsafe_allow_html=True)
+
+            # ── Assessment card (shown when analysis has been run) ─────────────
+            assessment = _assessments_by_ticket.get(p.ticket)
+            if assessment:
+                _a = assessment
+                health = _a.health_score
+                if health > 0.70:
+                    h_color, h_label = "#22c55e", "HEALTHY"
+                elif health > 0.50:
+                    h_color, h_label = "#eab308", "FAIR"
+                elif health > 0.30:
+                    h_color, h_label = "#f97316", "WEAK"
+                else:
+                    h_color, h_label = "#ef4444", "CRITICAL"
+
+                action_colors = {
+                    "HOLD": "#6b7280", "CLOSE": "#ef4444",
+                    "PARTIAL_CLOSE": "#f97316", "MODIFY_SL": "#eab308",
+                    "MODIFY_TP": "#3b82f6", "MODIFY_BOTH": "#8b5cf6",
+                }
+                urgency_dots = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}
+                act_color = action_colors.get(_a.action, "#6b7280")
+                urg_dot   = urgency_dots.get(_a.urgency, "")
+
+                # Health bar
+                bar_pct = int(health * 100)
+                mods = []
+                if _a.new_sl is not None:
+                    sl_arrow = "↑" if p.direction == "LONG" else "↓"
+                    mods.append(f"New SL: <b>{_a.new_sl:.4f}</b> {sl_arrow} <span style='color:#6b7280;'>(was {p.sl:.4f})</span>")
+                if _a.new_tp is not None:
+                    tp_arrow = "↑" if p.direction == "LONG" else "↓"
+                    mods.append(f"New TP: <b>{_a.new_tp:.4f}</b> {tp_arrow} <span style='color:#6b7280;'>(was {p.tp:.4f})</span>")
+                if _a.partial_close_volume:
+                    mods.append(f"Close <b>{_a.partial_close_volume}</b> lots (50%)")
+                mods_html = " &nbsp;·&nbsp; ".join(mods) if mods else ""
+
+                st.markdown(
+                    f"<div style='background:#0d1117;border-radius:6px;padding:10px 16px;"
+                    f"margin-bottom:8px;border:1px solid #1e2330;margin-left:16px;'>"
+                    f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;'>"
+                    f"<div>"
+                    f"<span style='background:{act_color}22;color:{act_color};font-size:11px;"
+                    f"font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid {act_color}44;'>"
+                    f"{urg_dot} {_a.action}</span>"
+                    f"<span style='color:{h_color};font-size:11px;margin-left:10px;'>"
+                    f"Health {health:.0%} · {h_label}</span>"
+                    f"</div>"
+                    f"<span style='color:#6b7280;font-size:11px;'>{_a.assessed_at[11:16]} UTC</span>"
+                    f"</div>"
+                    f"<div style='background:#1e2330;border-radius:2px;height:3px;margin-bottom:7px;'>"
+                    f"<div style='background:{h_color};width:{bar_pct}%;height:3px;border-radius:2px;'></div></div>"
+                    f"<div style='font-size:12px;color:#9ca3af;margin-bottom:4px;'>{_a.reason}</div>"
+                    + (f"<div style='font-size:12px;color:#e0e0e0;margin-top:4px;'>{mods_html}</div>" if mods_html else "")
+                    + f"</div>",
+                    unsafe_allow_html=True)
+
+                # Expander: full signal detail
+                with st.expander(f"Signal detail — #{p.ticket}", expanded=False):
+                    dc1, dc2, dc3, dc4 = st.columns(4)
+                    dc1.metric("MTF Score", _a.mtf_score)
+                    dc2.metric("MTF Bias", _a.mtf_bias)
+                    dc3.metric("ADX Regime", _a.adx_regime)
+                    dc4.metric("Signal", f"{_a.signal_direction} {_a.signal_confidence:.0%}")
+                    if _a.strategy_agreement:
+                        st.caption(f"Strategy agreement: {_a.strategy_agreement}")
+                    be = _a.breakeven_price
+                    if be:
+                        st.caption(f"Breakeven price: {be:.5f}")
+
+                # Apply button
+                if _a.action != "HOLD":
+                    _btn_key = f"apply_{p.ticket}_{_a.assessed_at}"
+                    _live = st.session_state.get("tm_live_mode", False)
+                    if _live:
+                        if st.button(f"⚡ Apply {_a.action}", key=_btn_key, type="primary"):
+                            try:
+                                from agents.trade_manager import _execute_assessment
+                                _cd = st.session_state.get("_tm_cooldown", {})
+                                _a.dry_run = False
+                                ok = _execute_assessment(_a, _cd)
+                                st.session_state["_tm_cooldown"] = _cd
+                                if ok:
+                                    st.success(f"✓ {_a.action} executed on #{p.ticket}")
+                                    _MT5["positions"] = _gop2()
+                                    st.session_state.pop("trade_assessments", None)
+                                    st.rerun()
+                                else:
+                                    st.error("MT5 execution failed — check logs")
+                            except Exception as _ex:
+                                st.error(str(_ex))
+                    else:
+                        st.button(f"[DRY RUN] {_a.action}", key=_btn_key, disabled=True,
+                                  help="Enable Live Mode to execute")
+
+        st.markdown("<div style='margin-top:16px;'>", unsafe_allow_html=True)
         if st.button("🚨 Close All Positions", type="primary"):
             from utils.mt5_bridge import close_all_positions
             close_all_positions()
             st.success("Closed.")
             st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── Auto-assess hook (runs inside monitor loop via session flag) ──────────
+    # The 15-min monitor loop checks this flag and calls assess_all_open_trades
+    st.session_state["_tm_auto_assess"] = st.session_state.get("tm_auto_assess", False)
 
 
 # ── Tab 3: History ────────────────────────────────────────────────────────────

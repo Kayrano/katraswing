@@ -221,6 +221,8 @@ class MT5Position:
     tp: float
     profit: float
     magic: int
+    swap: float = 0.0
+    commission: float = 0.0
 
 
 # ── Connection management ─────────────────────────────────────────────────────
@@ -742,6 +744,8 @@ def get_open_positions(magic: int = MAGIC_NUMBER) -> list[MT5Position]:
             tp=p.tp,
             profit=p.profit,
             magic=p.magic,
+            swap=float(getattr(p, "swap", 0.0)),
+            commission=float(getattr(p, "commission", 0.0)),
         ))
     return positions
 
@@ -781,6 +785,100 @@ def close_position(ticket: int, magic: int = MAGIC_NUMBER) -> bool:
         logger.info(f"Closed position #{ticket} ({pos.symbol})")
     else:
         logger.warning(f"Failed to close #{ticket}: {result.comment if result else 'None'}")
+    return ok
+
+
+def modify_position(
+    ticket: int,
+    new_sl: float | None = None,
+    new_tp: float | None = None,
+) -> bool:
+    """
+    Modify SL and/or TP on an open position using TRADE_ACTION_SLTP.
+    Validates new_sl against the learned broker minimum before sending.
+    """
+    if not MT5_AVAILABLE or not is_connected():
+        return False
+
+    positions = mt5.positions_get(ticket=ticket)
+    if not positions:
+        logger.warning(f"modify_position: #{ticket} not found")
+        return False
+
+    pos      = positions[0]
+    sym_info = mt5.symbol_info(pos.symbol)
+    digits   = sym_info.digits if sym_info else 5
+    tick     = mt5.symbol_info_tick(pos.symbol)
+
+    if new_sl is not None and tick is not None:
+        price = tick.bid if pos.type == mt5.ORDER_TYPE_BUY else tick.ask
+        learned_min = _load_learned_min(pos.symbol)
+        point       = (sym_info.point or 0.00001) if sym_info else 0.00001
+        spread      = abs(tick.ask - tick.bid)
+        stops_dist  = (sym_info.trade_stops_level * point) if sym_info else 0.0
+        effective_min = max(stops_dist, spread * 2.0 + point * 5, learned_min)
+        if pos.type == mt5.ORDER_TYPE_BUY:
+            new_sl = min(new_sl, price - effective_min)
+        else:
+            new_sl = max(new_sl, price + effective_min)
+        new_sl = round(new_sl, digits)
+
+    request = {
+        "action":   mt5.TRADE_ACTION_SLTP,
+        "position": ticket,
+        "symbol":   pos.symbol,
+        "sl":       round(new_sl, digits) if new_sl is not None else pos.sl,
+        "tp":       round(new_tp, digits) if new_tp is not None else pos.tp,
+    }
+    result = mt5.order_send(request)
+    ok = result is not None and result.retcode == mt5.TRADE_RETCODE_DONE
+    if ok:
+        logger.info(f"Modified #{ticket}: SL={request['sl']} TP={request['tp']}")
+    else:
+        logger.warning(f"modify_position #{ticket} failed: {result.comment if result else 'None'}")
+    return ok
+
+
+def partial_close_position(ticket: int, volume: float, magic: int = MAGIC_NUMBER) -> bool:
+    """Close `volume` lots of an open position (partial close)."""
+    if not MT5_AVAILABLE or not is_connected():
+        return False
+
+    positions = mt5.positions_get(ticket=ticket)
+    if not positions:
+        logger.warning(f"partial_close: #{ticket} not found")
+        return False
+
+    pos        = positions[0]
+    close_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
+    tick       = mt5.symbol_info_tick(pos.symbol)
+    sym_info   = mt5.symbol_info(pos.symbol)
+    price      = tick.bid if close_type == mt5.ORDER_TYPE_SELL else tick.ask
+
+    # Clamp volume to broker step and position size
+    vol_step = (sym_info.volume_step or 0.01) if sym_info else 0.01
+    volume   = round(int(volume / vol_step) * vol_step, 8)
+    volume   = min(volume, pos.volume)
+
+    req = {
+        "action":       mt5.TRADE_ACTION_DEAL,
+        "position":     ticket,
+        "symbol":       pos.symbol,
+        "volume":       float(volume),
+        "type":         close_type,
+        "price":        price,
+        "deviation":    20,
+        "magic":        magic,
+        "comment":      "Katraswing partial close",
+        "type_time":    mt5.ORDER_TIME_GTC,
+        "type_filling": _filling_mode(sym_info),
+    }
+    result = mt5.order_send(req)
+    ok = result is not None and result.retcode == mt5.TRADE_RETCODE_DONE
+    if ok:
+        logger.info(f"Partial closed #{ticket} vol={volume} ({pos.symbol})")
+    else:
+        logger.warning(f"partial_close #{ticket} failed: {result.comment if result else 'None'}")
     return ok
 
 

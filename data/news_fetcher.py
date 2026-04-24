@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import logging
 import time
 import requests
+
+logger = logging.getLogger(__name__)
 
 # ── In-memory news cache (10-min TTL) ────────────────────────────────────────
 # Prevents hammering Finnhub on every scan cycle.
@@ -83,8 +86,110 @@ def _is_relevant(text: str, ticker: str) -> bool:
     return True  # For equities, accept all company news
 
 
+_RSS_FEEDS = {
+    "general": [
+        "https://feeds.reuters.com/reuters/businessNews",
+        "https://feeds.content.dowjones.io/public/rss/mw_topstories",
+    ],
+    "forex": [
+        "https://www.forexlive.com/feed/news",
+    ],
+}
+
+# yfinance ticker map — reuse same logic as fetcher_intraday
+def _mt5_to_yf(ticker: str) -> str:
+    try:
+        from data.fetcher_intraday import _MT5_TO_YF
+        return _MT5_TO_YF.get(ticker.upper(), ticker)
+    except Exception:
+        return ticker
+
+
+def fetch_news_yfinance(ticker: str) -> list[NewsItem]:
+    """Fetch news from yfinance as a free second source."""
+    cache_key = f"yf:{ticker}"
+    cached = _NEWS_CACHE.get(cache_key)
+    if cached is not None and time.time() - cached[1] < _NEWS_TTL:
+        return cached[0]
+
+    items: list[NewsItem] = []
+    try:
+        import yfinance as yf
+        yf_sym = _mt5_to_yf(ticker)
+        news   = yf.Ticker(yf_sym).news or []
+        now_ts = time.time()
+        for article in news:
+            headline  = article.get("title", "")
+            pub_ts    = article.get("providerPublishTime", 0)
+            if now_ts - pub_ts > 24 * 3600:   # skip articles older than 24h
+                continue
+            sentiment, score = _classify_sentiment(headline, None)
+            items.append(NewsItem(
+                headline=headline,
+                summary="",
+                sentiment=sentiment,
+                sentiment_score=score,
+                impact=_classify_impact(headline),
+                published_at=datetime.fromtimestamp(pub_ts, tz=timezone.utc),
+                url=article.get("link", ""),
+                source="yfinance",
+            ))
+    except Exception as exc:
+        logger.debug(f"fetch_news_yfinance({ticker}): {exc}")
+
+    _NEWS_CACHE[cache_key] = (items, time.time())
+    return items
+
+
+def fetch_news_rss(ticker: str) -> list[NewsItem]:
+    """Fetch news from RSS feeds (requires feedparser). Silently skipped if not installed."""
+    try:
+        import feedparser  # type: ignore[import]
+    except ImportError:
+        return []
+
+    is_forex = any(c in ticker.upper() for c in ["USD", "EUR", "GBP", "JPY", "CHF", "AUD"])
+    feeds    = _RSS_FEEDS["general"] + (_RSS_FEEDS["forex"] if is_forex else [])
+    items: list[NewsItem] = []
+    now_ts = time.time()
+
+    for url in feeds:
+        try:
+            feed = feedparser.parse(url)
+            for entry in (feed.entries or [])[:20]:
+                headline = entry.get("title", "")
+                summary  = entry.get("summary", "")[:200]
+                full     = headline + " " + summary
+                if not _is_relevant(full, ticker):
+                    continue
+                pub = entry.get("published_parsed")
+                if pub:
+                    import calendar
+                    pub_ts = float(calendar.timegm(pub))
+                    if now_ts - pub_ts > 12 * 3600:
+                        continue
+                    pub_dt = datetime.fromtimestamp(pub_ts, tz=timezone.utc)
+                else:
+                    pub_dt = datetime.now(tz=timezone.utc)
+                sentiment, score = _classify_sentiment(full, None)
+                items.append(NewsItem(
+                    headline=headline,
+                    summary=summary,
+                    sentiment=sentiment,
+                    sentiment_score=score,
+                    impact=_classify_impact(full),
+                    published_at=pub_dt,
+                    url=entry.get("link", ""),
+                    source=url.split("/")[2],
+                ))
+        except Exception as exc:
+            logger.debug(f"RSS feed {url}: {exc}")
+
+    return items
+
+
 def fetch_news(ticker: str, api_key: str, lookback_hours: int = 6) -> list[NewsItem]:
-    """Fetch news from Finnhub. Cached for 10 minutes per ticker."""
+    """Fetch news from Finnhub + yfinance (always) + RSS (if feedparser installed). Cached 10 min."""
     if not api_key:
         return []
 
@@ -169,8 +274,25 @@ def fetch_news(ticker: str, api_key: str, lookback_hours: int = 6) -> list[NewsI
         except Exception:
             pass
 
+    # Merge yfinance + RSS sources
+    yf_items  = fetch_news_yfinance(ticker)
+    rss_items = fetch_news_rss(ticker) if api_key else []
+
+    # Deduplicate by URL, then by headline prefix (first 40 chars)
+    seen_urls: set[str] = {i.url for i in items if i.url}
+    seen_heads: set[str] = {i.headline[:40].lower() for i in items}
+    for extra in yf_items + rss_items:
+        if extra.url and extra.url in seen_urls:
+            continue
+        head_key = extra.headline[:40].lower()
+        if head_key in seen_heads:
+            continue
+        items.append(extra)
+        seen_urls.add(extra.url)
+        seen_heads.add(head_key)
+
     items.sort(key=lambda x: x.published_at, reverse=True)
-    result = items[:30]
+    result = items[:15]   # up from 10
     _NEWS_CACHE[cache_key] = (result, time.time())
     return result
 
@@ -194,3 +316,39 @@ def aggregate_sentiment(news_items: list[NewsItem]) -> tuple[str, float]:
     avg = weighted_score / total_weight
     label = "BULLISH" if avg > 0.05 else "BEARISH" if avg < -0.05 else "NEUTRAL"
     return label, round(avg, 3)
+
+
+def aggregate_sentiment_with_calendar(
+    news_items: list[NewsItem],
+    calendar_events: list,   # list[CalendarEvent] — avoid circular import
+) -> tuple[str, float]:
+    """
+    Enhanced sentiment aggregation that factors in calendar events:
+    - Upcoming HIGH impact event → uncertainty penalty (score pulled toward 0)
+    - Just-released HIGH event with actual > forecast → bullish for that currency
+    - Just-released HIGH event with actual < forecast → bearish for that currency
+    """
+    base_label, base_score = aggregate_sentiment(news_items)
+    if not calendar_events:
+        return base_label, base_score
+
+    score = base_score
+    for ev in calendar_events:
+        if ev.impact != "HIGH":
+            continue
+        if ev.is_upcoming:
+            # Pull score toward neutral (uncertainty)
+            score = score * 0.5
+        elif ev.is_recent and ev.actual is not None and ev.forecast is not None:
+            try:
+                actual   = float(str(ev.actual).replace("%", "").replace("K", "000").replace("M", "000000"))
+                forecast = float(str(ev.forecast).replace("%", "").replace("K", "000").replace("M", "000000"))
+                if actual > forecast:
+                    score = min(1.0, score + 0.15)
+                elif actual < forecast:
+                    score = max(-1.0, score - 0.15)
+            except (ValueError, TypeError):
+                pass
+
+    label = "BULLISH" if score > 0.05 else "BEARISH" if score < -0.05 else "NEUTRAL"
+    return label, round(score, 3)
