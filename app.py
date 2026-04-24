@@ -189,20 +189,25 @@ INSTRUMENTS = [
 ]
 
 # ── MT5 shared state ──────────────────────────────────────────────────────────
-_MT5: dict = {
-    "thread":     None,
-    "stop_event": None,
-    "running":    False,
-    "connected":  False,
-    "last_check": None,
-    "pending":    [],
-    "sent":       set(),
-    "rejected":   set(),
-    "last_sent":  None,
-    "positions":  [],
-    "log":        [],
-    "error":      "",
-}
+# Stored in session_state so it survives Streamlit reruns.
+# The background thread mutates the same dict in-place — that's safe because
+# st.session_state["_MT5"] IS the dict object (no copy on read).
+if "_MT5" not in st.session_state:
+    st.session_state["_MT5"] = {
+        "thread":     None,
+        "stop_event": None,
+        "running":    False,
+        "connected":  False,
+        "last_check": None,
+        "pending":    [],
+        "sent":       set(),
+        "rejected":   set(),
+        "last_sent":  None,
+        "positions":  [],
+        "log":        [],
+        "error":      "",
+    }
+_MT5: dict = st.session_state["_MT5"]
 
 
 def _log(msg: str):
@@ -831,7 +836,9 @@ if pending:
         with a_col:
             if st.button("✅ Approve & Send", key=f"approve_{item['key']}", type="primary"):
                 from utils.mt5_bridge import ensure_connected, send_from_signal_result
-                if ensure_connected():
+                with st.spinner("Sending…"):
+                    connected = ensure_connected()
+                if connected:
                     res = send_from_signal_result(item["sr"])
                     if res.success:
                         _MT5["sent"].add(item["key"])
@@ -841,9 +848,9 @@ if pending:
                         _MT5["pending"].remove(item)
                         st.rerun()
                     else:
-                        st.error(f"Rejected by MT5: {res.error}")
+                        st.error(f"MT5 rejected: {res.error}")
                 else:
-                    st.error("MT5 not connected.")
+                    st.error("Cannot connect to MT5. Is the terminal open and logged in?")
         with r_col:
             if st.button("❌ Reject", key=f"reject_{item['key']}"):
                 _MT5["rejected"].add(item["key"])
@@ -911,20 +918,26 @@ with tab_signals:
                     unsafe_allow_html=True,
                 )
             with c_btn:
-                if _MT5["connected"]:
+                from utils.mt5_bridge import is_available as _mt5_ok
+                if _mt5_ok():
                     if st.button("Send →", key=f"quick_{inst['ticker']}", type="primary"):
                         from utils.mt5_bridge import ensure_connected, send_from_signal_result
-                        if ensure_connected():
+                        with st.spinner("Sending…"):
+                            connected = ensure_connected()
+                        if connected:
                             res = send_from_signal_result(r)
                             if res.success:
+                                _MT5["connected"] = True
                                 _MT5["last_sent"] = {"ticker": inst["ticker"], "ticket": res.ticket}
                                 _log(f"Quick-send order #{res.ticket} ✓")
-                                st.success(f"#{res.ticket} sent!")
+                                st.success(f"Order #{res.ticket} sent!")
                                 st.rerun()
                             else:
-                                st.error(res.error)
+                                st.error(f"MT5 rejected: {res.error}")
+                        else:
+                            st.error("Cannot connect to MT5.\nIs the terminal open and logged in?")
                 else:
-                    st.caption("Start MT5\nto send")
+                    st.caption("Install MT5:\npip install MetaTrader5")
         st.markdown("---")
     else:
         st.info("No active signals right now. Click **Scan Signals Now** to refresh.")
