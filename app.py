@@ -194,18 +194,19 @@ INSTRUMENTS = [
 # st.session_state["_MT5"] IS the dict object (no copy on read).
 if "_MT5" not in st.session_state:
     st.session_state["_MT5"] = {
-        "thread":     None,
-        "stop_event": None,
-        "running":    False,
-        "connected":  False,
-        "last_check": None,
-        "pending":    [],
-        "sent":       set(),
-        "rejected":   set(),
-        "last_sent":  None,
-        "positions":  [],
-        "log":        [],
-        "error":      "",
+        "thread":         None,
+        "stop_event":     None,
+        "running":        False,
+        "connected":      False,
+        "last_check":     None,
+        "pending":        [],
+        "sent":           set(),
+        "rejected":       set(),
+        "last_sent":      None,
+        "positions":      [],
+        "log":            [],
+        "error":          "",
+        "live_win_rates": {},   # strategy → win_rate from actual closed trades
     }
 _MT5: dict = st.session_state["_MT5"]
 
@@ -294,6 +295,7 @@ def _mt5_loop_inner(stop_event: threading.Event, config: dict):
                     account_size=account_size,
                     risk_pct=risk_pct,
                     daily_trend=daily_trend,
+                    backtest_win_rates=_MT5.get("live_win_rates") or None,
                 )
             except Exception as exc:
                 _log(f"ERROR {ticker}: {exc}")
@@ -341,6 +343,14 @@ def _mt5_loop_inner(stop_event: threading.Event, config: dict):
                         _MT5["sent"].add(key)
                         _MT5["last_sent"] = {**item, "ticket": res.ticket}
                         _log(f"✅ AUTO-TRADE #{res.ticket} — {sr.direction} {ticker} {sr.confidence:.0%}")
+                        # Record for learning
+                        try:
+                            from data.trade_outcomes import record_trade
+                            strategy = sr.chart_signals[0].strategy if sr.chart_signals else "UNKNOWN"
+                            record_trade(res.ticket, ticker, strategy, sr.direction,
+                                         sr.confidence, sr.entry, sr.sl, sr.tp)
+                        except Exception:
+                            pass
                     else:
                         _log(f"⚠ Auto-trade rejected: {res.error}")
                 except Exception as exc:
@@ -351,6 +361,16 @@ def _mt5_loop_inner(stop_event: threading.Event, config: dict):
 
         try:
             _MT5["positions"] = get_open_positions()
+        except Exception:
+            pass
+
+        # Update closed trade outcomes and refresh live win rates for next cycle
+        try:
+            from data.trade_outcomes import update_outcomes_from_mt5, compute_win_rates
+            updated = update_outcomes_from_mt5()
+            if updated:
+                _log(f"📚 {updated} trade outcome(s) recorded for learning")
+            _MT5["live_win_rates"] = compute_win_rates()
         except Exception:
             pass
 
@@ -885,11 +905,12 @@ if pending:
     st.markdown("---")
 
 # ── Main tabs ─────────────────────────────────────────────────────────────────
-tab_signals, tab_trades, tab_history, tab_journal = st.tabs([
+tab_signals, tab_trades, tab_history, tab_journal, tab_learning = st.tabs([
     "📊  Signals",
     "📈  Open Trades",
     "🕐  Past Trades",
     "📓  Journal",
+    "🧠  Learning",
 ])
 
 # ── Tab 1: Signals ────────────────────────────────────────────────────────────
@@ -1114,6 +1135,116 @@ with tab_journal:
     import streamlit.components.v1 as components
     _journal_path = pathlib.Path(__file__).parent / "static" / "trading-journal.html"
     components.html(_journal_path.read_text(encoding="utf-8"), height=4800, scrolling=True)
+
+# ── Tab 5: Learning ───────────────────────────────────────────────────────────
+with tab_learning:
+    from data.trade_outcomes import get_summary, compute_win_rates
+
+    # Allow manual outcome refresh without waiting for the monitoring loop
+    col_lref, _ = st.columns([1, 5])
+    with col_lref:
+        if st.button("🔄 Refresh outcomes", key="refresh_outcomes"):
+            try:
+                from data.trade_outcomes import update_outcomes_from_mt5
+                from utils.mt5_bridge import ensure_connected as _ec
+                if _ec():
+                    n = update_outcomes_from_mt5()
+                    st.success(f"Updated {n} outcome(s).")
+                else:
+                    st.warning("MT5 not connected.")
+            except Exception as exc:
+                st.error(str(exc))
+            st.rerun()
+
+    summary = get_summary()
+
+    if summary["total_sent"] == 0:
+        st.info("No auto-trades recorded yet. Start monitoring and let the app trade — outcomes will appear here as positions close.")
+    else:
+        # ── Overall stats ─────────────────────────────────────────────────────
+        c1, c2, c3, c4 = st.columns(4)
+        wr = summary["win_rate"]
+        wr_str = f"{wr:.0%}" if wr is not None else "—"
+        wr_col = "#22c55e" if (wr or 0) >= 0.55 else ("#f59e0b" if (wr or 0) >= 0.45 else "#ef4444")
+        profit_col = "#22c55e" if summary["total_profit"] >= 0 else "#ef4444"
+
+        c1.metric("Trades sent", summary["total_sent"])
+        c2.metric("Closed", summary["total_closed"],
+                  f"{summary['total_open']} open")
+        c3.markdown(
+            f"<div style='font-size:13px;color:#6b7280;'>Win rate</div>"
+            f"<div style='font-size:28px;font-weight:700;color:{wr_col};'>{wr_str}</div>",
+            unsafe_allow_html=True,
+        )
+        c4.markdown(
+            f"<div style='font-size:13px;color:#6b7280;'>Total P&L</div>"
+            f"<div style='font-size:28px;font-weight:700;color:{profit_col};'>"
+            f"{summary['total_profit']:+.2f}</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("---")
+
+        # ── Per-strategy performance ──────────────────────────────────────────
+        if summary["by_strategy"]:
+            st.markdown("### Strategy Performance")
+            live_wr = compute_win_rates()  # only strategies with ≥5 trades
+            for row in summary["by_strategy"]:
+                s     = row["strategy"]
+                wr_s  = row["win_rate"]
+                col   = "#22c55e" if wr_s >= 0.55 else ("#f59e0b" if wr_s >= 0.45 else "#ef4444")
+                p_col = "#22c55e" if row["profit"] >= 0 else "#ef4444"
+                calibrated = s in live_wr
+                badge = (
+                    f"<span style='background:#1e3a1e;color:#22c55e;font-size:10px;"
+                    f"padding:2px 6px;border-radius:4px;'>✓ calibrating</span>"
+                    if calibrated else
+                    f"<span style='background:#2a2a2a;color:#6b7280;font-size:10px;"
+                    f"padding:2px 6px;border-radius:4px;'>need {5-row['trades']} more trades</span>"
+                )
+                st.markdown(
+                    f"<div style='background:#111827;border-radius:8px;padding:12px 18px;"
+                    f"margin-bottom:6px;border:1px solid #1e2330;'>"
+                    f"<div style='display:flex;justify-content:space-between;align-items:center;'>"
+                    f"<div>"
+                    f"<span style='color:#e0e0e0;font-weight:700;'>{s}</span> &nbsp; {badge}"
+                    f"</div>"
+                    f"<div style='display:flex;gap:24px;text-align:right;'>"
+                    f"<div><div style='font-size:11px;color:#6b7280;'>Trades</div>"
+                    f"<div style='font-weight:700;'>{row['trades']}</div></div>"
+                    f"<div><div style='font-size:11px;color:#6b7280;'>Win rate</div>"
+                    f"<div style='font-weight:700;color:{col};'>{wr_s:.0%}</div></div>"
+                    f"<div><div style='font-size:11px;color:#6b7280;'>P&L</div>"
+                    f"<div style='font-weight:700;color:{p_col};'>{row['profit']:+.2f}</div></div>"
+                    f"</div></div></div>",
+                    unsafe_allow_html=True,
+                )
+            if live_wr:
+                st.caption(
+                    "Strategies marked **✓ calibrating** are actively adjusting signal confidence "
+                    "based on their real win rate. A strategy below 62% win rate gets penalised up to −10%; "
+                    "above 62% it gets boosted up to +10%."
+                )
+
+        # ── Trade log ─────────────────────────────────────────────────────────
+        with st.expander("Full trade log", expanded=False):
+            for t in summary["all_trades"][:50]:
+                outcome = t.get("outcome") or "open"
+                o_col = {"WIN": "#22c55e", "LOSS": "#ef4444",
+                         "BREAKEVEN": "#f59e0b", "open": "#6b7280"}.get(outcome, "#6b7280")
+                profit_str = f"{t['profit']:+.2f}" if t.get("profit") is not None else "—"
+                st.markdown(
+                    f"<div style='font-size:12px;padding:4px 0;border-bottom:1px solid #1e2330;'>"
+                    f"<span style='color:{o_col};font-weight:700;min-width:80px;display:inline-block;'>"
+                    f"{outcome.upper()}</span>"
+                    f"<span style='color:#9ca3af;'>{t['direction']} {t['ticker']} "
+                    f"· {t['strategy']} · conf {t['confidence']:.0%} "
+                    f"· P&L <b style='color:{o_col};'>{profit_str}</b> "
+                    f"· #{t['ticket']} · {t['sent_at'][:16]}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
 
 # ── Auto-refresh while monitoring (5s — fast enough for approvals, not wasteful)
 if _MT5["running"]:
