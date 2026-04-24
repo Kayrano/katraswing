@@ -480,13 +480,16 @@ with st.expander("⚙️  Settings & Instruments", expanded=False):
         if broker_syms:
             sym_names   = [s["name"] for s in broker_syms]
             sym_descs   = {s["name"]: s["description"] for s in broker_syms}
-            current_sel = [i["mt5_symbol"] for i in instruments if i.get("mt5_symbol") in sym_names]
+            current_sel = st.session_state.get("_broker_sel", sym_names)
+            # Keep only names still available in broker list
+            current_sel = [n for n in current_sel if n in sym_names]
             selected    = st.multiselect(
                 "Select instruments from your broker",
                 options=sym_names,
                 default=current_sel,
                 format_func=lambda n: f"{n}  —  {sym_descs.get(n, '')}",
             )
+            st.session_state["_broker_sel"] = selected
             if selected:
                 from data.fetcher_intraday import _MT5_TO_YF
                 instruments = [
