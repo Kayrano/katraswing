@@ -921,7 +921,7 @@ with tab_signals:
                 from utils.mt5_bridge import is_available as _mt5_ok
                 if _mt5_ok():
                     if st.button("Send →", key=f"quick_{inst['ticker']}", type="primary"):
-                        from utils.mt5_bridge import ensure_connected, send_from_signal_result
+                        from utils.mt5_bridge import ensure_connected, send_from_signal_result, get_open_positions as _gop2
                         with st.spinner("Sending…"):
                             connected = ensure_connected()
                         if connected:
@@ -929,6 +929,7 @@ with tab_signals:
                             if res.success:
                                 _MT5["connected"] = True
                                 _MT5["last_sent"] = {"ticker": inst["ticker"], "ticket": res.ticket}
+                                _MT5["positions"] = _gop2()
                                 _log(f"Quick-send order #{res.ticket} ✓")
                                 st.success(f"Order #{res.ticket} sent!")
                                 st.rerun()
@@ -980,10 +981,23 @@ with tab_signals:
 
 # ── Tab 2: Open Trades ────────────────────────────────────────────────────────
 with tab_trades:
+    # Always fetch live positions if MT5 package is available — don't rely on
+    # the background monitoring loop being active.
+    from utils.mt5_bridge import is_available as _mt5_avail, ensure_connected, get_open_positions as _gop
+    if _mt5_avail():
+        if ensure_connected():
+            _MT5["connected"] = True
+            _MT5["positions"] = _gop()
+        col_ref, _ = st.columns([1, 5])
+        with col_ref:
+            if st.button("🔄 Refresh", key="refresh_positions"):
+                _MT5["positions"] = _gop()
+                st.rerun()
+
     positions = _MT5["positions"]
 
-    if not _MT5["connected"]:
-        st.info("Start MT5 monitoring from the sidebar to see live positions.")
+    if not _mt5_avail():
+        st.info("MetaTrader5 package not installed. Run: pip install MetaTrader5")
     elif not positions:
         st.markdown(
             "<div style='text-align:center;color:#6b7280;padding:60px 0;font-size:15px;'>"
