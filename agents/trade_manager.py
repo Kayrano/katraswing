@@ -167,7 +167,7 @@ def _compute_health_score(
     # ── Momentum: RSI + MACD hist (20%) ──────────────────────────────────────
     indicators = signal.indicators
     rsi  = float(getattr(indicators, "rsi",       50.0) or 50.0) if indicators else 50.0
-    macd = float(getattr(indicators, "macd_hist",  0.0) or 0.0)  if indicators else 0.0
+    macd = float(getattr(indicators, "macd_histogram",  0.0) or 0.0)  if indicators else 0.0
 
     if direction == "LONG":
         rsi_ok   = 40 <= rsi <= 65
@@ -293,7 +293,6 @@ def _decide_action(
 
         # Partial close + move to breakeven when ≥ 1R profit
         if profit >= one_r and profit >= atr:
-            sym_info = None
             vol_step = 0.01
             try:
                 import MetaTrader5 as mt5
@@ -389,8 +388,8 @@ def assess_trade(
         # ── Guard 1: Minimum bars ─────────────────────────────────────────────
         trade_log = _load()
         trade_rec = next((t for t in trade_log if t["ticket"] == ticket), None)
-        sent_at   = trade_rec["sent_at"] if trade_rec else None
-        original_confidence = float(trade_rec["confidence"]) if trade_rec else 0.5
+        sent_at   = trade_rec.get("sent_at") if trade_rec else None
+        original_confidence = float(trade_rec.get("confidence", 0.5)) if trade_rec else 0.5
 
         if sent_at:
             try:
@@ -546,7 +545,8 @@ def _execute_assessment(assessment: TradeAssessment, cooldown_state: dict) -> bo
         elif action == "PARTIAL_CLOSE":
             ok = partial_close_position(ticket, assessment.partial_close_volume or 0.01)
             if ok and assessment.new_sl is not None:
-                modify_position(ticket, new_sl=assessment.new_sl)
+                sl_ok = modify_position(ticket, new_sl=assessment.new_sl)
+                ok = ok and sl_ok
         elif action in ("MODIFY_SL", "MODIFY_BOTH"):
             ok = modify_position(ticket, new_sl=assessment.new_sl, new_tp=assessment.new_tp)
         elif action == "MODIFY_TP":
