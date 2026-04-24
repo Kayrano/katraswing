@@ -74,7 +74,11 @@ class SignalResult:
     live_adjustment: float = 0.0   # adjustment from actual closed trade outcomes
     live_wr_key: str = ""          # which granularity key was matched (e.g. TREND_MOM:EURUSD:LONG)
     daily_trend_direction: str = "NEUTRAL"  # BULLISH / BEARISH / NEUTRAL
+    h4_trend_direction: str = "NEUTRAL"     # BULLISH / BEARISH / NEUTRAL
+    mtf_score: int = 0              # -3 … +3  (daily ×2 + H4 ×1)
+    mtf_bias: str = "NEUTRAL"       # STRONG_BULLISH / BULLISH / MILD_BULLISH / NEUTRAL / …
     daily_trend_vetoed: bool = False
+    sl_tp_source: str = "ATR"       # ATR | BLENDED — whether learned stops were applied
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -88,6 +92,8 @@ def run_signal(
     daily_trend: dict | None = None,
     backtest_win_rates: dict[str, float] | None = None,
     live_win_rates: dict[str, float] | None = None,
+    h4_trend: dict | None = None,
+    optimal_stops: dict[str, dict] | None = None,
     mt5_symbol: str | None = None,
 ) -> SignalResult:
     """
@@ -233,29 +239,51 @@ def run_signal(
         best = active[0]
         base_conf = best.confidence
         direction = best.signal
+        sym_clean = ticker.replace("=X", "").upper()
 
-        # ── Improvement 4: Backtest-informed calibration ─────────────────────
+        # ── SL/TP calibration from past trade outcomes ────────────────────────
+        # Blends ATR-based stops (from strategy) with the median SL/TP % learned
+        # from real closed trades.  Weight grows with sample size (max 70%).
+        # Most specific key wins: STRATEGY:SYMBOL → STRATEGY.
+        sl_tp_source = "ATR"
+        if optimal_stops:
+            for stop_key in [f"{best.strategy}:{sym_clean}", best.strategy]:
+                if stop_key in optimal_stops:
+                    stats = optimal_stops[stop_key]
+                    if stats["sample"] >= 3 and best.entry > 0:
+                        learned_sl_dist = best.entry * stats["sl_pct"] / 100
+                        learned_tp_dist = best.entry * stats["tp_pct"] / 100
+                        atr_sl_dist = abs(best.entry - best.stop_loss)
+                        atr_tp_dist = abs(best.take_profit - best.entry)
+                        weight = min(0.70, stats["sample"] / 30 * 0.70)
+                        new_sl_dist = (1 - weight) * atr_sl_dist + weight * learned_sl_dist
+                        new_tp_dist = (1 - weight) * atr_tp_dist + weight * learned_tp_dist
+                        if best.signal == "LONG":
+                            best.stop_loss   = round(best.entry - new_sl_dist, 5)
+                            best.take_profit = round(best.entry + new_tp_dist, 5)
+                        else:
+                            best.stop_loss   = round(best.entry + new_sl_dist, 5)
+                            best.take_profit = round(best.entry - new_tp_dist, 5)
+                        sl_tp_source = "BLENDED"
+                    break
+
+        # ── Backtest-informed calibration ─────────────────────────────────────
         bt_adjustment = 0.0
         if backtest_win_rates and best.strategy in backtest_win_rates:
             recent_wr = backtest_win_rates[best.strategy]
             raw_adj = (recent_wr - _BACKTEST_BASELINE_WR) * 0.5
             bt_adjustment = max(-0.10, min(0.10, raw_adj))
 
-        # ── Live trade outcome calibration (stronger weight — real money results) ─
-        # Looks up the most specific key first: strategy:symbol:direction → strategy:direction
-        # → strategy:symbol → strategy.  Losses penalise harder than wins reward
-        # (raw multiplier 0.8 vs backtest 0.5) to keep the model conservative.
+        # ── Live trade outcome calibration ────────────────────────────────────
         live_adjustment = 0.0
         live_wr_key = ""
         if live_win_rates:
-            sym_clean = ticker.replace("=X", "").upper()
-            lookup_keys = [
+            for key in [
                 f"{best.strategy}:{sym_clean}:{direction}",
                 f"{best.strategy}:{direction}",
                 f"{best.strategy}:{sym_clean}",
                 best.strategy,
-            ]
-            for key in lookup_keys:
+            ]:
                 if key in live_win_rates:
                     live_wr = live_win_rates[key]
                     raw_adj = (live_wr - _BACKTEST_BASELINE_WR) * 0.8
@@ -263,44 +291,80 @@ def run_signal(
                     live_wr_key = key
                     break
 
-        # News boost ±0.10
+        # ── News boost ±0.10 ─────────────────────────────────────────────────
         news_boost = 0.0
         if news_sentiment != "NEUTRAL":
             aligns = (
-                (direction == "LONG" and news_sentiment == "BULLISH") or
+                (direction == "LONG"  and news_sentiment == "BULLISH") or
                 (direction == "SHORT" and news_sentiment == "BEARISH")
             )
             news_boost = 0.10 if aligns else -0.10
 
-        # Pattern boost ±0.05
+        # ── Pattern boost ±0.05 ──────────────────────────────────────────────
         pattern_boost = 0.0
         if patterns.dominant_bias != "NEUTRAL":
             p_aligns = (
-                (direction == "LONG" and patterns.dominant_bias == "BULLISH") or
+                (direction == "LONG"  and patterns.dominant_bias == "BULLISH") or
                 (direction == "SHORT" and patterns.dominant_bias == "BEARISH")
             )
             pattern_boost = 0.05 if p_aligns else -0.05
 
         final_conf = max(0.0, min(1.0,
-            base_conf + consensus_boost + bt_adjustment + live_adjustment + news_boost + pattern_boost
+            base_conf + consensus_boost + bt_adjustment + live_adjustment
+            + news_boost + pattern_boost
         ))
 
-        # ── Improvement 1: Daily trend gate (hard veto) ──────────────────────
+        # ── Multi-timeframe trend gate (Daily × 2 + H4 × 1) ──────────────────
+        # Hard veto: BOTH daily AND H4 must oppose the signal for a block.
+        # If only one timeframe opposes, use a confidence adjustment instead.
         daily_trend_direction = "NEUTRAL"
-        daily_trend_vetoed = False
+        h4_trend_direction    = "NEUTRAL"
+        daily_trend_vetoed    = False
+        mtf_score = 0
+
         if daily_trend:
             daily_trend_direction = daily_trend.get("trend_direction", "NEUTRAL")
-            if daily_trend_direction == "BULLISH" and direction == "SHORT":
-                direction = "NO TRADE"
-                daily_trend_vetoed = True
-            elif daily_trend_direction == "BEARISH" and direction == "LONG":
-                direction = "NO TRADE"
-                daily_trend_vetoed = True
-            elif daily_trend_direction != "NEUTRAL" and not daily_trend_vetoed:
-                # Trend alignment bonus
-                final_conf = min(1.0, final_conf + 0.05)
+            if daily_trend_direction == "BULLISH":
+                mtf_score += 2
+            elif daily_trend_direction == "BEARISH":
+                mtf_score -= 2
 
-        # ── Improvement 2A: Enforce 0.60 floor ───────────────────────────────
+        if h4_trend:
+            h4_trend_direction = h4_trend.get("trend_direction", "NEUTRAL")
+            if h4_trend_direction == "BULLISH":
+                mtf_score += 1
+            elif h4_trend_direction == "BEARISH":
+                mtf_score -= 1
+
+        if mtf_score >= 2:
+            mtf_bias = "STRONG_BULLISH" if mtf_score >= 3 else "BULLISH"
+        elif mtf_score == 1:
+            mtf_bias = "MILD_BULLISH"
+        elif mtf_score == -1:
+            mtf_bias = "MILD_BEARISH"
+        elif mtf_score <= -2:
+            mtf_bias = "STRONG_BEARISH" if mtf_score <= -3 else "BEARISH"
+        else:
+            mtf_bias = "NEUTRAL"
+
+        # Both timeframes oppose → hard veto
+        if mtf_score <= -2 and direction == "LONG":
+            direction = "NO TRADE"
+            daily_trend_vetoed = True
+        elif mtf_score >= 2 and direction == "SHORT":
+            direction = "NO TRADE"
+            daily_trend_vetoed = True
+        else:
+            # Graded confidence adjustment: ±0.03 per MTF point, same direction as signal
+            if direction == "LONG":
+                mtf_adj = mtf_score * 0.03        #  +0.09 strong bull, −0.09 strong bear
+            elif direction == "SHORT":
+                mtf_adj = -mtf_score * 0.03
+            else:
+                mtf_adj = 0.0
+            final_conf = min(1.0, max(0.0, final_conf + mtf_adj))
+
+        # ── Enforce 0.60 confidence floor ────────────────────────────────────
         if not daily_trend_vetoed and final_conf < _SIGNAL_FLOOR:
             direction = "NO TRADE"
 
@@ -323,7 +387,11 @@ def run_signal(
             live_adjustment=round(live_adjustment, 3),
             live_wr_key=live_wr_key,
             daily_trend_direction=daily_trend_direction,
+            h4_trend_direction=h4_trend_direction,
+            mtf_score=mtf_score,
+            mtf_bias=mtf_bias,
             daily_trend_vetoed=daily_trend_vetoed,
+            sl_tp_source=sl_tp_source,
             mt5_symbol=mt5_symbol or "",
         )
 

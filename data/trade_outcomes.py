@@ -194,6 +194,89 @@ def compute_detailed_win_rates(min_trades: int = 3) -> dict[str, float]:
     }
 
 
+def compute_optimal_stops(min_trades: int = 3) -> dict[str, dict]:
+    """
+    Mine closed trade history to find optimal SL/TP as a percentage of entry price.
+
+    Returns a dict keyed at two granularities:
+        "STRATEGY"          — pooled across all symbols
+        "STRATEGY:SYMBOL"   — symbol-specific (used first when available)
+
+    Each entry:
+        sl_pct   — median SL distance as % of entry, derived from winning trades
+        tp_pct   — median TP distance as % of entry, derived from winning trades
+        rr       — implied risk:reward (tp_pct / sl_pct)
+        win_rate — actual win rate in this bucket
+        sample   — number of closed trades used
+
+    Logic:
+      • Only Katraswing-sent trades (sl != 0 and tp != 0) are used; MT5_IMPORT
+        trades are excluded because they have no SL/TP recorded.
+      • Median of WINNING trades determines the target distances — these are the
+        stop placements that survived to profit.
+      • If losing trades have a smaller median SL than winning ones, the model
+        adds a 5 % buffer to reduce premature stop-outs.
+    """
+    import statistics
+    from collections import defaultdict
+
+    trades = _load()
+    usable = [
+        t for t in trades
+        if t.get("outcome") in ("WIN", "LOSS")
+        and float(t.get("sl", 0)) != 0
+        and float(t.get("tp", 0)) != 0
+        and float(t.get("entry", 0)) != 0
+    ]
+
+    buckets: dict[str, list[dict]] = defaultdict(list)
+    for t in usable:
+        entry  = float(t["entry"])
+        sl_pct = abs(entry - float(t["sl"])) / entry * 100
+        tp_pct = abs(float(t["tp"]) - entry) / entry * 100
+        rec = {
+            "win":    t["outcome"] == "WIN",
+            "sl_pct": sl_pct,
+            "tp_pct": tp_pct,
+        }
+        strat = t.get("strategy", "")
+        sym   = t.get("ticker", "").replace("=X", "").upper()
+        buckets[strat].append(rec)
+        if sym:
+            buckets[f"{strat}:{sym}"].append(rec)
+
+    result: dict[str, dict] = {}
+    for key, records in buckets.items():
+        if len(records) < min_trades:
+            continue
+        wins   = [r for r in records if r["win"]]
+        losses = [r for r in records if not r["win"]]
+
+        source = wins if len(wins) >= min_trades else records
+        sl_vals = [r["sl_pct"] for r in source]
+        tp_vals = [r["tp_pct"] for r in source]
+
+        med_sl = statistics.median(sl_vals)
+        med_tp = statistics.median(tp_vals)
+
+        # Widen SL if losing trades had tighter stops than winning ones
+        if wins and losses:
+            loss_sl = statistics.median([r["sl_pct"] for r in losses])
+            win_sl  = statistics.median([r["sl_pct"] for r in wins])
+            if loss_sl < win_sl:
+                med_sl = win_sl * 1.05   # 5% extra room
+
+        result[key] = {
+            "sl_pct":   round(med_sl, 5),
+            "tp_pct":   round(med_tp, 5),
+            "rr":       round(med_tp / max(med_sl, 0.0001), 2),
+            "win_rate": round(len(wins) / len(records), 3),
+            "sample":   len(records),
+        }
+
+    return result
+
+
 def import_all_mt5_history(days: int = 90) -> int:
     """
     Import ALL closed trades from MT5 history (any magic number / manually opened trades).

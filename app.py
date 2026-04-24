@@ -122,12 +122,24 @@ def _mt5_loop_inner(stop_event, config):
     finnhub_key  = config["finnhub_key"]
     auto_trade   = config.get("auto_trade", True)
     use_daily    = config.get("use_daily", True)
-    _dt_cache: dict[str, tuple[dict, float]] = {}
+    _dt_cache:  dict[str, tuple[dict, float]] = {}
+    _h4_cache:  dict[str, tuple[dict, float]] = {}
+    _opt_stops: dict = {}
+    _opt_stops_ts: float = 0.0
 
     while not stop_event.is_set():
         today = date.today()
         _MT5["sent"]     = {k for k in _MT5["sent"]     if k.endswith(str(today))}
         _MT5["rejected"] = {k for k in _MT5["rejected"] if k.endswith(str(today))}
+
+        # Refresh optimal stops once per hour
+        if time.time() - _opt_stops_ts > 3600:
+            try:
+                from data.trade_outcomes import compute_optimal_stops
+                _opt_stops = compute_optimal_stops()
+                _opt_stops_ts = time.time()
+            except Exception:
+                pass
 
         for inst in instruments:
             if stop_event.is_set():
@@ -137,15 +149,24 @@ def _mt5_loop_inner(stop_event, config):
             _log(f"Polling {ticker}…")
 
             daily_trend = None
+            h4_trend    = None
             if use_daily:
                 try:
-                    from data.fetcher_intraday import fetch_daily_trend
+                    from data.fetcher_intraday import fetch_daily_trend, fetch_h4_trend
+                    # Daily — 15-min cache
                     cached = _dt_cache.get(ticker)
                     if cached is None or time.time() - cached[1] > 900:
                         daily_trend = fetch_daily_trend(ticker)
                         _dt_cache[ticker] = (daily_trend, time.time())
                     else:
                         daily_trend = cached[0]
+                    # H4 — 30-min cache
+                    cached_h4 = _h4_cache.get(ticker)
+                    if cached_h4 is None or time.time() - cached_h4[1] > 1800:
+                        h4_trend = fetch_h4_trend(ticker, mt5_symbol=mt5_symbol)
+                        _h4_cache[ticker] = (h4_trend, time.time())
+                    else:
+                        h4_trend = cached_h4[0]
                 except Exception:
                     pass
 
@@ -156,6 +177,8 @@ def _mt5_loop_inner(stop_event, config):
                     account_size=account_size,
                     risk_pct=risk_pct,
                     daily_trend=daily_trend,
+                    h4_trend=h4_trend,
+                    optimal_stops=_opt_stops or None,
                     live_win_rates=_MT5.get("live_win_rates") or None,
                     mt5_symbol=mt5_symbol,
                 )
@@ -553,22 +576,39 @@ if needs_run:
                 st.session_state[k_ts]  = time.time()
         return st.session_state.get(k_val)
 
-    # Load live win rates once for all instruments
+    def _refresh_h4(ticker, mt5_symbol=None):
+        k_val, k_ts = f"_h4_{ticker}", f"_h4_ts_{ticker}"
+        if time.time() - st.session_state.get(k_ts, 0) > 1800:
+            try:
+                from data.fetcher_intraday import fetch_h4_trend
+                trend = fetch_h4_trend(ticker, mt5_symbol=mt5_symbol)
+                st.session_state[k_val] = trend
+                st.session_state[k_ts]  = time.time()
+            except Exception:
+                st.session_state[k_val] = None
+                st.session_state[k_ts]  = time.time()
+        return st.session_state.get(k_val)
+
+    # Load live win rates and learned optimal stops once for all instruments
     _live_wr: dict = {}
+    _opt_stops: dict = {}
     try:
-        from data.trade_outcomes import compute_detailed_win_rates
-        _live_wr = compute_detailed_win_rates()
+        from data.trade_outcomes import compute_detailed_win_rates, compute_optimal_stops
+        _live_wr   = compute_detailed_win_rates()
+        _opt_stops = compute_optimal_stops()
     except Exception:
         pass
 
     # Pre-fetch inputs on main thread
     ticker_inputs = {}
     for inst in instruments:
-        t = inst["ticker"]
+        t   = inst["ticker"]
+        sym = inst.get("mt5_symbol")
         ticker_inputs[t] = {
-            "inst":       inst,
-            "daily":      _refresh_daily(t) if use_daily else None,
-            "bt_rates":   _refresh_backtest_rates(t) if use_bt_cal else None,
+            "inst":     inst,
+            "daily":    _refresh_daily(t) if use_daily else None,
+            "h4":       _refresh_h4(t, mt5_symbol=sym) if use_daily else None,
+            "bt_rates": _refresh_backtest_rates(t) if use_bt_cal else None,
         }
 
     def _scan_one(ticker):
@@ -581,6 +621,8 @@ if needs_run:
             account_size=account_size,
             risk_pct=risk_pct,
             daily_trend=inp["daily"],
+            h4_trend=inp["h4"],
+            optimal_stops=_opt_stops or None,
             backtest_win_rates=inp["bt_rates"],
             live_win_rates=_live_wr or None,
             mt5_symbol=inst.get("mt5_symbol"),

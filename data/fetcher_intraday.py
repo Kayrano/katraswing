@@ -135,6 +135,86 @@ def fetch_daily_trend(ticker: str) -> dict:
     }
 
 
+def fetch_h4_trend(ticker: str, mt5_symbol: str | None = None) -> dict:
+    """
+    Fetch 4-hour bars and return a trend summary dict (same structure as
+    fetch_daily_trend but for the H4 timeframe):
+        trend_direction : "BULLISH" | "BEARISH" | "NEUTRAL"
+        ema20           : float
+        ema50           : float
+        adx_h4          : float
+        close           : float
+
+    Used by the multi-timeframe gate: Daily sets the macro bias, H4 confirms
+    or warns of a pullback.  Hard veto only triggers when BOTH daily AND H4
+    oppose the intraday signal direction.
+
+    Data source priority: MT5 (native 4h) → yfinance 1h resampled to 4h.
+    Raises ValueError if fewer than 30 H4 bars are available.
+    """
+    raw: pd.DataFrame | None = None
+
+    # Try MT5 4h first
+    raw = _fetch_from_mt5(ticker, "4h", 90, mt5_symbol=mt5_symbol)
+
+    if raw is None or len(raw) < 30:
+        # Fallback: yfinance 1h → resample to 4h
+        yf_tick = _MT5_TO_YF.get(ticker.upper(), ticker)
+        if yf_tick == ticker.upper() and ticker.startswith("#"):
+            yf_tick = _MT5_TO_YF.get(ticker.split("_")[0].upper(), ticker)
+        try:
+            raw_1h = yf.Ticker(yf_tick).history(period="60d", interval="1h", auto_adjust=True)
+            if raw_1h is not None and not raw_1h.empty:
+                raw = raw_1h.resample("4h").agg({
+                    "Open":   "first",
+                    "High":   "max",
+                    "Low":    "min",
+                    "Close":  "last",
+                    "Volume": "sum",
+                }).dropna(subset=["Close"])
+        except Exception:
+            raw = None
+
+    if raw is None or len(raw) < 30:
+        raise ValueError(f"Insufficient H4 data for '{ticker}' (need ≥30 bars)")
+
+    close = raw["Close"].dropna()
+    ema20 = close.ewm(span=20, adjust=False).mean()
+    ema50 = close.ewm(span=50, adjust=False).mean()
+
+    last_close = float(close.iloc[-1])
+    last_ema20 = float(ema20.iloc[-1])
+    last_ema50 = float(ema50.iloc[-1])
+
+    adx_h4 = 0.0
+    try:
+        high = raw["High"].dropna()
+        low  = raw["Low"].dropna()
+        idx  = close.index.intersection(high.index).intersection(low.index)
+        from utils.ta_compat import adx as _adx
+        adx_s = _adx(high.loc[idx], low.loc[idx], close.loc[idx], length=14)
+        valid = adx_s.dropna()
+        if not valid.empty:
+            adx_h4 = float(valid.iloc[-1])
+    except Exception:
+        adx_h4 = 0.0
+
+    if last_close > last_ema20 and last_ema20 > last_ema50:
+        direction = "BULLISH"
+    elif last_close < last_ema20 and last_ema20 < last_ema50:
+        direction = "BEARISH"
+    else:
+        direction = "NEUTRAL"
+
+    return {
+        "trend_direction": direction,
+        "ema20":  round(last_ema20, 4),
+        "ema50":  round(last_ema50, 4),
+        "adx_h4": round(adx_h4, 1),
+        "close":  round(last_close, 4),
+    }
+
+
 _JAPAN_FUTURES = {"NKD=F"}
 
 # Maps raw MT5 symbol names → yfinance tickers for offline fallback
