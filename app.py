@@ -180,7 +180,7 @@ def _mt5_loop_inner(stop_event, config):
             if auto_trade:
                 try:
                     from utils.mt5_bridge import send_from_signal_result
-                    res = send_from_signal_result(sr)
+                    res = send_from_signal_result(sr, risk_pct=config.get("risk_pct", 1.0))
                     if res.success:
                         _MT5["sent"].add(key)
                         _MT5["last_sent"] = {"ticker": ticker, "ticket": res.ticket,
@@ -364,7 +364,7 @@ if auto_trade and not _MT5["running"] and not st.session_state.get("_mt5_autosta
         })
 
 # ── Header ────────────────────────────────────────────────────────────────────
-h_left, h_mid, h_right = st.columns([3, 3, 2])
+h_left, h_mid, h_acct, h_right = st.columns([2, 3, 3, 1])
 with h_left:
     st.markdown("# ⚡ Katraswing")
 
@@ -384,9 +384,38 @@ with h_mid:
         st.markdown(f"<div style='padding-top:20px;color:#ef4444;font-size:12px;'>⚠ {_MT5['error'][:80]}</div>",
                     unsafe_allow_html=True)
 
+with h_acct:
+    if _MT5["connected"]:
+        from utils.mt5_bridge import get_account_info as _gai
+        _ai = _gai()
+        if _ai:
+            bal = _ai.get("balance", 0)
+            eq  = _ai.get("equity",  0)
+            fm  = _ai.get("free_margin", 0)
+            ml  = _ai.get("margin_level")
+            ml_color = ("#22c55e" if (ml or 0) > 300
+                        else "#f59e0b" if (ml or 0) > 150
+                        else "#ef4444")
+            ml_str = f"{ml:.0f}%" if ml else "—"
+            st.markdown(
+                f"<div style='padding-top:16px;font-size:12px;line-height:1.6;'>"
+                f"<span style='color:#6b7280;'>Balance</span> "
+                f"<b style='color:#e0e0e0;'>{bal:,.2f}</b>"
+                f" <span style='color:#6b7280;'>{_ai.get('currency','')}</span>"
+                f"&nbsp;·&nbsp;"
+                f"<span style='color:#6b7280;'>Free</span> "
+                f"<b style='color:#60a5fa;'>{fm:,.2f}</b><br>"
+                f"<span style='color:#6b7280;'>Equity</span> "
+                f"<b style='color:#e0e0e0;'>{eq:,.2f}</b>"
+                f"&nbsp;·&nbsp;"
+                f"<span style='color:#6b7280;'>Margin lvl</span> "
+                f"<b style='color:{ml_color};'>{ml_str}</b>"
+                f"</div>",
+                unsafe_allow_html=True)
+
 with h_right:
     st.markdown("<div style='padding-top:12px;'>", unsafe_allow_html=True)
-    scan_btn = st.button("🔄 Scan Now", type="primary", use_container_width=True)
+    scan_btn = st.button("🔄 Scan", type="primary", use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Settings & Instruments expander ──────────────────────────────────────────
@@ -569,7 +598,7 @@ if needs_run:
             if key in _MT5["sent"] or key in _MT5["rejected"]:
                 continue
             try:
-                res = _send(sr)
+                res = _send(sr, risk_pct=risk_pct)
                 if res.success:
                     _MT5["sent"].add(key)
                     _MT5["last_sent"] = {"ticker": t, "ticket": res.ticket,
@@ -708,7 +737,7 @@ with tab_signals:
                         with st.spinner("…"):
                             ok = ensure_connected()
                         if ok:
-                            res = send_from_signal_result(sr)
+                            res = send_from_signal_result(sr, risk_pct=risk_pct)
                             if res.success:
                                 _MT5["connected"]  = True
                                 _MT5["positions"]  = _gop3()

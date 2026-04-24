@@ -301,7 +301,105 @@ def is_market_open(symbol: str) -> tuple[bool, str]:
     return False, ""   # market open
 
 
+# ── Account info ─────────────────────────────────────────────────────────────
+
+def get_account_info() -> dict:
+    """
+    Return live account metrics from MT5.
+    Fields: balance, equity, margin, free_margin, margin_level, currency, leverage
+    Returns empty dict if not connected.
+    """
+    if not MT5_AVAILABLE or not is_connected():
+        return {}
+    info = mt5.account_info()
+    if info is None:
+        return {}
+    ml = info.margin_level if info.margin > 0 else None
+    return {
+        "balance":      round(info.balance,      2),
+        "equity":       round(info.equity,        2),
+        "margin":       round(info.margin,        2),
+        "free_margin":  round(info.margin_free,   2),
+        "margin_level": round(ml, 1) if ml else None,   # percent, e.g. 1523.4
+        "currency":     info.currency,
+        "leverage":     info.leverage,
+    }
+
+
+def calc_lot_size(
+    symbol: str,
+    direction: str,
+    entry: float,
+    sl: float,
+    risk_pct: float,
+    account_balance: Optional[float] = None,
+) -> float:
+    """
+    Calculate the correct lot size so that hitting the SL loses at most risk_pct%
+    of the account balance.
+
+    Formula:
+        dollar_risk   = balance × (risk_pct / 100)
+        sl_distance   = |entry − sl|   (in price units)
+        tick_value    = symbol_info.trade_tick_value   ($ per tick per 1 lot)
+        tick_size     = symbol_info.trade_tick_size    (price units per tick)
+        value_per_lot = (sl_distance / tick_size) × tick_value
+        lots          = dollar_risk / value_per_lot
+
+    Clamps result within [volume_min, volume_max] per broker rules.
+    Falls back to DEFAULT_LOTS if any data is unavailable.
+    """
+    if not MT5_AVAILABLE or not is_connected():
+        return DEFAULT_LOTS.get(symbol, 0.1)
+
+    si = mt5.symbol_info(symbol)
+    if si is None:
+        return DEFAULT_LOTS.get(symbol, 0.1)
+
+    if account_balance is None:
+        ai = mt5.account_info()
+        account_balance = ai.balance if ai else None
+    if not account_balance or account_balance <= 0:
+        return DEFAULT_LOTS.get(symbol, 0.1)
+
+    sl_dist     = abs(entry - sl)
+    tick_size   = si.trade_tick_size   or 0.00001
+    tick_value  = si.trade_tick_value  or 1.0
+
+    if sl_dist <= 0 or tick_size <= 0 or tick_value <= 0:
+        return DEFAULT_LOTS.get(symbol, 0.1)
+
+    dollar_risk     = account_balance * (risk_pct / 100.0)
+    value_per_lot   = (sl_dist / tick_size) * tick_value
+    raw_lots        = dollar_risk / value_per_lot
+
+    # Clamp to broker's allowed range and step
+    vol_min  = si.volume_min  or 0.01
+    vol_max  = si.volume_max  or 100.0
+    vol_step = si.volume_step or 0.01
+    lots = max(vol_min, min(vol_max, raw_lots))
+    # Round down to nearest volume_step
+    lots = round(int(lots / vol_step) * vol_step, 8)
+
+    logger.debug(
+        f"calc_lot_size {symbol}: balance={account_balance:.2f}, "
+        f"risk={risk_pct}%, sl_dist={sl_dist}, tick={tick_value}/{tick_size}, "
+        f"raw_lots={raw_lots:.4f} → lots={lots}"
+    )
+    return lots
+
+
 # ── Order execution ───────────────────────────────────────────────────────────
+
+_RETCODE_HINTS = {
+    10027: "AutoTrading disabled — click the 'Algo Trading' button in the MT5 toolbar.",
+    10018: "Market closed for this symbol.",
+    10019: "Not enough money in account.",
+    10014: "Invalid volume — check lot size.",
+    10016: "Invalid stops — SL/TP may be too close to price.",
+    10030: "Filling mode not supported — broker rejected the order type.",
+}
+
 
 def send_signal(
     ticker: str,
@@ -310,60 +408,59 @@ def send_signal(
     sl: float,
     tp: float,
     lots: Optional[float] = None,
+    risk_pct: float = 1.0,
     magic: int = MAGIC_NUMBER,
     comment: str = "Katraswing",
 ) -> MT5OrderResult:
     """
-    Send a market order to MT5.
+    Send a market order to MT5 with full pre-flight safety checks:
+      1. Duplicate guard  — skip if a position already exists for this symbol
+      2. Lot sizing       — compute from account balance + SL distance (risk_pct%)
+      3. Margin check     — reject if free margin < required margin × 1.5 safety buffer
+      4. Stop rebasing    — SL/TP recalculated from live price; min-stop enforced
 
     Args:
-        ticker:    Katraswing/yfinance ticker (e.g. "NQ=F")
-        direction: "LONG" or "SHORT"
-        entry:     signal entry price (used for logging; MT5 uses live ask/bid)
-        sl:        stop loss price
-        tp:        take profit price
-        lots:      contract volume (defaults to DEFAULT_LOTS per symbol)
-        magic:     EA magic number for order tracking
-        comment:   order comment visible in MT5 terminal
+        ticker:   yfinance/Katraswing ticker OR MT5 symbol name
+        risk_pct: percent of account balance to risk per trade (used when lots=None)
     """
     if not MT5_AVAILABLE:
-        return MT5OrderResult(
-            False, 0, ticker, direction, 0.0, entry, sl, tp,
-            "MetaTrader5 package not installed. Run: pip install MetaTrader5"
-        )
-
+        return MT5OrderResult(False, 0, ticker, direction, 0.0, entry, sl, tp,
+                              "MetaTrader5 not installed")
     if not is_connected():
-        return MT5OrderResult(False, 0, ticker, direction, 0.0, entry, sl, tp, "MT5 not connected")
+        return MT5OrderResult(False, 0, ticker, direction, 0.0, entry, sl, tp,
+                              "MT5 not connected")
 
     symbol = SYMBOL_MAP.get(ticker.upper(), ticker)
 
-    # Make the symbol visible in Market Watch
     if not mt5.symbol_select(symbol, True):
-        return MT5OrderResult(
-            False, 0, symbol, direction, 0.0, entry, sl, tp,
-            f"Cannot select symbol '{symbol}' — check SYMBOL_MAP matches your broker's naming"
-        )
+        return MT5OrderResult(False, 0, symbol, direction, 0.0, entry, sl, tp,
+                              f"Symbol '{symbol}' not found in broker — update SYMBOL_MAP")
 
-    # Get live tick
+    # ── 1. Duplicate guard ────────────────────────────────────────────────────
+    existing = mt5.positions_get(symbol=symbol)
+    if existing:
+        dirs = ["LONG" if p.type == mt5.ORDER_TYPE_BUY else "SHORT" for p in existing]
+        if direction in dirs:
+            return MT5OrderResult(False, 0, symbol, direction, 0.0, entry, sl, tp,
+                                  f"Duplicate: {direction} position already open for {symbol}")
+        # Opposite position exists — still allow (user may hedge intentionally)
+
+    # ── Live tick & symbol info ───────────────────────────────────────────────
     tick = mt5.symbol_info_tick(symbol)
     if tick is None:
-        return MT5OrderResult(
-            False, 0, symbol, direction, 0.0, entry, sl, tp,
-            f"No live tick data for '{symbol}'"
-        )
+        return MT5OrderResult(False, 0, symbol, direction, 0.0, entry, sl, tp,
+                              f"No live tick for '{symbol}'")
 
-    sym_info   = mt5.symbol_info(symbol)
-    digits     = sym_info.digits if sym_info else 5
-    vol        = lots if lots is not None else DEFAULT_LOTS.get(symbol, 0.1)
-    fill_type  = _filling_mode(sym_info)
+    sym_info  = mt5.symbol_info(symbol)
+    digits    = sym_info.digits if sym_info else 5
+    fill_type = _filling_mode(sym_info)
 
-    order_type = mt5.ORDER_TYPE_BUY if direction == "LONG" else mt5.ORDER_TYPE_SELL
+    order_type = mt5.ORDER_TYPE_BUY  if direction == "LONG" else mt5.ORDER_TYPE_SELL
     price      = tick.ask if direction == "LONG" else tick.bid
 
-    # Rebase SL/TP from live price using original ATR distances.
-    # The signal was generated seconds-to-minutes ago; stale prices cause retcode=10016.
-    sl_dist = abs(entry - sl)   # original SL distance
-    tp_dist = abs(tp - entry)   # original TP distance
+    # ── 2. Rebase SL/TP from live price ──────────────────────────────────────
+    sl_dist = abs(entry - sl)
+    tp_dist = abs(tp - entry)
     if direction == "LONG":
         live_sl = price - sl_dist
         live_tp = price + tp_dist
@@ -371,10 +468,9 @@ def send_signal(
         live_sl = price + sl_dist
         live_tp = price - tp_dist
 
-    # Enforce broker minimum stop distance (trade_stops_level × point)
     if sym_info is not None:
-        point       = sym_info.point or 0.00001
-        min_dist    = sym_info.trade_stops_level * point
+        point    = sym_info.point or 0.00001
+        min_dist = sym_info.trade_stops_level * point
         if min_dist > 0:
             if direction == "LONG":
                 live_sl = min(live_sl, price - min_dist)
@@ -383,10 +479,31 @@ def send_signal(
                 live_sl = max(live_sl, price + min_dist)
                 live_tp = min(live_tp, price - min_dist)
 
+    # ── 3. Lot sizing from account balance ────────────────────────────────────
+    acct   = mt5.account_info()
+    balance = acct.balance if acct else None
+
+    if lots is None:
+        lots = calc_lot_size(symbol, direction, price, live_sl, risk_pct, balance)
+
+    # ── 4. Margin pre-check ───────────────────────────────────────────────────
+    order_type_for_margin = (mt5.ORDER_TYPE_BUY if direction == "LONG"
+                             else mt5.ORDER_TYPE_SELL)
+    required_margin = mt5.order_calc_margin(order_type_for_margin, symbol, lots, price)
+    if required_margin is not None and required_margin > 0 and acct is not None:
+        free_margin = acct.margin_free
+        # Require 1.5× buffer so margin level stays above ~200% after entry
+        if free_margin < required_margin * 1.5:
+            return MT5OrderResult(
+                False, 0, symbol, direction, lots, price, live_sl, live_tp,
+                f"Insufficient margin: need {required_margin * 1.5:.2f}, "
+                f"have {free_margin:.2f} free (balance {balance:.2f})"
+            )
+
     request = {
         "action":       mt5.TRADE_ACTION_DEAL,
         "symbol":       symbol,
-        "volume":       float(vol),
+        "volume":       float(lots),
         "type":         order_type,
         "price":        price,
         "sl":           round(live_sl, digits),
@@ -398,62 +515,54 @@ def send_signal(
         "type_filling": fill_type,
     }
 
-    # Validate before sending
-    check = mt5.order_check(request)
-    if check is None or check.retcode != 0:
-        err = f"order_check failed: retcode={check.retcode if check else 'None'}"
-        logger.warning(err)
-        # Proceed anyway — some brokers skip validation
-
     result = mt5.order_send(request)
     if result is None:
         err = str(mt5.last_error())
         logger.error(f"order_send returned None: {err}")
-        return MT5OrderResult(False, 0, symbol, direction, vol, price, sl, tp, err)
+        return MT5OrderResult(False, 0, symbol, direction, lots, price, live_sl, live_tp, err)
 
     if result.retcode == mt5.TRADE_RETCODE_DONE:
         logger.info(
-            f"✓ Order #{result.order} | {direction} {symbol} "
-            f"vol={vol} @ {price:.{digits}f} | SL={sl:.{digits}f} TP={tp:.{digits}f}"
+            f"✓ #{result.order} | {direction} {symbol} vol={lots} @ {price:.{digits}f} "
+            f"SL={live_sl:.{digits}f} TP={live_tp:.{digits}f} margin≈{required_margin}"
         )
-        return MT5OrderResult(True, result.order, symbol, direction, vol, price, sl, tp)
+        return MT5OrderResult(True, result.order, symbol, direction, lots, price,
+                              live_sl, live_tp)
 
-    _RETCODE_HINTS = {
-        10027: "AutoTrading disabled — click the 'Algo Trading' button in the MT5 toolbar to enable it.",
-        10018: "Market closed for this symbol.",
-        10019: "Not enough money in account.",
-        10014: "Invalid volume — check lot size.",
-        10016: "Invalid stops — SL/TP may be too close to price.",
-        10030: "Filling mode not supported — broker rejected the order type.",
-    }
     hint = _RETCODE_HINTS.get(result.retcode, "")
-    err = f"retcode={result.retcode} | {result.comment}" + (f" → {hint}" if hint else "")
+    err  = f"retcode={result.retcode} | {result.comment}" + (f" → {hint}" if hint else "")
     logger.warning(f"Order rejected: {err}")
-    return MT5OrderResult(False, 0, symbol, direction, vol, price, sl, tp, err)
+    return MT5OrderResult(False, 0, symbol, direction, lots, price, live_sl, live_tp, err)
 
 
-def send_from_signal_result(signal_result, lots: Optional[float] = None) -> MT5OrderResult:
+def send_from_signal_result(
+    signal_result,
+    lots: Optional[float] = None,
+    risk_pct: float = 1.0,
+) -> MT5OrderResult:
     """
     Convenience wrapper: accepts a Katraswing SignalResult and sends to MT5.
-    Returns MT5OrderResult. Call only when signal_result.direction in ("LONG","SHORT").
+    Pass risk_pct to auto-size lots from account balance.
     """
     from agents.signal_engine import SignalResult  # local import to avoid circular
     sr: SignalResult = signal_result
 
     if sr.direction not in ("LONG", "SHORT"):
-        return MT5OrderResult(
-            False, 0, sr.ticker, sr.direction, 0.0, sr.entry, sr.sl, sr.tp,
-            f"No trade signal (direction={sr.direction})"
-        )
+        return MT5OrderResult(False, 0, sr.ticker, sr.direction, 0.0, sr.entry, sr.sl, sr.tp,
+                              f"No trade signal (direction={sr.direction})")
+
+    # Use mt5_symbol if available (avoids SYMBOL_MAP lookup)
+    ticker = getattr(sr, "mt5_symbol", None) or sr.ticker
 
     return send_signal(
-        ticker=sr.ticker,
+        ticker=ticker,
         direction=sr.direction,
         entry=sr.entry,
         sl=sr.sl,
         tp=sr.tp,
         lots=lots,
-        comment=f"Katraswing {sr.confidence:.0%}",
+        risk_pct=risk_pct,
+        comment=f"Katraswing {sr.confidence:.0%} {getattr(sr, 'chart_signals', [{}])[0].strategy if getattr(sr, 'chart_signals', None) else ''}".strip(),
     )
 
 

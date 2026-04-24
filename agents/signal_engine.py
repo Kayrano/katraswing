@@ -64,6 +64,7 @@ class SignalResult:
     indicators: IndicatorBundle | None = None
     df_5m: pd.DataFrame | None = None
     error: str = ""
+    mt5_symbol: str = ""          # MT5 broker symbol name passed through for order routing
     # Accuracy improvements
     consensus_boost: float = 0.0
     strategy_agreement: str = ""   # e.g. "3/3 LONG" or "2/3 LONG, 1 SHORT"
@@ -296,6 +297,7 @@ def run_signal(
             bt_adjustment=round(bt_adjustment, 3),
             daily_trend_direction=daily_trend_direction,
             daily_trend_vetoed=daily_trend_vetoed,
+            mt5_symbol=mt5_symbol or "",
         )
 
     except Exception as exc:
