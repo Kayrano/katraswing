@@ -531,15 +531,19 @@ def send_signal(
         logger.error(f"order_send returned None: {err}")
         return MT5OrderResult(False, 0, symbol, direction, lots, price, live_sl, live_tp, err)
 
-    # Retry once with 3× spread buffer if stops were still too close
+    # Retry once with 3× spread buffer if stops were still too close.
+    # Always keep the original SL/TP distances — only expand if they happen
+    # to be smaller than the broker's dynamic minimum (rare but possible).
     if result.retcode == 10016:
         retry_min = max(stops_dist, spread * 3.0 + point * 10)
+        retry_sl_dist = max(sl_dist, retry_min)
+        retry_tp_dist = max(tp_dist, retry_min)
         if direction == "LONG":
-            live_sl = price - retry_min
-            live_tp = price + max(tp_dist, retry_min)
+            live_sl = price - retry_sl_dist
+            live_tp = price + retry_tp_dist
         else:
-            live_sl = price + retry_min
-            live_tp = price - max(tp_dist, retry_min)
+            live_sl = price + retry_sl_dist
+            live_tp = price - retry_tp_dist
         request["sl"] = round(live_sl, digits)
         request["tp"] = round(live_tp, digits)
         logger.warning(f"10016 retry: expanding stops — SL={request['sl']} TP={request['tp']}")
@@ -635,8 +639,9 @@ def close_position(ticket: int, magic: int = MAGIC_NUMBER) -> bool:
 
     pos = positions[0]
     close_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
-    tick  = mt5.symbol_info_tick(pos.symbol)
-    price = tick.bid if close_type == mt5.ORDER_TYPE_SELL else tick.ask
+    tick     = mt5.symbol_info_tick(pos.symbol)
+    sym_info = mt5.symbol_info(pos.symbol)
+    price    = tick.bid if close_type == mt5.ORDER_TYPE_SELL else tick.ask
 
     req = {
         "action":       mt5.TRADE_ACTION_DEAL,
@@ -649,7 +654,7 @@ def close_position(ticket: int, magic: int = MAGIC_NUMBER) -> bool:
         "magic":        magic,
         "comment":      "Katraswing close",
         "type_time":    mt5.ORDER_TIME_GTC,
-        "type_filling": mt5.ORDER_FILLING_IOC,
+        "type_filling": _filling_mode(sym_info),
     }
     result = mt5.order_send(req)
     ok = result is not None and result.retcode == mt5.TRADE_RETCODE_DONE

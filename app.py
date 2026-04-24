@@ -52,7 +52,7 @@ def _bt_background(ticker: str) -> None:
         summary = run_intraday_backtest(ticker, timeframe="5m")
         rates = {r.strategy: r.win_rate for r in summary.results if r.total_trades >= 5}
         with _BT_LOCK:
-            _BT_CACHE["rates"][ticker] = rates or None
+            _BT_CACHE["rates"][ticker] = rates if rates else {}
             _BT_CACHE["ts"][ticker]    = time.time()
     except Exception:
         with _BT_LOCK:
@@ -983,7 +983,7 @@ with tab_journal:
                     xaxis=dict(gridcolor="#1e2330"),
                     yaxis=dict(gridcolor="#1e2330", zeroline=True, zerolinecolor="#374151"),
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
         except Exception:
             pass
 
@@ -1168,5 +1168,5 @@ with tab_learning:
 
 # ── Auto-refresh while monitoring ─────────────────────────────────────────────
 if _MT5["running"]:
-    time.sleep(30)
+    time.sleep(5)   # short sleep keeps UI responsive; the 15-min scan cadence is in the thread
     st.rerun()
