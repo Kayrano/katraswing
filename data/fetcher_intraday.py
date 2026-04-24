@@ -16,6 +16,8 @@ yfinance limits:
 
 from __future__ import annotations
 
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -71,9 +73,14 @@ def fetch_daily_trend(ticker: str) -> dict:
 
     Raises ValueError if fewer than 50 daily bars are available.
     """
-    raw = yf.Ticker(ticker).history(period="90d", interval="1d", auto_adjust=True)
-    if raw is None or raw.empty or len(raw) < 50:
-        raise ValueError(f"Insufficient daily data for '{ticker}' (need ≥50 bars)")
+    # Try MT5 first
+    mt5_raw = _fetch_from_mt5(ticker, "1d", 90)
+    if mt5_raw is not None and len(mt5_raw) >= 50:
+        raw = mt5_raw
+    else:
+        raw = yf.Ticker(ticker).history(period="90d", interval="1d", auto_adjust=True)
+        if raw is None or raw.empty or len(raw) < 50:
+            raise ValueError(f"Insufficient daily data for '{ticker}' (need ≥50 bars)")
 
     close = raw["Close"].dropna()
 
@@ -135,6 +142,21 @@ def detect_market(ticker: str) -> str:
     return "US"
 
 
+def _fetch_from_mt5(ticker: str, interval: str, days: int) -> Optional[pd.DataFrame]:
+    """Try to fetch OHLCV bars from MT5. Returns raw DataFrame or None."""
+    try:
+        from utils.mt5_bridge import SYMBOL_MAP, fetch_bars, is_connected
+        if not is_connected():
+            return None
+        symbol = SYMBOL_MAP.get(ticker.upper(), ticker)
+        # Estimate bar count: 288 bars/day for 5m (24h), 96 for 15m; add buffer
+        bars_per_day = {"5m": 300, "15m": 100, "1h": 25, "1d": 1}.get(interval, 300)
+        count = days * bars_per_day
+        return fetch_bars(symbol, interval, count)
+    except Exception:
+        return None
+
+
 def fetch_intraday_data(
     ticker: str,
     interval: str = "5m",
@@ -142,6 +164,9 @@ def fetch_intraday_data(
 ) -> pd.DataFrame:
     """
     Fetch intraday OHLCV bars (5m or 15m) and enrich with session metadata.
+
+    Tries MT5 first (real-time, accurate market hours) then falls back to
+    yfinance if MT5 is not connected.
 
     Parameters
     ----------
@@ -172,11 +197,20 @@ def fetch_intraday_data(
     market = detect_market(ticker)
     tz     = SESSION_CONFIG.get(market, SESSION_CONFIG["US"])["tz"] if market != "FOREX" else ZoneInfo("America/New_York")
 
-    raw = yf.Ticker(ticker).history(
-        period=f"{days}d", interval=interval, auto_adjust=True
-    )
-    if raw is None or raw.empty:
-        raise ValueError(f"yfinance returned no {interval} data for '{ticker}'")
+    # ── Try MT5 first ────────────────────────────────────────────────────────
+    raw_mt5 = _fetch_from_mt5(ticker, interval, days)
+    if raw_mt5 is not None and not raw_mt5.empty:
+        raw = raw_mt5
+        # MT5 returns UTC; convert to session tz
+        raw.index = raw.index.tz_convert(tz)
+    else:
+        # ── Fall back to yfinance ─────────────────────────────────────────────
+        yf_raw = yf.Ticker(ticker).history(
+            period=f"{days}d", interval=interval, auto_adjust=True
+        )
+        if yf_raw is None or yf_raw.empty:
+            raise ValueError(f"No {interval} data for '{ticker}' (MT5 not connected, yfinance returned nothing)")
+        raw = yf_raw
 
     df = raw[["Open", "High", "Low", "Close", "Volume"]].copy().dropna()
 

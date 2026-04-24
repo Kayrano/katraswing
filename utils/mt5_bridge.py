@@ -18,6 +18,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+import pandas as pd
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -160,6 +162,116 @@ def ensure_connected(path: str = "") -> bool:
         return True
     logger.warning("MT5 connection lost — attempting reconnect...")
     return connect(path)
+
+
+# ── Market data ──────────────────────────────────────────────────────────────
+
+_TF_MAP: dict[str, int] = {}   # populated lazily once mt5 is available
+
+
+def _tf(interval: str) -> int:
+    """Map interval string to MT5 TIMEFRAME constant."""
+    if not MT5_AVAILABLE:
+        raise RuntimeError("MetaTrader5 not installed")
+    if not _TF_MAP:
+        _TF_MAP.update({
+            "1m":  mt5.TIMEFRAME_M1,
+            "5m":  mt5.TIMEFRAME_M5,
+            "15m": mt5.TIMEFRAME_M15,
+            "30m": mt5.TIMEFRAME_M30,
+            "1h":  mt5.TIMEFRAME_H1,
+            "4h":  mt5.TIMEFRAME_H4,
+            "1d":  mt5.TIMEFRAME_D1,
+        })
+    tf = _TF_MAP.get(interval)
+    if tf is None:
+        raise ValueError(f"Unsupported interval: {interval!r}")
+    return tf
+
+
+def fetch_bars(
+    symbol: str,
+    interval: str = "5m",
+    count: int = 5000,
+) -> Optional[pd.DataFrame]:
+    """
+    Fetch OHLCV bars from MT5 terminal.
+
+    Returns a DataFrame with columns Open, High, Low, Close, Volume
+    and a UTC-aware DatetimeIndex, or None on failure.
+
+    Args:
+        symbol:   MT5 symbol name (e.g. "EURUSD", "#US100_M26")
+        interval: "1m" | "5m" | "15m" | "30m" | "1h" | "4h" | "1d"
+        count:    number of bars to fetch (from most recent bar backwards)
+    """
+    if not MT5_AVAILABLE or not is_connected():
+        return None
+
+    try:
+        timeframe = _tf(interval)
+    except ValueError as exc:
+        logger.warning(str(exc))
+        return None
+
+    if not mt5.symbol_select(symbol, True):
+        logger.warning(f"fetch_bars: cannot select symbol '{symbol}'")
+        return None
+
+    rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, count)
+    if rates is None or len(rates) == 0:
+        logger.warning(f"fetch_bars: no data for {symbol} {interval}")
+        return None
+
+    df = pd.DataFrame(rates)
+    df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
+    df = df.set_index("time")
+    df = df.rename(columns={
+        "open":        "Open",
+        "high":        "High",
+        "low":         "Low",
+        "close":       "Close",
+        "tick_volume": "Volume",
+    })
+    keep = [c for c in ("Open", "High", "Low", "Close", "Volume") if c in df.columns]
+    return df[keep].copy()
+
+
+def is_market_open(symbol: str) -> tuple[bool, str]:
+    """
+    Check whether a symbol is currently tradeable in MT5.
+
+    Returns (is_closed, reason_string) — matches the (closed, msg) tuple
+    used by app.py's _market_status().
+
+    Trade modes:
+        SYMBOL_TRADE_MODE_DISABLED  (0) → hard closed
+        SYMBOL_TRADE_MODE_CLOSEONLY (3) → session ending / closed
+        SYMBOL_TRADE_MODE_FULL      (4) → open
+        others (1=longonly, 2=shortonly) → partially open → treat as open
+    """
+    if not MT5_AVAILABLE or not is_connected():
+        return False, ""   # unknown → don't block; let the old clock logic decide
+
+    info = mt5.symbol_info(symbol)
+    if info is None:
+        return False, ""   # unknown symbol — don't block
+
+    mode = info.trade_mode
+    if mode == 0:   # DISABLED
+        return True, f"{symbol} · market closed (broker)"
+    if mode == 3:   # CLOSE_ONLY
+        return True, f"{symbol} · session closing (close-only)"
+
+    # Cross-check: if the last tick is stale (> 10 min) treat as closed
+    tick = mt5.symbol_info_tick(symbol)
+    if tick is not None:
+        age = time.time() - tick.time
+        if age > 600:
+            mins = int(age / 60)
+            return True, f"{symbol} · no quotes for {mins}m (market closed)"
+
+    return False, ""   # market open
 
 
 # ── Order execution ───────────────────────────────────────────────────────────

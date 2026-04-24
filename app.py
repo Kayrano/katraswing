@@ -63,12 +63,24 @@ _FOREX_TICKERS = {"EURUSD=X", "GBPUSD=X", "USDJPY=X", "XAUUSD=X"}
 def _market_status(ticker: str, df) -> tuple[bool, str]:
     """
     Returns (is_closed, status_label).
-    Primary: calendar/clock check (always accurate).
-    Secondary: data staleness check only when the clock says the market IS open
-               (catches rare yfinance outages or very stale cached data).
-    NKD=F uses Tokyo session hours (09:00–15:30 JST) not US ET rules.
+    Primary (when MT5 connected): ask the broker — always correct for every symbol.
+    Fallback: calendar/clock check + data staleness.
     """
-    # ── Clock-based check (primary) ───────────────────────────────────────────
+    # ── MT5 symbol status (most accurate — broker knows its own hours) ────────
+    try:
+        from utils.mt5_bridge import is_connected, is_market_open, SYMBOL_MAP
+        if is_connected():
+            mt5_sym = SYMBOL_MAP.get(ticker.upper(), ticker)
+            closed, reason = is_market_open(mt5_sym)
+            if closed:
+                return True, reason
+            if reason == "":
+                # MT5 says open (or unknown) — skip clock check, trust the broker
+                return False, ""
+    except Exception:
+        pass
+
+    # ── Clock-based fallback (when MT5 not connected) ─────────────────────────
     if ticker in _STOCK_TICKERS:
         now = datetime.now(_ET)
         wd, hm = now.weekday(), now.hour * 60 + now.minute
