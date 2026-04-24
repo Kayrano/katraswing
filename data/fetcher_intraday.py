@@ -85,7 +85,13 @@ def fetch_daily_trend(ticker: str) -> dict:
     if mt5_raw is not None and len(mt5_raw) >= 50:
         raw = mt5_raw
     else:
-        raw = yf.Ticker(ticker).history(period="90d", interval="1d", auto_adjust=True)
+        yf_tick = _MT5_TO_YF.get(ticker.upper(), ticker)
+        if yf_tick == ticker.upper() and ticker.startswith("#"):
+            yf_tick = _MT5_TO_YF.get(ticker.split("_")[0].upper(), ticker)
+        try:
+            raw = yf.Ticker(yf_tick).history(period="90d", interval="1d", auto_adjust=True)
+        except Exception:
+            raw = None
         if raw is None or raw.empty or len(raw) < 50:
             raise ValueError(f"Insufficient daily data for '{ticker}' (need ≥50 bars)")
 
@@ -130,6 +136,28 @@ def fetch_daily_trend(ticker: str) -> dict:
 
 
 _JAPAN_FUTURES = {"NKD=F"}
+
+# Maps raw MT5 symbol names → yfinance tickers for offline fallback
+_MT5_TO_YF: dict[str, str] = {
+    # Forex
+    "EURUSD": "EURUSD=X", "GBPUSD": "GBPUSD=X", "USDJPY": "USDJPY=X",
+    "AUDUSD": "AUDUSD=X", "USDCAD": "USDCAD=X", "USDCHF": "USDCHF=X",
+    "NZDUSD": "NZDUSD=X", "EURGBP": "EURGBP=X", "EURJPY": "EURJPY=X",
+    "GBPJPY": "GBPJPY=X", "EURCAD": "EURCAD=X", "EURCHF": "EURCHF=X",
+    "AUDCAD": "AUDCAD=X", "AUDCHF": "AUDCHF=X", "AUDNZD": "AUDNZD=X",
+    "CADJPY": "CADJPY=X", "CHFJPY": "CHFJPY=X", "NZDJPY": "NZDJPY=X",
+    # Metals
+    "XAUUSD": "GC=F", "XAGUSD": "SI=F",
+    # US indices (FxPro-style names with expiry suffix handled via startswith)
+    "#US100_M26": "NQ=F",  "#US100_M27": "NQ=F",  "#US100": "NQ=F",
+    "#US500_M26": "ES=F",  "#US500_M27": "ES=F",  "#US500": "ES=F",
+    "#US30_M26":  "YM=F",  "#US30_M27":  "YM=F",  "#US30":  "YM=F",
+    # European indices
+    "#GER40_M26": "GDAXI", "#GER40": "GDAXI",
+    "#UK100_M26": "^FTSE",  "#UK100": "^FTSE",
+    # Japan
+    "#JP225_M26": "NKD=F",  "#JP225": "NKD=F",
+}
 
 # Known forex currency codes for MT5 symbol detection
 _FX_CODES = {
@@ -240,9 +268,18 @@ def fetch_intraday_data(
         raw.index = raw.index.tz_convert(tz)
     else:
         # ── Fall back to yfinance ─────────────────────────────────────────────
-        yf_raw = yf.Ticker(ticker).history(
-            period=f"{days}d", interval=interval, auto_adjust=True
-        )
+        # Map raw MT5 symbol names to yfinance tickers where needed
+        yf_ticker = _MT5_TO_YF.get(ticker.upper(), ticker)
+        # Also handle expiry-suffixed index futures like #US100_M28
+        if yf_ticker == ticker.upper() and ticker.startswith("#"):
+            base = ticker.split("_")[0].upper()
+            yf_ticker = _MT5_TO_YF.get(base, ticker)
+        try:
+            yf_raw = yf.Ticker(yf_ticker).history(
+                period=f"{days}d", interval=interval, auto_adjust=True
+            )
+        except Exception:
+            yf_raw = None
         if yf_raw is None or yf_raw.empty:
             raise ValueError(f"No {interval} data for '{ticker}' (MT5 not connected, yfinance returned nothing)")
         raw = yf_raw

@@ -300,11 +300,11 @@ auto_refresh = st.session_state.get("auto_refresh", False)
 # Selected instruments: list of {ticker, label, mt5_symbol}
 # Defaults: major forex + futures using MT5 symbols directly
 _DEFAULT_INSTRUMENTS = [
-    {"ticker": "EURUSD",    "label": "EUR/USD",    "mt5_symbol": "EURUSD"},
-    {"ticker": "GBPUSD",    "label": "GBP/USD",    "mt5_symbol": "GBPUSD"},
-    {"ticker": "USDJPY",    "label": "USD/JPY",    "mt5_symbol": "USDJPY"},
-    {"ticker": "#US100_M26","label": "NAS100",     "mt5_symbol": "#US100_M26"},
-    {"ticker": "#US500_M26","label": "S&P500",     "mt5_symbol": "#US500_M26"},
+    {"ticker": "EURUSD=X", "label": "EUR/USD",  "mt5_symbol": "EURUSD"},
+    {"ticker": "GBPUSD=X", "label": "GBP/USD",  "mt5_symbol": "GBPUSD"},
+    {"ticker": "USDJPY=X", "label": "USD/JPY",  "mt5_symbol": "USDJPY"},
+    {"ticker": "NQ=F",     "label": "NAS100",   "mt5_symbol": "#US100_M26"},
+    {"ticker": "ES=F",     "label": "S&P500",   "mt5_symbol": "#US500_M26"},
 ]
 instruments = st.session_state.get("instruments", _DEFAULT_INSTRUMENTS)
 
@@ -413,8 +413,14 @@ with st.expander("⚙️  Settings & Instruments", expanded=False):
                 format_func=lambda n: f"{n}  —  {sym_descs.get(n, '')}",
             )
             if selected:
+                from data.fetcher_intraday import _MT5_TO_YF
                 instruments = [
-                    {"ticker": s, "label": sym_descs.get(s, s), "mt5_symbol": s}
+                    {
+                        "ticker": _MT5_TO_YF.get(s.upper(),
+                                  _MT5_TO_YF.get(s.split("_")[0].upper(), s)),
+                        "label": sym_descs.get(s, s),
+                        "mt5_symbol": s,
+                    }
                     for s in selected
                 ]
         else:
