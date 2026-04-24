@@ -317,6 +317,22 @@ if _mt5_action:
         _stop_mt5()
     st.rerun()
 
+# ── Auto-start MT5 thread on first load if auto_trade is enabled ──────────────
+if auto_trade and not _MT5["running"] and not st.session_state.get("_mt5_autostart_attempted"):
+    st.session_state["_mt5_autostart_attempted"] = True
+    from utils.mt5_bridge import is_available as _mt5_avail_check
+    if _mt5_avail_check():
+        _start_mt5({
+            "instruments": instruments,
+            "min_conf":     min_conf,
+            "account_size": account_size,
+            "risk_pct":     risk_pct,
+            "finnhub_key":  finnhub_key,
+            "interval":     900,
+            "auto_trade":   True,
+            "use_daily":    use_daily,
+        })
+
 # ── Header ────────────────────────────────────────────────────────────────────
 h_left, h_mid, h_right = st.columns([3, 3, 2])
 with h_left:
@@ -507,6 +523,41 @@ if needs_run:
 
     st.session_state["results"] = results
     st.session_state["last_refresh_ts"] = time.time()
+
+    # ── Auto-send qualifying signals immediately after manual scan ────────────
+    if auto_trade and _MT5["connected"]:
+        today = date.today()
+        from utils.mt5_bridge import send_from_signal_result as _send
+        for inst in instruments:
+            t  = inst["ticker"]
+            sr = results.get(t)
+            if sr is None or sr.error or sr.direction not in ("LONG", "SHORT"):
+                continue
+            if sr.confidence < min_conf:
+                continue
+            key = f"{t}:{sr.direction}:{today}"
+            if key in _MT5["sent"] or key in _MT5["rejected"]:
+                continue
+            try:
+                res = _send(sr)
+                if res.success:
+                    _MT5["sent"].add(key)
+                    _MT5["last_sent"] = {"ticker": t, "ticket": res.ticket,
+                                         "direction": sr.direction, "conf": sr.confidence}
+                    _log(f"✅ Auto #{res.ticket} {sr.direction} {t} {sr.confidence:.0%}")
+                    try:
+                        from data.trade_outcomes import record_trade
+                        strat = sr.chart_signals[0].strategy if sr.chart_signals else "UNKNOWN"
+                        record_trade(res.ticket, t, strat, sr.direction,
+                                     sr.confidence, sr.entry, sr.sl, sr.tp)
+                    except Exception:
+                        pass
+                else:
+                    _MT5["rejected"].add(key)
+                    _log(f"⚠ Auto-send {t}: {res.error}")
+            except Exception as exc:
+                _log(f"⚠ Auto-send error {t}: {exc}")
+
 else:
     results = st.session_state.get("results", {})
 

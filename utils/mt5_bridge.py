@@ -360,14 +360,37 @@ def send_signal(
     order_type = mt5.ORDER_TYPE_BUY if direction == "LONG" else mt5.ORDER_TYPE_SELL
     price      = tick.ask if direction == "LONG" else tick.bid
 
+    # Rebase SL/TP from live price using original ATR distances.
+    # The signal was generated seconds-to-minutes ago; stale prices cause retcode=10016.
+    sl_dist = abs(entry - sl)   # original SL distance
+    tp_dist = abs(tp - entry)   # original TP distance
+    if direction == "LONG":
+        live_sl = price - sl_dist
+        live_tp = price + tp_dist
+    else:
+        live_sl = price + sl_dist
+        live_tp = price - tp_dist
+
+    # Enforce broker minimum stop distance (trade_stops_level × point)
+    if sym_info is not None:
+        point       = sym_info.point or 0.00001
+        min_dist    = sym_info.trade_stops_level * point
+        if min_dist > 0:
+            if direction == "LONG":
+                live_sl = min(live_sl, price - min_dist)
+                live_tp = max(live_tp, price + min_dist)
+            else:
+                live_sl = max(live_sl, price + min_dist)
+                live_tp = min(live_tp, price - min_dist)
+
     request = {
         "action":       mt5.TRADE_ACTION_DEAL,
         "symbol":       symbol,
         "volume":       float(vol),
         "type":         order_type,
         "price":        price,
-        "sl":           round(sl, digits),
-        "tp":           round(tp, digits),
+        "sl":           round(live_sl, digits),
+        "tp":           round(live_tp, digits),
         "deviation":    20,
         "magic":        magic,
         "comment":      comment,
