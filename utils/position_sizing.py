@@ -42,7 +42,7 @@ def calculate(
     shares = int(max_dollar_risk / risk_per_share)   # floor — never over-risk
 
     if shares < 1:
-        shares = 1
+        return PositionSize(0, 0, 0, 0, 0, 0, account_size, risk_pct)
 
     dollar_risk     = shares * risk_per_share
     dollar_reward   = shares * abs(take_profit - entry)

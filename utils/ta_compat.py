@@ -67,7 +67,7 @@ def atr(high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14) -> 
         (low  - prev_close).abs(),
     ], axis=1).max(axis=1)
     result = tr.ewm(alpha=1.0 / length, min_periods=length, adjust=False).mean()
-    result.name = f"ATRr_{length}"
+    result.name = f"ATR_{length}"
     return result
 
 

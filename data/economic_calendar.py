@@ -144,10 +144,8 @@ def _parse_event_time(date_str: str, time_str: str) -> Optional[datetime]:
             except ValueError:
                 pass
 
-    # ForexFactory times are US Eastern — convert to UTC
-    # We approximate: ET = UTC-4 (EDT) or UTC-5 (EST); use UTC-4 as default for spring/summer
-    return dt.replace(tzinfo=timezone.utc) - timedelta(hours=0)
-    # Note: FF actually returns UTC times in the JSON — no conversion needed
+    # ForexFactory JSON returns times in UTC
+    return dt.replace(tzinfo=timezone.utc)
 
 
 def fetch_upcoming_events(

@@ -203,7 +203,7 @@ def fetch_news(ticker: str, api_key: str, lookback_hours: int = 6) -> list[NewsI
     from_ts = now - lookback_hours * 3600
     items: list[NewsItem] = []
 
-    is_futures = ticker.upper().endswith("=F") or ticker.upper().startswith("M") and ticker.upper().endswith("=F")
+    is_futures = ticker.upper().endswith("=F")
 
     if is_futures:
         # General market news for macro/index futures
