@@ -705,6 +705,10 @@ def send_from_signal_result(
         return MT5OrderResult(False, 0, sr.ticker, sr.direction, 0.0, sr.entry, sr.sl, sr.tp,
                               f"No trade signal (direction={sr.direction})")
 
+    # Scale risk_pct by signal risk level: LOW confidence = HIGH risk = smaller position
+    _RISK_MULTIPLIER = {"LOW": 1.5, "MEDIUM": 1.0, "HIGH": 0.5}
+    effective_risk_pct = risk_pct * _RISK_MULTIPLIER.get(getattr(sr, "risk_level", "MEDIUM"), 1.0)
+
     # Use mt5_symbol if available (avoids SYMBOL_MAP lookup)
     ticker = getattr(sr, "mt5_symbol", None) or sr.ticker
 
@@ -715,8 +719,8 @@ def send_from_signal_result(
         sl=sr.sl,
         tp=sr.tp,
         lots=lots,
-        risk_pct=risk_pct,
-        comment=f"Katraswing {sr.confidence:.0%} {getattr(sr, 'chart_signals', [{}])[0].strategy if getattr(sr, 'chart_signals', None) else ''}".strip(),
+        risk_pct=effective_risk_pct,
+        comment=f"Katraswing {sr.confidence:.0%} {getattr(sr, 'risk_level', 'MEDIUM')} {getattr(sr, 'chart_signals', [{}])[0].strategy if getattr(sr, 'chart_signals', None) else ''}".strip(),
     )
 
 

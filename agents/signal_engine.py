@@ -79,6 +79,7 @@ class SignalResult:
     mtf_bias: str = "NEUTRAL"       # STRONG_BULLISH / BULLISH / MILD_BULLISH / NEUTRAL / …
     daily_trend_vetoed: bool = False
     sl_tp_source: str = "ATR"       # ATR | BLENDED — whether learned stops were applied
+    risk_level: str = "MEDIUM"      # LOW | MEDIUM | HIGH — scales lot size in send_from_signal_result
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -368,6 +369,15 @@ def run_signal(
         if not daily_trend_vetoed and final_conf < _SIGNAL_FLOOR:
             direction = "NO TRADE"
 
+        # ── Derive risk level from confidence ─────────────────────────────────
+        # HIGH confidence = LOW risk = larger position; LOW confidence = HIGH risk = smaller position
+        if final_conf >= 0.80:
+            risk_level = "LOW"
+        elif final_conf >= 0.65:
+            risk_level = "MEDIUM"
+        else:
+            risk_level = "HIGH"
+
         return SignalResult(
             ticker=ticker, display_name=label,
             direction=direction,
@@ -393,6 +403,7 @@ def run_signal(
             daily_trend_vetoed=daily_trend_vetoed,
             sl_tp_source=sl_tp_source,
             mt5_symbol=mt5_symbol or "",
+            risk_level=risk_level,
         )
 
     except Exception as exc:

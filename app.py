@@ -794,6 +794,12 @@ with tab_signals:
                     adx_badge = (f"<span style='background:#1e2330;color:{adx_c};"
                                  f"font-size:10px;padding:1px 5px;border-radius:3px;"
                                  f"margin-left:6px;'>{sr.adx_regime}</span>")
+                _rl = getattr(sr, "risk_level", "MEDIUM")
+                _rl_color = {"LOW": "#22c55e", "MEDIUM": "#f59e0b", "HIGH": "#ef4444"}.get(_rl, "#6b7280")
+                _rl_mult  = {"LOW": "1.5×", "MEDIUM": "1.0×", "HIGH": "0.5×"}.get(_rl, "1.0×")
+                risk_badge = (f"<span style='background:#1e2330;color:{_rl_color};"
+                              f"font-size:10px;padding:1px 5px;border-radius:3px;"
+                              f"margin-left:6px;'>{_rl} RISK {_rl_mult}</span>")
                 veto = ""
                 if sr.daily_trend_vetoed:
                     veto = "<span style='color:#ef4444;font-size:10px;'> ⚠ trend veto</span>"
@@ -806,7 +812,7 @@ with tab_signals:
                     f"<span style='color:#6b7280;'>TP</span> "
                     f"<b style='color:#22c55e;'>{sr.tp:.4f}</b>&nbsp;&nbsp;"
                     f"<span style='color:#6b7280;'>R:R</span> <b>{rr}</b><br>"
-                    f"<span style='color:#9ca3af;font-size:12px;'>{strat}{adx_badge}{veto}</span>"
+                    f"<span style='color:#9ca3af;font-size:12px;'>{strat}{adx_badge}{risk_badge}{veto}</span>"
                     f"</div>",
                     unsafe_allow_html=True)
 
