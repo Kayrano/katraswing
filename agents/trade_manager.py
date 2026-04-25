@@ -163,6 +163,13 @@ def _compute_health_score(
     delta        = current_conf - original_confidence   # positive = improved
     # Map −0.20…+0.20 → 1.0…0.0 (positive delta = higher conf = better)
     conf_component = max(0.0, min(1.0, 0.5 + delta / 0.40))
+    # Fold in signal-level adjustments: news pressure, strategy agreement, live win-rate calibration
+    adjustments = (
+        getattr(signal, "news_boost",      0.0) +   # -0.10 to +0.10
+        getattr(signal, "consensus_boost", 0.0) +   # -0.08 to +0.05
+        getattr(signal, "live_adjustment", 0.0)     # -0.15 to +0.15
+    )
+    conf_component = max(0.0, min(1.0, conf_component + adjustments))
 
     # ── Momentum: RSI + MACD hist (20%) ──────────────────────────────────────
     indicators = signal.indicators
@@ -218,7 +225,29 @@ def _compute_health_score(
         0.15 * rr_component     +
         0.15 * pat_component
     )
+    # ── Volatility penalty (applied after weighting) ──────────────────────────
+    # High ATR rank = risky conditions; reduce health proportionally
+    if indicators:
+        vol_pct = getattr(indicators, "volatility_percentile", 50.0)
+        if vol_pct > 80:
+            score *= 0.90
+        elif vol_pct > 65:
+            score *= 0.95
     return round(max(0.0, min(1.0, score)), 3)
+
+
+# ── Per-strategy max hold duration ───────────────────────────────────────────
+
+_STRATEGY_MAX_HOURS: dict[str, float] = {
+    "VWAP_RSI_5M":  3.0,
+    "RSI2_VWAP":    3.0,
+    "TREND_MOM":    8.0,
+    "ORB":         16.0,
+    "NR7_BO":      12.0,
+    "ABSORB_BO":    6.0,
+    "TRIPLE_A":     6.0,
+    "VA_BOUNCE":    4.0,
+}
 
 
 # ── Decision logic ────────────────────────────────────────────────────────────
@@ -231,6 +260,8 @@ def _decide_action(
     current_price: float,
     breakeven_price: float,
     sent_at: str,
+    strategy: str = "",
+    live_win_rates: dict | None = None,
 ) -> tuple[str, str, str, float | None, float | None, float | None]:
     """
     Returns (action, reason, urgency, new_sl, new_tp, partial_volume).
@@ -242,7 +273,7 @@ def _decide_action(
     sl        = position.sl
     tp        = position.tp
 
-    # ── Time stop: open > 8h with minimal profit ──────────────────────────────
+    # ── Time stop: strategy-aware max hold duration ───────────────────────────
     try:
         opened = datetime.fromisoformat(sent_at).replace(tzinfo=timezone.utc)
         open_hours = (datetime.now(tz=timezone.utc) - opened).total_seconds() / 3600
@@ -250,6 +281,11 @@ def _decide_action(
         open_hours = 0.0
 
     profit = position.profit
+
+    # ── Live win-rate awareness: tighten effective health threshold ───────────
+    live_wr_key = getattr(signal, "live_wr_key", "")
+    if live_win_rates and live_wr_key and live_win_rates.get(live_wr_key, 0.5) < 0.45:
+        health_score = max(0.0, health_score - 0.05)
 
     # ── Hard closes ──────────────────────────────────────────────────────────
     mtf_score = getattr(signal, "mtf_score", 0)
@@ -267,13 +303,51 @@ def _decide_action(
     if direction == "SHORT" and mtf_score >= 2:
         return "CLOSE", f"MTF strongly bullish (score={mtf_score}) vs SHORT position", "HIGH", None, None, None
 
-    # Time stop
-    if open_hours > 8 and profit < 0.5 * atr:
-        return "CLOSE", f"Time stop: open {open_hours:.1f}h, profit {profit:.2f} < 0.5×ATR", "MEDIUM", None, None, None
+    # Daily trend vetoed — higher timeframe directly opposing position
+    if getattr(signal, "daily_trend_vetoed", False):
+        return "CLOSE", "Daily trend vetoed signal direction — exiting to align with higher timeframe", "HIGH", None, None, None
+
+    # RSI divergence — momentum exhaustion signal
+    indicators = signal.indicators
+    if indicators:
+        if direction == "LONG" and getattr(indicators, "rsi_divergence_bearish", False):
+            return "CLOSE", "RSI bearish divergence — price made higher high but RSI lower high; momentum exhausting", "HIGH", None, None, None
+        if direction == "SHORT" and getattr(indicators, "rsi_divergence_bullish", False):
+            return "CLOSE", "RSI bullish divergence — price made lower low but RSI higher low; momentum exhausting", "HIGH", None, None, None
+
+    # High-confidence reversal patterns against position → partial close
+    _BEARISH_REVERSALS = {"Double Top", "Triple Top", "Head & Shoulders", "Bearish Engulfing",
+                          "Evening Star", "Shooting Star", "Gravestone Doji", "Hanging Man",
+                          "Bearish Harami", "Rising Wedge"}
+    _BULLISH_REVERSALS = {"Double Bottom", "Triple Bottom", "Inv. Head & Shoulders", "Bullish Engulfing",
+                          "Morning Star", "Hammer", "Dragonfly Doji", "Bullish Harami",
+                          "Falling Wedge"}
+    if signal.patterns:
+        for pat in (signal.patterns.patterns or []):
+            pat_name = getattr(pat, "name", "")
+            pat_conf = getattr(pat, "confidence", 0.0)
+            if pat_conf < 0.65:
+                continue
+            if direction == "LONG" and pat_name in _BEARISH_REVERSALS:
+                return "PARTIAL_CLOSE", f"{pat_name} ({pat_conf:.0%} conf) — reversal against LONG; locking partial profit", "MEDIUM", None, None, None
+            if direction == "SHORT" and pat_name in _BULLISH_REVERSALS:
+                return "PARTIAL_CLOSE", f"{pat_name} ({pat_conf:.0%} conf) — reversal against SHORT; locking partial profit", "MEDIUM", None, None, None
+
+    # Per-strategy time stop
+    max_hours = _STRATEGY_MAX_HOURS.get(strategy, 8.0)
+    if open_hours > max_hours and profit < 0.5 * atr:
+        return "CLOSE", f"Time stop: {strategy or 'trade'} open {open_hours:.1f}h (max {max_hours:.0f}h), profit {profit:.2f} < 0.5×ATR", "MEDIUM", None, None, None
+
+    # News sentiment against position + declining health
+    news_score = getattr(signal, "news_score", 0.0)
+    if health_score < 0.55:
+        if direction == "LONG" and news_score < -0.35:
+            return "CLOSE", f"Bearish news pressure (score {news_score:.2f}) with declining health ({health_score:.2f})", "MEDIUM", None, None, None
+        if direction == "SHORT" and news_score > 0.35:
+            return "CLOSE", f"Bullish news pressure (score {news_score:.2f}) with declining health ({health_score:.2f})", "MEDIUM", None, None, None
 
     # ── Score-based: tighten SL ───────────────────────────────────────────────
     if health_score < 0.50:
-        # Tighten SL toward ATR trail
         if direction == "LONG":
             trail_sl = current_price - 2.0 * atr
             new_sl   = max(sl, trail_sl) if sl else trail_sl
@@ -287,7 +361,6 @@ def _decide_action(
 
     # ── Score-based: profit management ───────────────────────────────────────
     if health_score >= 0.70:
-        # 1R = SL distance
         sl_dist = abs(current_price - sl) if sl else atr
         one_r   = sl_dist
 
@@ -305,6 +378,16 @@ def _decide_action(
             half_vol = max(vol_step, half_vol)
 
             new_sl = round(breakeven_price, 5)
+            # Add 2× spread buffer so slippage can't trigger the breakeven SL
+            try:
+                import MetaTrader5 as mt5
+                tick = mt5.symbol_info_tick(position.symbol)
+                if tick:
+                    spread = abs(tick.ask - tick.bid)
+                    new_sl = new_sl + spread * 2 if direction == "LONG" else new_sl - spread * 2
+                    new_sl = round(new_sl, 5)
+            except Exception:
+                pass
             # Only move SL if it actually improves
             if (direction == "LONG" and new_sl <= sl) or (direction == "SHORT" and new_sl >= sl):
                 new_sl = None
@@ -317,17 +400,23 @@ def _decide_action(
                 half_vol,
             )
 
-        # Trail SL at 2× ATR when ≥ 2×ATR profit
+        # Progressive trailing SL — tighten multiplier as profit grows
         if profit >= 2 * atr:
+            if profit >= 4 * atr:
+                multiplier = 1.0
+            elif profit >= 3 * atr:
+                multiplier = 1.2
+            else:
+                multiplier = 1.5
             if direction == "LONG":
-                trail_sl = current_price - 1.5 * atr
+                trail_sl = current_price - multiplier * atr
                 new_sl   = max(sl, trail_sl) if sl else trail_sl
             else:
-                trail_sl = current_price + 1.5 * atr
+                trail_sl = current_price + multiplier * atr
                 new_sl   = min(sl, trail_sl) if sl else trail_sl
             new_sl = round(new_sl, 5)
             if (direction == "LONG" and new_sl > sl) or (direction == "SHORT" and new_sl < sl):
-                return "MODIFY_SL", f"Trailing SL after {profit:.2f} profit (≥2×ATR)", "LOW", new_sl, None, None
+                return "MODIFY_SL", f"Trailing SL ({multiplier}×ATR) after {profit:.2f} profit", "LOW", new_sl, None, None
 
         # Extend TP when health > 0.85 + continuation pattern
         if health_score > 0.85 and tp:
@@ -341,8 +430,8 @@ def _decide_action(
                 else:
                     new_tp = round(tp - atr, 5)
                 new_dist = abs(new_tp - position.open_price)
-                if new_dist >= original_tp_dist:   # never shorten
-                    return "MODIFY_TP", f"Strong trend continuation — extending TP by 1×ATR", "LOW", None, new_tp, None
+                if new_dist >= original_tp_dist:
+                    return "MODIFY_TP", "Strong trend continuation — extending TP by 1×ATR", "LOW", None, new_tp, None
 
     return "HOLD", f"Health OK ({health_score:.2f}) — holding position", "LOW", None, None, None
 
@@ -390,6 +479,14 @@ def assess_trade(
         trade_rec = next((t for t in trade_log if t["ticket"] == ticket), None)
         sent_at   = trade_rec.get("sent_at") if trade_rec else None
         original_confidence = float(trade_rec.get("confidence", 0.5)) if trade_rec else 0.5
+        strategy  = trade_rec.get("strategy", "") if trade_rec else ""
+
+        # Fall back to MT5's own open timestamp when trade_log has no sent_at
+        if not sent_at and getattr(position, "time_open", 0):
+            try:
+                sent_at = datetime.fromtimestamp(position.time_open, tz=timezone.utc).isoformat(timespec="seconds")
+            except Exception:
+                pass
 
         if sent_at:
             try:
@@ -468,16 +565,22 @@ def assess_trade(
         action, reason, urgency, new_sl, new_tp, partial_vol = _decide_action(
             position, signal, health_score, atr, current_price, breakeven,
             sent_at or now_iso,
+            strategy=strategy,
+            live_win_rates=live_rates or None,
         )
 
-        # Apply news hold guard: override MODIFY/CLOSE with HOLD
+        # Apply news hold guard: allow CLOSE if health critical; block other modifications
         if blocked and action in ("CLOSE", "PARTIAL_CLOSE", "MODIFY_SL", "MODIFY_TP", "MODIFY_BOTH"):
-            action   = "HOLD"
-            reason   = f"News hold — {news_reason}"
-            urgency  = "MEDIUM"
-            new_sl   = None
-            new_tp   = None
-            partial_vol = None
+            if health_score < 0.50 and action == "CLOSE":
+                # Unhealthy position before a news event — closing is safer than holding
+                reason = f"Closing before news: {news_reason} (health={health_score:.2f})"
+            else:
+                action   = "HOLD"
+                reason   = f"News hold — {news_reason}"
+                urgency  = "MEDIUM"
+                new_sl   = None
+                new_tp   = None
+                partial_vol = None
 
         return TradeAssessment(
             ticket=ticket,

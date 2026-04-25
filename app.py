@@ -1016,11 +1016,50 @@ with tab_trades:
                     dc2.metric("MTF Bias", _a.mtf_bias)
                     dc3.metric("ADX Regime", _a.adx_regime)
                     dc4.metric("Signal", f"{_a.signal_direction} {_a.signal_confidence:.0%}")
+
+                    # Strategy agreement badge
                     if _a.strategy_agreement:
-                        st.caption(f"Strategy agreement: {_a.strategy_agreement}")
+                        _sa = _a.strategy_agreement
+                        _sa_col = "#22c55e" if "LONG" in _sa else ("#ef4444" if "SHORT" in _sa else "#6b7280")
+                        st.markdown(
+                            f"<div style='margin:4px 0;font-size:12px;'>"
+                            f"Strategy agreement: <b style='color:{_sa_col};'>{_sa}</b></div>",
+                            unsafe_allow_html=True)
+
+                    # Breakeven
                     be = _a.breakeven_price
                     if be:
                         st.caption(f"Breakeven price: {be:.5f}")
+
+                    # Reversal / veto warnings
+                    _warn_lines = []
+                    if _a.signal_direction not in ("NO TRADE", p.direction):
+                        _warn_lines.append(f"⚠ Signal reversed to <b>{_a.signal_direction}</b> ({_a.signal_confidence:.0%} conf)")
+                    if _a.reason and "divergence" in _a.reason.lower():
+                        _warn_lines.append("⚠ RSI momentum divergence detected")
+                    if _a.reason and "daily trend" in _a.reason.lower():
+                        _warn_lines.append("⚠ Daily trend vetoed position direction")
+                    if _warn_lines:
+                        st.markdown(
+                            "<div style='background:#2d1515;border-radius:5px;padding:6px 10px;"
+                            "margin:6px 0;border:1px solid #7f1d1d;font-size:12px;color:#fca5a5;'>"
+                            + "<br>".join(_warn_lines) + "</div>",
+                            unsafe_allow_html=True)
+
+                    # Detected patterns (from current assessment signal)
+                    try:
+                        _pats = list((getattr(_a, "_signal_patterns", None) or []))
+                    except Exception:
+                        _pats = []
+                    if not _pats:
+                        # Attempt to read from session if assessments stored signal reference
+                        pass
+                    # News sentiment context
+                    if _a.reason and ("news" in _a.reason.lower() or "bearish" in _a.reason.lower() or "bullish" in _a.reason.lower()):
+                        st.markdown(
+                            f"<div style='font-size:11px;color:#9ca3af;margin-top:4px;'>"
+                            f"📰 News context: {_a.reason}</div>",
+                            unsafe_allow_html=True)
 
                 # Apply button
                 if _a.action != "HOLD":

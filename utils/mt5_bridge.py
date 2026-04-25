@@ -223,6 +223,8 @@ class MT5Position:
     magic: int
     swap: float = 0.0
     commission: float = 0.0
+    time_open: int = 0          # Unix timestamp when position was opened
+    price_current: float = 0.0  # Live current price from MT5 (saves extra tick fetch)
 
 
 # ── Connection management ─────────────────────────────────────────────────────
@@ -746,6 +748,8 @@ def get_open_positions(magic: int = MAGIC_NUMBER) -> list[MT5Position]:
             magic=p.magic,
             swap=float(getattr(p, "swap", 0.0)),
             commission=float(getattr(p, "commission", 0.0)),
+            time_open=int(getattr(p, "time", 0)),
+            price_current=float(getattr(p, "price_current", p.price_open)),
         ))
     return positions
 
