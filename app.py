@@ -364,12 +364,12 @@ def _refresh_backtest_rates(ticker: str):
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _get_broker_symbols(_connected: bool = False) -> list[dict]:
-    """Fetch available symbols from MT5 broker (cached 5 min, keyed by connection state)."""
-    if not _connected:
-        return []
+def _get_broker_symbols() -> list[dict]:
+    """Fetch available symbols from MT5 broker (cached 5 min)."""
     try:
-        from utils.mt5_bridge import get_tradeable_symbols
+        from utils.mt5_bridge import is_connected as _chk, get_tradeable_symbols
+        if not _chk():
+            return []
         return get_tradeable_symbols()
     except Exception:
         return []
@@ -395,18 +395,30 @@ _DEFAULT_INSTRUMENTS = [
     {"ticker": "ES=F",     "label": "S&P500",   "mt5_symbol": "#US500_M26"},
 ]
 
-# Auto-populate instruments from broker selection on every render
-_saved_broker_sel = st.session_state.get("_broker_sel")
-if _saved_broker_sel and _MT5["connected"]:
-    from data.fetcher_intraday import _MT5_TO_YF as _M2Y
-    instruments = [
-        {
-            "ticker": _M2Y.get(s.upper(), _M2Y.get(s.split("_")[0].upper(), s)),
-            "label": s,
-            "mt5_symbol": s,
-        }
-        for s in _saved_broker_sel
-    ]
+# Auto-populate instruments from broker on every render when MT5 is running
+if _MT5["running"]:
+    _all_broker_syms = _get_broker_symbols()
+    if _all_broker_syms:
+        _sym_names_all = [s["name"] for s in _all_broker_syms]
+        _sym_descs_all = {s["name"]: s["description"] for s in _all_broker_syms}
+        # Use saved selection if it exists; default to ALL broker symbols
+        _prev_sel = st.session_state.get("_broker_sel")
+        if _prev_sel:
+            _active_sel = [n for n in _prev_sel if n in _sym_names_all]
+        else:
+            _active_sel = _sym_names_all
+        st.session_state["_broker_sel"] = _active_sel
+        from data.fetcher_intraday import _MT5_TO_YF as _M2Y
+        instruments = [
+            {
+                "ticker": _M2Y.get(s.upper(), _M2Y.get(s.split("_")[0].upper(), s)),
+                "label": _sym_descs_all.get(s, s),
+                "mt5_symbol": s,
+            }
+            for s in _active_sel
+        ]
+    else:
+        instruments = st.session_state.get("instruments", _DEFAULT_INSTRUMENTS)
 else:
     instruments = st.session_state.get("instruments", _DEFAULT_INSTRUMENTS)
 
@@ -548,15 +560,17 @@ with st.expander("⚙️  Settings & Instruments", expanded=False):
             st.warning("Install MT5:\n`pip install MetaTrader5`")
 
     with mt5_col2:
-        broker_syms = _get_broker_symbols(_connected=_MT5["connected"])
+        broker_syms = _get_broker_symbols()
         if broker_syms:
             sym_names   = [s["name"] for s in broker_syms]
             sym_descs   = {s["name"]: s["description"] for s in broker_syms}
             current_sel = st.session_state.get("_broker_sel", sym_names)
             # Keep only names still available in broker list
             current_sel = [n for n in current_sel if n in sym_names]
+            if not current_sel:
+                current_sel = sym_names
             selected    = st.multiselect(
-                "Select instruments from your broker",
+                f"Broker instruments ({len(sym_names)} available — all selected by default)",
                 options=sym_names,
                 default=current_sel,
                 format_func=lambda n: f"{n}  —  {sym_descs.get(n, '')}",
@@ -574,7 +588,7 @@ with st.expander("⚙️  Settings & Instruments", expanded=False):
                     for s in selected
                 ]
         else:
-            st.info("Connect MT5 to pick instruments from your broker.\n"
+            st.info("Start MT5 Auto-Trade to load all broker instruments automatically.\n"
                     "Currently using defaults: " + ", ".join(i["label"] for i in instruments))
             custom = st.text_input(
                 "Or type MT5 symbol names (comma-separated)",
