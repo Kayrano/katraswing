@@ -720,7 +720,7 @@ def send_from_signal_result(
         tp=sr.tp,
         lots=lots,
         risk_pct=effective_risk_pct,
-        comment=f"Katraswing {sr.confidence:.0%} {getattr(sr, 'risk_level', 'MEDIUM')} {getattr(sr, 'chart_signals', [{}])[0].strategy if getattr(sr, 'chart_signals', None) else ''}".strip(),
+        comment=(f"KS {sr.confidence:.0%} {getattr(sr, 'risk_level', 'M')} {sr.chart_signals[0].strategy if sr.chart_signals else ''}")[:31].strip(),
     )
 
 
