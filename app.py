@@ -73,6 +73,9 @@ if "_MT5" not in st.session_state:
         "last_sent": None, "positions": [],
         "log": [], "error": "",
         "live_win_rates": {},
+        # Trade Manager shared state — written by main thread, read by background thread
+        "auto_assess": False, "live_mode": False,
+        "tm_cooldown": {}, "trade_assessments": [],
     }
 _MT5: dict = st.session_state["_MT5"]
 
@@ -236,12 +239,13 @@ def _mt5_loop_inner(stop_event, config):
             pass
 
         # Auto-assess open trades when both toggles are ON
+        # Reads/writes _MT5 dict only — no st.session_state access from background thread
         try:
-            _auto_assess = st.session_state.get("_tm_auto_assess", False)
-            _live_mode   = st.session_state.get("tm_live_mode",    False)
+            _auto_assess = _MT5.get("auto_assess", False)
+            _live_mode   = _MT5.get("live_mode",   False)
             if _auto_assess and _MT5["positions"]:
                 from agents.trade_manager import assess_all_open_trades as _atm
-                _cd = st.session_state.get("_tm_cooldown", {})
+                _cd = _MT5.get("tm_cooldown", {})
                 _res = _atm(
                     _MT5["positions"],
                     finnhub_key=config.get("finnhub_key", ""),
@@ -251,8 +255,8 @@ def _mt5_loop_inner(stop_event, config):
                     cooldown_state=_cd,
                     dry_run=not _live_mode,
                 )
-                st.session_state["trade_assessments"] = _res
-                st.session_state["_tm_cooldown"] = _cd
+                _MT5["trade_assessments"] = _res
+                _MT5["tm_cooldown"] = _cd
                 acted = [a for a in _res if a.acted_on]
                 if acted:
                     _log(f"🤖 Trade Manager acted on {len(acted)} position(s)")
@@ -896,7 +900,7 @@ with tab_trades:
                     with st.spinner(f"Analyzing {len(_positions)} position(s)…"):
                         try:
                             from agents.trade_manager import assess_all_open_trades
-                            _cooldown = st.session_state.get("_tm_cooldown", {})
+                            _cooldown = _MT5.get("tm_cooldown", {})
                             _assessments = assess_all_open_trades(
                                 _positions,
                                 finnhub_key=finnhub_key,
@@ -906,8 +910,8 @@ with tab_trades:
                                 cooldown_state=_cooldown,
                                 dry_run=True,
                             )
-                            st.session_state["trade_assessments"] = _assessments
-                            st.session_state["_tm_cooldown"] = _cooldown
+                            _MT5["trade_assessments"] = _assessments
+                            _MT5["tm_cooldown"] = _cooldown
                         except Exception as _ex:
                             st.error(f"Analysis error: {_ex}")
                 else:
@@ -937,7 +941,7 @@ with tab_trades:
         # Map assessments by ticket for quick lookup
         _assessments_by_ticket: dict = {
             a.ticket: a
-            for a in (st.session_state.get("trade_assessments") or [])
+            for a in (_MT5.get("trade_assessments") or [])
         }
 
         for p in positions:
@@ -1070,19 +1074,19 @@ with tab_trades:
                 # Apply button
                 if _a.action != "HOLD":
                     _btn_key = f"apply_{p.ticket}_{_a.assessed_at}"
-                    _live = st.session_state.get("tm_live_mode", False)
+                    _live = _MT5.get("live_mode", False)
                     if _live:
                         if st.button(f"⚡ Apply {_a.action}", key=_btn_key, type="primary"):
                             try:
                                 from agents.trade_manager import _execute_assessment
-                                _cd = st.session_state.get("_tm_cooldown", {})
+                                _cd = _MT5.get("tm_cooldown", {})
                                 _a.dry_run = False
                                 ok = _execute_assessment(_a, _cd)
-                                st.session_state["_tm_cooldown"] = _cd
+                                _MT5["tm_cooldown"] = _cd
                                 if ok:
                                     st.success(f"✓ {_a.action} executed on #{p.ticket}")
                                     _MT5["positions"] = _gop2()
-                                    st.session_state.pop("trade_assessments", None)
+                                    _MT5["trade_assessments"] = []
                                     st.rerun()
                                 else:
                                     st.error("MT5 execution failed — check logs")
@@ -1100,9 +1104,9 @@ with tab_trades:
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # ── Auto-assess hook (runs inside monitor loop via session flag) ──────────
-    # The 15-min monitor loop checks this flag and calls assess_all_open_trades
-    st.session_state["_tm_auto_assess"] = st.session_state.get("tm_auto_assess", False)
+    # ── Sync toggle state into _MT5 so background thread avoids session_state ──
+    _MT5["auto_assess"] = st.session_state.get("tm_auto_assess", False)
+    _MT5["live_mode"]   = st.session_state.get("tm_live_mode",   False)
 
 
 # ── Tab 3: History ────────────────────────────────────────────────────────────
