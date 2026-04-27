@@ -255,6 +255,21 @@ _MT5_TO_YF: dict[str, str] = {
     "#JP225_M26": "NKD=F",  "#JP225_M27": "NKD=F",  "#JP225": "NKD=F",
     "#AUS200_M26": "^AXJO", "#AUS200_M27": "^AXJO",  "#AUS200": "^AXJO",
     "#HK50_M26":   "^HSI",  "#HK50":       "^HSI",
+    # US30 / Dow — broker variants
+    "US30":  "YM=F",  "DJ30": "YM=F",  "DOWJONES": "YM=F",
+    # Crypto (broker CFD names → yfinance)
+    "BTCUSD": "BTC-USD", "BTCUSDT": "BTC-USD",
+    "ETHUSD": "ETH-USD", "ETHUSDT": "ETH-USD",
+    "SOLUSD": "SOL-USD", "SOLUSDT": "SOL-USD",
+    "BNBUSD": "BNB-USD", "BNBUSDT": "BNB-USD",
+    # Natural gas
+    "XNGUSD": "NG=F",  "NGAS": "NG=F",  "NATGAS": "NG=F",  "GASUSD": "NG=F",
+    # Other common broker aliases
+    "USOIL": "CL=F",  "WTI": "CL=F",  "OIL": "CL=F",
+    "NAS100": "NQ=F", "US100": "NQ=F", "USTEC": "NQ=F",
+    "SPX500": "ES=F", "US500": "ES=F", "SP500": "ES=F",
+    "GER40":  "^GDAXI", "DAX40": "^GDAXI",
+    "UK100":  "^FTSE",  "FTSE100": "^FTSE",
 }
 
 # Known forex currency codes for MT5 symbol detection

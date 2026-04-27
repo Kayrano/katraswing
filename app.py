@@ -385,30 +385,91 @@ use_daily    = st.session_state.get("use_daily",    True)
 use_bt_cal   = st.session_state.get("use_bt_cal",   True)
 auto_refresh = st.session_state.get("auto_refresh", False)
 
-# Auto-populate instruments from broker on every render when MT5 is running.
-# Never fall back to hardcoded defaults when MT5 is running — use [] and wait.
+# Curated instrument list — matched against broker symbols when MT5 is connected,
+# or used directly with yfinance tickers when MT5 is offline.
+_CURATED = [
+    # Forex
+    {"label": "EUR/USD", "cands": ["EURUSD"],                                                          "yf": "EURUSD=X"},
+    {"label": "GBP/USD", "cands": ["GBPUSD"],                                                          "yf": "GBPUSD=X"},
+    {"label": "USD/JPY", "cands": ["USDJPY"],                                                          "yf": "USDJPY=X"},
+    {"label": "EUR/JPY", "cands": ["EURJPY"],                                                          "yf": "EURJPY=X"},
+    {"label": "GBP/JPY", "cands": ["GBPJPY"],                                                          "yf": "GBPJPY=X"},
+    {"label": "AUD/USD", "cands": ["AUDUSD"],                                                          "yf": "AUDUSD=X"},
+    {"label": "USD/CAD", "cands": ["USDCAD"],                                                          "yf": "USDCAD=X"},
+    # Indices
+    {"label": "US30",    "cands": ["#US30_M26","#US30_M27","#US30","US30","DJ30","DOWJONES"],           "yf": "YM=F"},
+    {"label": "NAS100",  "cands": ["#US100_M26","#US100_M27","#US100","NAS100","US100","USTEC"],        "yf": "NQ=F"},
+    {"label": "SPX500",  "cands": ["#US500_M26","#US500_M27","#US500","SPX500","US500","SP500"],        "yf": "ES=F"},
+    {"label": "GER40",   "cands": ["#GER40_M26","#GER40_M27","#GER40","GER40","DAX40","GER30"],        "yf": "^GDAXI"},
+    {"label": "UK100",   "cands": ["#UK100_M26","#UK100_M27","#UK100","UK100","FTSE100"],              "yf": "^FTSE"},
+    # Crypto
+    {"label": "BTC/USD", "cands": ["BTCUSD","BTCUSDT","BTC/USD","BTCUSD.","#BTCUSD"],                  "yf": "BTC-USD"},
+    {"label": "ETH/USD", "cands": ["ETHUSD","ETHUSDT","ETH/USD","ETHUSD.","#ETHUSD"],                  "yf": "ETH-USD"},
+    {"label": "SOL/USD", "cands": ["SOLUSD","SOLUSDT","SOL/USD","SOLUSD."],                            "yf": "SOL-USD"},
+    {"label": "BNB/USD", "cands": ["BNBUSD","BNBUSDT","BNB/USD","BNBUSD."],                            "yf": "BNB-USD"},
+    # Commodities
+    {"label": "XAU/USD", "cands": ["XAUUSD","GOLD","XAU/USD","XAUUSD."],                               "yf": "GC=F"},
+    {"label": "XAG/USD", "cands": ["XAGUSD","SILVER","XAG/USD","XAGUSD."],                             "yf": "SI=F"},
+    {"label": "US Oil",  "cands": ["XTIUSD","USOIL","WTI","OIL","XOILUSD","CL"],                      "yf": "CL=F"},
+    {"label": "Nat Gas", "cands": ["XNGUSD","NGAS","NATGAS","GASUSD","NG","NATURALGAS"],               "yf": "NG=F"},
+]
+
+
+def _resolve_instruments(broker_syms: list[dict]) -> list[dict]:
+    """Match curated instruments against available broker symbols.
+    Returns list of {ticker, label, mt5_symbol}."""
+    from data.fetcher_intraday import _MT5_TO_YF
+    broker_names = {s["name"] for s in broker_syms}
+    broker_upper = {s["name"].upper(): s["name"] for s in broker_syms}
+
+    result = []
+    for inst in _CURATED:
+        mt5_sym = None
+        for cand in inst["cands"]:
+            # Exact match
+            if cand in broker_names:
+                mt5_sym = cand
+                break
+            # Case-insensitive exact
+            exact_ci = broker_upper.get(cand.upper())
+            if exact_ci:
+                mt5_sym = exact_ci
+                break
+            # Prefix match: broker symbol starts with candidate + non-alpha (e.g. "EURUSD.r")
+            for bn_upper, bn_orig in broker_upper.items():
+                if bn_upper.startswith(cand.upper()) and (
+                    len(bn_upper) == len(cand) or not bn_upper[len(cand)].isalpha()
+                ):
+                    mt5_sym = bn_orig
+                    break
+            if mt5_sym:
+                break
+
+        if mt5_sym:
+            yf_t = _MT5_TO_YF.get(mt5_sym.upper(),
+                   _MT5_TO_YF.get(mt5_sym.split("_")[0].upper(), inst["yf"]))
+            result.append({"ticker": yf_t, "label": inst["label"], "mt5_symbol": mt5_sym})
+        else:
+            # Not in broker — include with yfinance ticker so analysis still works
+            result.append({"ticker": inst["yf"], "label": inst["label"], "mt5_symbol": inst["yf"]})
+
+    return result
+
+
+# Build instruments list: curated list matched against broker when MT5 is running
 _all_broker_syms = _get_broker_symbols(_connected=_MT5["connected"]) if _MT5["running"] else []
-if _all_broker_syms:
-    _sym_names_all = [s["name"] for s in _all_broker_syms]
-    _sym_descs_all = {s["name"]: s["description"] for s in _all_broker_syms}
-    # Use saved selection if it exists; default to ALL broker symbols
-    _prev_sel = st.session_state.get("_broker_sel")
-    if _prev_sel:
-        _active_sel = [n for n in _prev_sel if n in _sym_names_all]
-    else:
-        _active_sel = _sym_names_all
-    st.session_state["_broker_sel"] = _active_sel
-    from data.fetcher_intraday import _MT5_TO_YF as _M2Y
-    instruments = [
-        {
-            "ticker": _M2Y.get(s.upper(), _M2Y.get(s.split("_")[0].upper(), s)),
-            "label": _sym_descs_all.get(s, s),
-            "mt5_symbol": s,
-        }
-        for s in _active_sel
-    ]
+_resolved = _resolve_instruments(_all_broker_syms) if _all_broker_syms else [
+    {"ticker": i["yf"], "label": i["label"], "mt5_symbol": i["yf"]} for i in _CURATED
+]
+
+# Apply saved user selection (labels used as keys — broker-agnostic)
+_saved_labels = st.session_state.get("_curated_sel")
+if _saved_labels:
+    instruments = [i for i in _resolved if i["label"] in _saved_labels]
+    if not instruments:   # saved selection wiped out (e.g. new curated list) — reset
+        instruments = _resolved
 else:
-    instruments = []
+    instruments = _resolved
 
 # ── Handle MT5 action (start/stop) ────────────────────────────────────────────
 _mt5_action = st.session_state.pop("_mt5_action", None)
@@ -548,43 +609,19 @@ with st.expander("⚙️  Settings & Instruments", expanded=False):
             st.warning("Install MT5:\n`pip install MetaTrader5`")
 
     with mt5_col2:
-        broker_syms = _get_broker_symbols(_connected=_MT5["connected"])
-        if broker_syms:
-            sym_names   = [s["name"] for s in broker_syms]
-            sym_descs   = {s["name"]: s["description"] for s in broker_syms}
-            current_sel = st.session_state.get("_broker_sel", sym_names)
-            # Keep only names still available in broker list
-            current_sel = [n for n in current_sel if n in sym_names]
-            if not current_sel:
-                current_sel = sym_names
-            selected    = st.multiselect(
-                f"Broker instruments ({len(sym_names)} available — all selected by default)",
-                options=sym_names,
-                default=current_sel,
-                format_func=lambda n: f"{n}  —  {sym_descs.get(n, '')}",
-            )
-            st.session_state["_broker_sel"] = selected
-            if selected:
-                from data.fetcher_intraday import _MT5_TO_YF
-                instruments = [
-                    {
-                        "ticker": _MT5_TO_YF.get(s.upper(),
-                                  _MT5_TO_YF.get(s.split("_")[0].upper(), s)),
-                        "label": sym_descs.get(s, s),
-                        "mt5_symbol": s,
-                    }
-                    for s in selected
-                ]
-        else:
-            st.info("Start MT5 Auto-Trade to load all broker instruments automatically.")
-            custom = st.text_input(
-                "Or type MT5 symbol names manually (comma-separated)",
-                value="",
-                placeholder="EURUSD, GBPUSD, #US100_M26",
-            )
-            if custom:
-                syms = [s.strip() for s in custom.split(",") if s.strip()]
-                instruments = [{"ticker": s, "label": s, "mt5_symbol": s} for s in syms]
+        _all_labels    = [i["label"] for i in _CURATED]
+        _cur_labels    = st.session_state.get("_curated_sel", _all_labels)
+        _cur_labels    = [l for l in _cur_labels if l in _all_labels] or _all_labels
+        _sel_labels    = st.multiselect(
+            "Instruments to scan",
+            options=_all_labels,
+            default=_cur_labels,
+        )
+        st.session_state["_curated_sel"] = _sel_labels
+        if _sel_labels:
+            instruments = [i for i in _resolved if i["label"] in _sel_labels]
+        mt5_status = "✅ MT5 connected" if _MT5["connected"] else ("⏳ Connecting…" if _MT5["running"] else "⚠️ MT5 not started")
+        st.caption(mt5_status)
 
     if _MT5["log"]:
         with st.expander("Activity log", expanded=False):
