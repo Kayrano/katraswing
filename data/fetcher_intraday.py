@@ -85,9 +85,13 @@ def fetch_daily_trend(ticker: str) -> dict:
     if mt5_raw is not None and len(mt5_raw) >= 50:
         raw = mt5_raw
     else:
-        yf_tick = _MT5_TO_YF.get(ticker.upper(), ticker)
-        if yf_tick == ticker.upper() and ticker.startswith("#"):
-            yf_tick = _MT5_TO_YF.get(ticker.split("_")[0].upper(), ticker)
+        yf_tick = _MT5_TO_YF.get(ticker.upper())
+        if yf_tick is None and ticker.startswith("#"):
+            yf_tick = _MT5_TO_YF.get(ticker.split("_")[0].upper())
+        if yf_tick is None:
+            raise ValueError(
+                f"No data for '{ticker}': MT5 returned nothing and no yfinance mapping exists"
+            )
         try:
             raw = yf.Ticker(yf_tick).history(period="90d", interval="1d", auto_adjust=True)
         except Exception:
@@ -159,9 +163,13 @@ def fetch_h4_trend(ticker: str, mt5_symbol: str | None = None) -> dict:
 
     if raw is None or len(raw) < 30:
         # Fallback: yfinance 1h → resample to 4h
-        yf_tick = _MT5_TO_YF.get(ticker.upper(), ticker)
-        if yf_tick == ticker.upper() and ticker.startswith("#"):
-            yf_tick = _MT5_TO_YF.get(ticker.split("_")[0].upper(), ticker)
+        yf_tick = _MT5_TO_YF.get(ticker.upper())
+        if yf_tick is None and ticker.startswith("#"):
+            yf_tick = _MT5_TO_YF.get(ticker.split("_")[0].upper())
+        if yf_tick is None:
+            raise ValueError(
+                f"No data for '{ticker}': MT5 returned nothing and no yfinance mapping exists"
+            )
         try:
             raw_1h = yf.Ticker(yf_tick).history(period="60d", interval="1h", auto_adjust=True)
             if raw_1h is not None and not raw_1h.empty:
@@ -217,7 +225,9 @@ def fetch_h4_trend(ticker: str, mt5_symbol: str | None = None) -> dict:
 
 _JAPAN_FUTURES = {"NKD=F"}
 
-# Maps raw MT5 symbol names → yfinance tickers for offline fallback
+# Maps raw MT5 symbol names → yfinance tickers for offline fallback.
+# Only symbols with a confirmed yfinance equivalent should appear here.
+# Broker-specific CFDs with no yfinance equivalent must be ABSENT (triggers fast-fail).
 _MT5_TO_YF: dict[str, str] = {
     # Forex
     "EURUSD": "EURUSD=X", "GBPUSD": "GBPUSD=X", "USDJPY": "USDJPY=X",
@@ -226,17 +236,25 @@ _MT5_TO_YF: dict[str, str] = {
     "GBPJPY": "GBPJPY=X", "EURCAD": "EURCAD=X", "EURCHF": "EURCHF=X",
     "AUDCAD": "AUDCAD=X", "AUDCHF": "AUDCHF=X", "AUDNZD": "AUDNZD=X",
     "CADJPY": "CADJPY=X", "CHFJPY": "CHFJPY=X", "NZDJPY": "NZDJPY=X",
-    # Metals
-    "XAUUSD": "GC=F", "XAGUSD": "SI=F",
-    # US indices (FxPro-style names with expiry suffix handled via startswith)
+    # Metals / commodities
+    "XAUUSD": "GC=F",  "XAGUSD": "SI=F",
+    "XTIUSD": "CL=F",  "XBRUSD": "BZ=F",   # WTI / Brent oil
+    # US indices (FxPro-style names with expiry suffix handled via prefix strip)
     "#US100_M26": "NQ=F",  "#US100_M27": "NQ=F",  "#US100": "NQ=F",
     "#US500_M26": "ES=F",  "#US500_M27": "ES=F",  "#US500": "ES=F",
     "#US30_M26":  "YM=F",  "#US30_M27":  "YM=F",  "#US30":  "YM=F",
-    # European indices
-    "#GER40_M26": "GDAXI", "#GER40": "GDAXI",
-    "#UK100_M26": "^FTSE",  "#UK100": "^FTSE",
-    # Japan
-    "#JP225_M26": "NKD=F",  "#JP225": "NKD=F",
+    "#US2000":    "RTY=F",
+    # European indices — note the required ^ prefix for index tickers
+    "#GER40_M26": "^GDAXI", "#GER40_M27": "^GDAXI", "#GER40": "^GDAXI",
+    "#UK100_M26": "^FTSE",  "#UK100_M27": "^FTSE",  "#UK100": "^FTSE",
+    "#FRA40_M26": "^FCHI",  "#FRA40_M27": "^FCHI",  "#FRA40": "^FCHI",
+    "#SWI20_M26": "^SSMI",  "#SWI20":     "^SSMI",
+    "#ESP35_M26": "^IBEX",  "#ESP35":     "^IBEX",
+    "#EU50_M26":  "^STOXX50E", "#EU50":   "^STOXX50E",
+    # Asia-Pacific indices
+    "#JP225_M26": "NKD=F",  "#JP225_M27": "NKD=F",  "#JP225": "NKD=F",
+    "#AUS200_M26": "^AXJO", "#AUS200_M27": "^AXJO",  "#AUS200": "^AXJO",
+    "#HK50_M26":   "^HSI",  "#HK50":       "^HSI",
 }
 
 # Known forex currency codes for MT5 symbol detection
@@ -349,11 +367,16 @@ def fetch_intraday_data(
     else:
         # ── Fall back to yfinance ─────────────────────────────────────────────
         # Map raw MT5 symbol names to yfinance tickers where needed
-        yf_ticker = _MT5_TO_YF.get(ticker.upper(), ticker)
+        yf_ticker = _MT5_TO_YF.get(ticker.upper())
         # Also handle expiry-suffixed index futures like #US100_M28
-        if yf_ticker == ticker.upper() and ticker.startswith("#"):
+        if yf_ticker is None and ticker.startswith("#"):
             base = ticker.split("_")[0].upper()
-            yf_ticker = _MT5_TO_YF.get(base, ticker)
+            yf_ticker = _MT5_TO_YF.get(base)
+        # Fast-fail: broker-specific CFDs with no confirmed yfinance mapping
+        if yf_ticker is None:
+            raise ValueError(
+                f"No data for '{ticker}': MT5 returned nothing and no yfinance mapping exists"
+            )
         try:
             yf_raw = yf.Ticker(yf_ticker).history(
                 period=f"{days}d", interval=interval, auto_adjust=True

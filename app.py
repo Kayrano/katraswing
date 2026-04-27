@@ -364,8 +364,10 @@ def _refresh_backtest_rates(ticker: str):
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _get_broker_symbols() -> list[dict]:
-    """Fetch available symbols from MT5 broker (cached 5 min)."""
+def _get_broker_symbols(_connected: bool = False) -> list[dict]:
+    """Fetch available symbols from MT5 broker (cached 5 min, keyed by connection state)."""
+    if not _connected:
+        return []
     try:
         from utils.mt5_bridge import get_tradeable_symbols
         return get_tradeable_symbols()
@@ -392,7 +394,21 @@ _DEFAULT_INSTRUMENTS = [
     {"ticker": "NQ=F",     "label": "NAS100",   "mt5_symbol": "#US100_M26"},
     {"ticker": "ES=F",     "label": "S&P500",   "mt5_symbol": "#US500_M26"},
 ]
-instruments = st.session_state.get("instruments", _DEFAULT_INSTRUMENTS)
+
+# Auto-populate instruments from broker selection on every render
+_saved_broker_sel = st.session_state.get("_broker_sel")
+if _saved_broker_sel and _MT5["connected"]:
+    from data.fetcher_intraday import _MT5_TO_YF as _M2Y
+    instruments = [
+        {
+            "ticker": _M2Y.get(s.upper(), _M2Y.get(s.split("_")[0].upper(), s)),
+            "label": s,
+            "mt5_symbol": s,
+        }
+        for s in _saved_broker_sel
+    ]
+else:
+    instruments = st.session_state.get("instruments", _DEFAULT_INSTRUMENTS)
 
 # ── Handle MT5 action (start/stop) ────────────────────────────────────────────
 _mt5_action = st.session_state.pop("_mt5_action", None)
@@ -532,7 +548,7 @@ with st.expander("⚙️  Settings & Instruments", expanded=False):
             st.warning("Install MT5:\n`pip install MetaTrader5`")
 
     with mt5_col2:
-        broker_syms = _get_broker_symbols() if _mt5_ic() else []
+        broker_syms = _get_broker_symbols(_connected=_MT5["connected"])
         if broker_syms:
             sym_names   = [s["name"] for s in broker_syms]
             sym_descs   = {s["name"]: s["description"] for s in broker_syms}
