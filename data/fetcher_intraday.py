@@ -88,6 +88,8 @@ def fetch_daily_trend(ticker: str) -> dict:
         yf_tick = _MT5_TO_YF.get(ticker.upper())
         if yf_tick is None and ticker.startswith("#"):
             yf_tick = _MT5_TO_YF.get(ticker.split("_")[0].upper())
+        if yf_tick is None and _is_yf_ticker(ticker):
+            yf_tick = ticker
         if yf_tick is None:
             raise ValueError(
                 f"No data for '{ticker}': MT5 returned nothing and no yfinance mapping exists"
@@ -166,6 +168,8 @@ def fetch_h4_trend(ticker: str, mt5_symbol: str | None = None) -> dict:
         yf_tick = _MT5_TO_YF.get(ticker.upper())
         if yf_tick is None and ticker.startswith("#"):
             yf_tick = _MT5_TO_YF.get(ticker.split("_")[0].upper())
+        if yf_tick is None and _is_yf_ticker(ticker):
+            yf_tick = ticker
         if yf_tick is None:
             raise ValueError(
                 f"No data for '{ticker}': MT5 returned nothing and no yfinance mapping exists"
@@ -224,6 +228,16 @@ def fetch_h4_trend(ticker: str, mt5_symbol: str | None = None) -> dict:
 
 
 _JAPAN_FUTURES = {"NKD=F"}
+
+
+def _is_yf_ticker(t: str) -> bool:
+    """Return True if the string is already a valid yfinance ticker format."""
+    return (
+        t.endswith("=X") or t.endswith("=F") or
+        t.startswith("^") or t.endswith(".IS") or
+        ("-" in t and not t.startswith("#"))   # BTC-USD, ETH-USD, SOL-USD
+    )
+
 
 # Maps raw MT5 symbol names → yfinance tickers for offline fallback.
 # Only symbols with a confirmed yfinance equivalent should appear here.
@@ -387,6 +401,9 @@ def fetch_intraday_data(
         if yf_ticker is None and ticker.startswith("#"):
             base = ticker.split("_")[0].upper()
             yf_ticker = _MT5_TO_YF.get(base)
+        # If ticker is already in yfinance format, use it directly
+        if yf_ticker is None and _is_yf_ticker(ticker):
+            yf_ticker = ticker
         # Fast-fail: broker-specific CFDs with no confirmed yfinance mapping
         if yf_ticker is None:
             raise ValueError(
