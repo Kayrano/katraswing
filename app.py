@@ -609,7 +609,10 @@ with st.expander("⚙️  Settings & Instruments", expanded=False):
 with st.expander("🎓 Strategy Learning", expanded=False):
     try:
         import pandas as _pd_sl
-        from data.strategy_params import get_all_params
+        from data.strategy_params import get_all_params, adapt_all as _adapt_all_now
+        from data.trade_outcomes import _load as _load_trades
+        # Sync stats from existing trade log on every render (fast — no-op when nothing changed)
+        _adapt_all_now(_load_trades())
         _sp = get_all_params()
         _rows = []
         for _sname, _p in _sp.items():

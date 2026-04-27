@@ -168,15 +168,28 @@ def adapt_strategy(strategy: str, all_trades: list[dict]) -> bool:
         t for t in all_trades
         if t.get("strategy") == strategy and t.get("outcome") in ("WIN", "LOSS")
     ]
+
+    params  = get_params(strategy)
+    changed = False
+
+    # Always sync trade count/win_rate stats even if not enough trades to adapt params
+    if closed:
+        recent_stats = closed[-_RECENT_WINDOW:]
+        wins_stats   = [t for t in recent_stats if t["outcome"] == "WIN"]
+        wr_stats     = len(wins_stats) / len(recent_stats)
+        if params["trades_seen"] != len(closed) or params.get("win_rate") != round(wr_stats, 3):
+            params["trades_seen"] = len(closed)
+            params["wins"]        = len([t for t in closed if t["outcome"] == "WIN"])
+            params["win_rate"]    = round(wr_stats, 3)
+            changed = True
+            save_params()
+
     if len(closed) < _MIN_TRADES_TO_ADAPT:
-        return False
+        return changed
 
     recent  = closed[-_RECENT_WINDOW:]
     wins    = [t for t in recent if t["outcome"] == "WIN"]
     win_rate = len(wins) / len(recent)
-
-    params  = get_params(strategy)
-    changed = False
 
     # ── Confidence floor ──────────────────────────────────────────────────
     if win_rate < 0.40 and params["conf_floor"] < _CONF_FLOOR_MAX:
@@ -213,11 +226,6 @@ def adapt_strategy(strategy: str, all_trades: list[dict]) -> bool:
             params["enabled"] = True
             changed = True
             logger.info(f"Adaptive learning RE-ENABLED {strategy} — win_rate={win_rate:.1%}")
-
-    # ── Update stats ──────────────────────────────────────────────────────
-    params["trades_seen"] = len(closed)
-    params["wins"]        = len([t for t in closed if t["outcome"] == "WIN"])
-    params["win_rate"]    = round(win_rate, 3)
 
     if changed:
         params["last_adapted"] = datetime.now(tz=timezone.utc).isoformat()

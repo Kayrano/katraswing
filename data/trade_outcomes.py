@@ -376,6 +376,13 @@ def import_all_mt5_history(days: int = 90) -> int:
     if imported:
         _save(trades)
         logger.info(f"Imported/updated {imported} trade(s) from MT5 history ({days}d)")
+        try:
+            from data.strategy_params import adapt_all
+            adapted = adapt_all(trades)
+            if adapted:
+                logger.info(f"Adaptive learning: {adapted} strategy param(s) updated after import")
+        except Exception as _ae:
+            logger.debug(f"adapt_all skipped: {_ae}")
     return imported
 
 
