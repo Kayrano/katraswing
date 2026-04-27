@@ -364,12 +364,12 @@ def _refresh_backtest_rates(ticker: str):
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _get_broker_symbols() -> list[dict]:
-    """Fetch available symbols from MT5 broker (cached 5 min)."""
+def _get_broker_symbols(_connected: bool = False) -> list[dict]:
+    """Fetch available symbols from MT5 broker (cached 5 min, keyed by connection state)."""
+    if not _connected:
+        return []
     try:
-        from utils.mt5_bridge import is_connected as _chk, get_tradeable_symbols
-        if not _chk():
-            return []
+        from utils.mt5_bridge import get_tradeable_symbols
         return get_tradeable_symbols()
     except Exception:
         return []
@@ -387,7 +387,7 @@ auto_refresh = st.session_state.get("auto_refresh", False)
 
 # Auto-populate instruments from broker on every render when MT5 is running.
 # Never fall back to hardcoded defaults when MT5 is running — use [] and wait.
-_all_broker_syms = _get_broker_symbols() if _MT5["running"] else []
+_all_broker_syms = _get_broker_symbols(_connected=_MT5["connected"]) if _MT5["running"] else []
 if _all_broker_syms:
     _sym_names_all = [s["name"] for s in _all_broker_syms]
     _sym_descs_all = {s["name"]: s["description"] for s in _all_broker_syms}
@@ -548,7 +548,7 @@ with st.expander("⚙️  Settings & Instruments", expanded=False):
             st.warning("Install MT5:\n`pip install MetaTrader5`")
 
     with mt5_col2:
-        broker_syms = _get_broker_symbols()
+        broker_syms = _get_broker_symbols(_connected=_MT5["connected"])
         if broker_syms:
             sym_names   = [s["name"] for s in broker_syms]
             sym_descs   = {s["name"]: s["description"] for s in broker_syms}
@@ -641,9 +641,12 @@ if auto_refresh:
     if time.time() - st.session_state.get("last_refresh_ts", 0) > 300:
         st.session_state.pop("results", None)
 
-needs_run = scan_btn or ("results" not in st.session_state)
+needs_run = (scan_btn or ("results" not in st.session_state)) and bool(instruments)
 
 # ── Signal scan (parallel) ────────────────────────────────────────────────────
+if not instruments:
+    st.info("⏳ Waiting for MT5 broker instruments to load… Start Auto-Trade if not running.")
+
 if needs_run:
     from agents.signal_engine import run_signal
     from concurrent.futures import ThreadPoolExecutor
