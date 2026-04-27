@@ -74,7 +74,7 @@ if "_MT5" not in st.session_state:
         "log": [], "error": "",
         "live_win_rates": {},
         # Trade Manager shared state — written by main thread, read by background thread
-        "auto_assess": False, "live_mode": False,
+        "auto_assess": True, "live_mode": True,
         "tm_cooldown": {}, "trade_assessments": [],
     }
 _MT5: dict = st.session_state["_MT5"]
@@ -268,7 +268,8 @@ def _mt5_loop_inner(stop_event, config):
             _log(f"Auto-assess error: {_atm_exc}")
 
         _MT5["last_check"] = datetime.now()
-        stop_event.wait(900)  # 15-minute scan cycle
+        # 5-min cycle when positions are open (timely TM execution), 15-min otherwise
+        stop_event.wait(300 if _MT5["positions"] else 900)
 
     disconnect()
     _MT5["connected"] = False
@@ -917,11 +918,11 @@ with tab_trades:
                 else:
                     st.info("No open positions to analyze.")
         with c_livemode:
-            tm_live = st.toggle("⚡ Live Mode", value=False, key="tm_live_mode",
-                                help="When ON, Apply buttons send real MT5 orders")
+            tm_live = st.toggle("⚡ Live Mode", value=True, key="tm_live_mode",
+                                help="When ON, Trade Manager executes actions automatically")
         with c_autoassess:
-            tm_auto = st.checkbox("Auto-assess", value=False, key="tm_auto_assess",
-                                  help="Re-analyze on every 15-min scan cycle (needs Live Mode for execution)")
+            tm_auto = st.checkbox("Auto-assess", value=True, key="tm_auto_assess",
+                                  help="Trade Manager runs on every scan cycle and acts autonomously")
 
     positions = _MT5["positions"]
     if not _mt5_avail2():
@@ -1105,8 +1106,8 @@ with tab_trades:
         st.markdown("</div>", unsafe_allow_html=True)
 
     # ── Sync toggle state into _MT5 so background thread avoids session_state ──
-    _MT5["auto_assess"] = st.session_state.get("tm_auto_assess", False)
-    _MT5["live_mode"]   = st.session_state.get("tm_live_mode",   False)
+    _MT5["auto_assess"] = st.session_state.get("tm_auto_assess", True)
+    _MT5["live_mode"]   = st.session_state.get("tm_live_mode",   True)
 
 
 # ── Tab 3: History ────────────────────────────────────────────────────────────
