@@ -566,7 +566,7 @@ def _detect_ascending_triangle(highs, lows, n) -> list[PatternMatch]:
     x = np.arange(len(recent_l))
     slope, _ = np.polyfit(x, recent_l, 1)
 
-    if top_touches >= 2 and slope > 0:
+    if top_touches >= 2 and slope > 0 and top > 0:
         conf = min(1.0, 0.4 + top_touches * 0.1 + slope / top * 50)
         matches.append(PatternMatch(
             name="Ascending Triangle",
@@ -599,7 +599,7 @@ def _detect_descending_triangle(highs, lows, n) -> list[PatternMatch]:
     x = np.arange(len(recent_h))
     slope, _ = np.polyfit(x, recent_h, 1)
 
-    if bottom_touches >= 2 and slope < 0:
+    if bottom_touches >= 2 and slope < 0 and bottom > 0:
         conf = min(1.0, 0.4 + bottom_touches * 0.1 + abs(slope) / bottom * 50)
         matches.append(PatternMatch(
             name="Descending Triangle",
