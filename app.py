@@ -471,7 +471,7 @@ with h_acct:
 
 with h_right:
     st.markdown("<div style='padding-top:12px;'>", unsafe_allow_html=True)
-    scan_btn = st.button("🔄 Scan", type="primary", use_container_width=True)
+    scan_btn = st.button("🔄 Scan", type="primary", width='stretch')
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Settings & Instruments expander ──────────────────────────────────────────
@@ -503,7 +503,7 @@ with st.expander("⚙️  Settings & Instruments", expanded=False):
     mt5_col1, mt5_col2 = st.columns([1, 2])
     with mt5_col1:
         if not _MT5["running"]:
-            if st.button("▶ Start Auto-Trade", type="primary", use_container_width=True):
+            if st.button("▶ Start Auto-Trade", type="primary", width='stretch'):
                 st.session_state["_mt5_action"] = {
                     "action": "start",
                     "cfg": {
@@ -520,10 +520,10 @@ with st.expander("⚙️  Settings & Instruments", expanded=False):
         else:
             c_stop, c_close = st.columns(2)
             with c_stop:
-                if st.button("⏹ Stop", use_container_width=True):
+                if st.button("⏹ Stop", width='stretch'):
                     st.session_state["_mt5_action"] = {"action": "stop"}
             with c_close:
-                if _MT5["connected"] and st.button("🚨 Close All", use_container_width=True):
+                if _MT5["connected"] and st.button("🚨 Close All", width='stretch'):
                     from utils.mt5_bridge import close_all_positions
                     close_all_positions()
                     st.success("All positions closed.")
@@ -596,7 +596,7 @@ with st.expander("🎓 Strategy Learning", expanded=False):
                                      else ("🟡 Learning" if _p.get("trades_seen", 0) >= 5
                                            else "🔵 New"))),
             })
-        st.dataframe(_pd_sl.DataFrame(_rows).set_index("Strategy"), use_container_width=True)
+        st.dataframe(_pd_sl.DataFrame(_rows).set_index("Strategy"), width='stretch')
         if any(not _p.get("enabled", True) for _p in _sp.values()):
             st.caption("🔴 Disabled strategies produce no signals until win-rate recovers above 50%.")
     except Exception as _sle:
@@ -1277,7 +1277,7 @@ with tab_journal:
                     xaxis=dict(gridcolor="#1e2330"),
                     yaxis=dict(gridcolor="#1e2330", zeroline=True, zerolinecolor="#374151"),
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
         except Exception:
             pass
 
