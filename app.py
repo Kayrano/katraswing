@@ -611,6 +611,11 @@ st.session_state.update({
     "instruments": instruments,
 })
 
+# ── Sync TM toggle state into _MT5 on every render ────────────────────────────
+# Must run outside any tab block so the background thread always gets current values.
+_MT5["auto_assess"] = st.session_state.get("tm_auto_assess", True)
+_MT5["live_mode"]   = st.session_state.get("tm_live_mode",   True)
+
 # ── Auto-refresh trigger ──────────────────────────────────────────────────────
 if auto_refresh:
     if time.time() - st.session_state.get("last_refresh_ts", 0) > 300:
@@ -1132,10 +1137,6 @@ with tab_trades:
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # ── Sync toggle state into _MT5 so background thread avoids session_state ──
-    _MT5["auto_assess"] = st.session_state.get("tm_auto_assess", True)
-    _MT5["live_mode"]   = st.session_state.get("tm_live_mode",   True)
-
 
 # ── Tab 3: History ────────────────────────────────────────────────────────────
 with tab_history:
@@ -1276,7 +1277,7 @@ with tab_journal:
                     xaxis=dict(gridcolor="#1e2330"),
                     yaxis=dict(gridcolor="#1e2330", zeroline=True, zerolinecolor="#374151"),
                 )
-                st.plotly_chart(fig, width='stretch')
+                st.plotly_chart(fig, use_container_width=True)
         except Exception:
             pass
 
@@ -1461,5 +1462,5 @@ with tab_learning:
 
 # ── Auto-refresh while monitoring ─────────────────────────────────────────────
 if _MT5["running"]:
-    time.sleep(5)   # short sleep keeps UI responsive; the 15-min scan cadence is in the thread
+    time.sleep(1)
     st.rerun()

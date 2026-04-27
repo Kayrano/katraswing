@@ -342,8 +342,8 @@ def _decide_action(
 
     # Per-strategy time stop
     max_hours = _STRATEGY_MAX_HOURS.get(strategy, 8.0)
-    if open_hours > max_hours and profit < 0.5 * atr:
-        return "CLOSE", f"Time stop: {strategy or 'trade'} open {open_hours:.1f}h (max {max_hours:.0f}h), profit {profit:.2f} < 0.5×ATR", "MEDIUM", None, None, None
+    if open_hours > max_hours and profit <= 0:
+        return "CLOSE", f"Time stop: {strategy or 'trade'} open {open_hours:.1f}h (max {max_hours:.0f}h), profit {profit:.2f}", "MEDIUM", None, None, None
 
     # News sentiment against position + declining health
     news_score = getattr(signal, "news_score", 0.0)

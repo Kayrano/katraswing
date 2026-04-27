@@ -390,7 +390,7 @@ def run_signal(
             chart_signals=active, patterns=patterns,
             news_items=news_items,
             news_sentiment=news_sentiment, news_score=news_score,
-            news_boost=round(news_boost + pattern_boost, 3),
+            news_boost=round(news_boost, 3),
             base_confidence=round(base_conf, 3),
             indicators=indicators, df_5m=df,
             consensus_boost=round(consensus_boost, 3),
