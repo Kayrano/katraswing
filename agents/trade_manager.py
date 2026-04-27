@@ -239,14 +239,21 @@ def _compute_health_score(
 # ── Per-strategy max hold duration ───────────────────────────────────────────
 
 _STRATEGY_MAX_HOURS: dict[str, float] = {
-    "VWAP_RSI_5M":  3.0,
-    "RSI2_VWAP":    3.0,
-    "TREND_MOM":    8.0,
-    "ORB":         16.0,
-    "NR7_BO":      12.0,
-    "ABSORB_BO":    6.0,
-    "TRIPLE_A":     6.0,
-    "VA_BOUNCE":    4.0,
+    "VWAP_RSI_5M":        3.0,
+    "RSI2_VWAP":          3.0,
+    "BB_SCALP_5M":        2.0,
+    "STOCH_CROSS_5M":     2.0,
+    "EMA_MICRO_CROSS_5M": 1.5,
+    "TREND_MOM_5M":       8.0,
+    "TREND_MOM":          8.0,
+    "ORB_5M":            16.0,
+    "ORB":               16.0,
+    "NR7_BREAKOUT_5M":   12.0,
+    "NR7_BO":            12.0,
+    "ABSORB_15M":         6.0,
+    "ABSORB_BO":          6.0,
+    "TRIPLE_A":           6.0,
+    "VA_BOUNCE":          4.0,
 }
 
 

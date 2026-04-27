@@ -954,6 +954,228 @@ def nr7_breakout_5m(df: pd.DataFrame) -> IntradaySignal:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
+# STRATEGY 11 — Bollinger Band Pierce-and-Reclaim Scalp  (5m)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def bb_scalp_5m(df: pd.DataFrame) -> IntradaySignal:
+    """
+    BB pierce-and-reclaim: prior bar closes outside the band, current bar
+    closes back inside (reclaim). VWAP alignment required. Tight SL/TP.
+
+    SL: 0.6×ATR  TP: 1.2×ATR  →  1:2 R:R
+    Add to _MR_STRATEGIES (penalised when ADX > 25).
+    """
+    NAME = "BB_SCALP_5M"
+    TF   = "5m"
+
+    if len(df) < 25:
+        return _flat(NAME, TF, "Insufficient bars (need 25)")
+    if "session_vwap" not in df.columns:
+        return _flat(NAME, TF, "session_vwap column missing")
+
+    bb    = ta.bbands(df["Close"], length=20, std=2.0)
+    atr10 = ta.atr(df["High"], df["Low"], df["Close"], length=10)
+
+    if bb is None or bb.empty:
+        return _flat(NAME, TF, "BB unavailable")
+
+    cur_close  = float(df["Close"].iloc[-1])
+    cur_vwap   = float(df["session_vwap"].iloc[-1])
+    cur_atr    = float(atr10.iloc[-1])
+    cur_bbl    = float(bb.iloc[-1, 0])
+    cur_bbu    = float(bb.iloc[-1, 2])
+    prev_close = float(df["Close"].iloc[-2])
+    prev_bbl   = float(bb.iloc[-2, 0])
+    prev_bbu   = float(bb.iloc[-2, 2])
+    cur_rvol   = float(df["rvol"].iloc[-1]) if "rvol" in df.columns else 1.0
+
+    if any(np.isnan(v) for v in [cur_close, cur_atr, cur_bbl, cur_bbu,
+                                   prev_bbl, prev_bbu, cur_vwap]) or cur_atr == 0:
+        return _flat(NAME, TF, "NaN indicator — warmup incomplete")
+
+    rvol_note = f"RVOL {cur_rvol:.1f}x"
+
+    if prev_close < prev_bbl and cur_close > cur_bbl and cur_close > cur_vwap:
+        conf = 0.65
+        if cur_rvol >= 1.5:
+            conf += 0.08
+        if cur_close - cur_bbl > 0.3 * cur_atr:
+            conf += 0.06
+        return _make_signal(NAME, TF, "LONG", min(conf, 0.85), cur_close, cur_atr,
+            sl_atr_mult=0.6, tp_atr_mult=1.2,
+            reason=f"BB pierce↓ reclaim: prev {prev_close:.4f}<BBL {prev_bbl:.4f} → cur {cur_close:.4f}>BBL {cur_bbl:.4f} | VWAP {cur_vwap:.4f} | {rvol_note}")
+
+    if prev_close > prev_bbu and cur_close < cur_bbu and cur_close < cur_vwap:
+        conf = 0.65
+        if cur_rvol >= 1.5:
+            conf += 0.08
+        if cur_bbu - cur_close > 0.3 * cur_atr:
+            conf += 0.06
+        return _make_signal(NAME, TF, "SHORT", min(conf, 0.85), cur_close, cur_atr,
+            sl_atr_mult=0.6, tp_atr_mult=1.2,
+            reason=f"BB pierce↑ reclaim: prev {prev_close:.4f}>BBU {prev_bbu:.4f} → cur {cur_close:.4f}<BBU {cur_bbu:.4f} | VWAP {cur_vwap:.4f} | {rvol_note}")
+
+    return _flat(NAME, TF,
+        f"No BB pierce-reclaim | BBL {cur_bbl:.4f} BBU {cur_bbu:.4f} C {cur_close:.4f}"
+        + (" | above VWAP" if cur_close > cur_vwap else " | below VWAP"))
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# STRATEGY 12 — Stochastic Extreme Crossover Scalp  (5m)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def stoch_cross_5m(df: pd.DataFrame) -> IntradaySignal:
+    """
+    Stochastic K/D crossover inside extreme oversold (<25) / overbought (>75)
+    zones, filtered by EMA(21) trend direction.
+
+    SL: 0.7×ATR  TP: 1.4×ATR  →  1:2 R:R
+    Add to _MR_STRATEGIES (penalised when ADX > 25).
+    """
+    NAME = "STOCH_CROSS_5M"
+    TF   = "5m"
+
+    if len(df) < 25:
+        return _flat(NAME, TF, "Insufficient bars (need 25)")
+
+    stoch_df = ta.stoch(df["High"], df["Low"], df["Close"], k=14, d=3)
+    ema21    = ta.ema(df["Close"], length=21)
+    atr10    = ta.atr(df["High"], df["Low"], df["Close"], length=10)
+
+    if stoch_df is None or stoch_df.empty:
+        return _flat(NAME, TF, "Stochastic unavailable")
+
+    cur_k  = float(stoch_df.iloc[-1, 0])
+    cur_d  = float(stoch_df.iloc[-1, 1])
+    prev_k = float(stoch_df.iloc[-2, 0])
+    prev_d = float(stoch_df.iloc[-2, 1])
+
+    cur_ema21 = float(ema21.iloc[-1])
+    cur_atr   = float(atr10.iloc[-1])
+    cur_close = float(df["Close"].iloc[-1])
+    cur_vwap  = float(df["session_vwap"].iloc[-1]) if "session_vwap" in df.columns else cur_close
+    cur_rvol  = float(df["rvol"].iloc[-1]) if "rvol" in df.columns else 1.0
+
+    if any(np.isnan(v) for v in [cur_k, cur_d, prev_k, prev_d, cur_ema21, cur_atr]) or cur_atr == 0:
+        return _flat(NAME, TF, "NaN indicator — warmup incomplete")
+
+    k_crossed_up   = prev_k < prev_d and cur_k > cur_d
+    k_crossed_down = prev_k > prev_d and cur_k < cur_d
+    cross_spread   = abs(cur_k - cur_d)
+    near_vwap      = abs(cur_close - cur_vwap) <= 0.5 * cur_atr
+
+    def _conf() -> float:
+        c = 0.63
+        if cross_spread >= 3.0:
+            c += 0.07
+        if near_vwap:
+            c += 0.06
+        if cur_rvol >= 1.4:
+            c += 0.06
+        return min(c, 0.85)
+
+    vwap_note = " | near VWAP" if near_vwap else ""
+
+    if k_crossed_up and cur_k < 25 and cur_d < 25 and cur_close > cur_ema21:
+        return _make_signal(NAME, TF, "LONG", _conf(), cur_close, cur_atr,
+            sl_atr_mult=0.7, tp_atr_mult=1.4,
+            reason=f"Stoch cross↑ oversold K={cur_k:.1f}/D={cur_d:.1f} | above EMA21 {cur_ema21:.4f} | RVOL {cur_rvol:.1f}x{vwap_note}")
+
+    if k_crossed_down and cur_k > 75 and cur_d > 75 and cur_close < cur_ema21:
+        return _make_signal(NAME, TF, "SHORT", _conf(), cur_close, cur_atr,
+            sl_atr_mult=0.7, tp_atr_mult=1.4,
+            reason=f"Stoch cross↓ overbought K={cur_k:.1f}/D={cur_d:.1f} | below EMA21 {cur_ema21:.4f} | RVOL {cur_rvol:.1f}x{vwap_note}")
+
+    if k_crossed_up and cur_k < 25:
+        return _flat(NAME, TF, f"Stoch cross↑ oversold but below EMA21 {cur_ema21:.4f}")
+    if k_crossed_down and cur_k > 75:
+        return _flat(NAME, TF, f"Stoch cross↓ overbought but above EMA21 {cur_ema21:.4f}")
+    return _flat(NAME, TF, f"Stoch neutral/no cross K={cur_k:.1f}/D={cur_d:.1f}")
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# STRATEGY 13 — Fast EMA Micro-Cross with Delta Pressure  (5m)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def ema_micro_cross_5m(df: pd.DataFrame) -> IntradaySignal:
+    """
+    EMA(5)/EMA(13) fresh crossover (exactly 1-bar old) confirmed by VWAP
+    alignment and 3-bar cumulative delta_proxy (buying/selling pressure).
+
+    SL: 0.5×ATR  TP: 1.0×ATR  →  1:2 R:R (tightest in the suite)
+    Add to _TREND_STRATEGIES (penalised when ADX < 20).
+    """
+    NAME = "EMA_MICRO_CROSS_5M"
+    TF   = "5m"
+
+    if len(df) < 20:
+        return _flat(NAME, TF, "Insufficient bars (need 20)")
+    if "session_vwap" not in df.columns:
+        return _flat(NAME, TF, "session_vwap column missing")
+
+    ema5  = ta.ema(df["Close"], length=5)
+    ema13 = ta.ema(df["Close"], length=13)
+    atr10 = ta.atr(df["High"], df["Low"], df["Close"], length=10)
+
+    cur_ema5   = float(ema5.iloc[-1])
+    cur_ema13  = float(ema13.iloc[-1])
+    prev_ema5  = float(ema5.iloc[-2])
+    prev_ema13 = float(ema13.iloc[-2])
+    cur_close  = float(df["Close"].iloc[-1])
+    cur_vwap   = float(df["session_vwap"].iloc[-1])
+    cur_atr    = float(atr10.iloc[-1])
+    cur_rvol   = float(df["rvol"].iloc[-1]) if "rvol" in df.columns else 1.0
+
+    if any(np.isnan(v) for v in [cur_ema5, cur_ema13, prev_ema5, prev_ema13,
+                                   cur_atr, cur_vwap]) or cur_atr == 0:
+        return _flat(NAME, TF, "NaN indicator — warmup incomplete")
+
+    long_cross  = prev_ema5 < prev_ema13 and cur_ema5 > cur_ema13
+    short_cross = prev_ema5 > prev_ema13 and cur_ema5 < cur_ema13
+
+    if not long_cross and not short_cross:
+        gap_dir = "above" if cur_ema5 > cur_ema13 else "below"
+        return _flat(NAME, TF, f"No fresh EMA5/13 cross | EMA5={cur_ema5:.4f} {gap_dir} EMA13={cur_ema13:.4f}")
+
+    delta = ta.delta_proxy(df["Open"], df["Close"], df["Volume"])
+    delta3_sum = float(delta.iloc[-3:].sum())
+    delta_abs_mean = float(delta.abs().rolling(10).mean().iloc[-1]) if len(df) >= 10 else 0.0
+    strong_pressure = (delta_abs_mean > 0) and (abs(delta3_sum) > 1.5 * delta_abs_mean)
+    ema_gap = abs(cur_ema5 - cur_ema13)
+
+    def _conf() -> float:
+        c = 0.64
+        if ema_gap > 0.2 * cur_atr:
+            c += 0.07
+        if strong_pressure:
+            c += 0.07
+        if cur_rvol >= 1.3:
+            c += 0.05
+        return min(c, 0.85)
+
+    delta_note = f"Δ3={delta3_sum:+.0f}"
+
+    if long_cross and cur_close > cur_vwap and delta3_sum > 0:
+        return _make_signal(NAME, TF, "LONG", _conf(), cur_close, cur_atr,
+            sl_atr_mult=0.5, tp_atr_mult=1.0,
+            reason=f"EMA5×EMA13↑ fresh cross | above VWAP {cur_vwap:.4f} | {delta_note}>0 | RVOL {cur_rvol:.1f}x")
+
+    if short_cross and cur_close < cur_vwap and delta3_sum < 0:
+        return _make_signal(NAME, TF, "SHORT", _conf(), cur_close, cur_atr,
+            sl_atr_mult=0.5, tp_atr_mult=1.0,
+            reason=f"EMA5×EMA13↓ fresh cross | below VWAP {cur_vwap:.4f} | {delta_note}<0 | RVOL {cur_rvol:.1f}x")
+
+    reasons = []
+    if long_cross:
+        if cur_close <= cur_vwap: reasons.append(f"EMA cross↑ but below VWAP {cur_vwap:.4f}")
+        if delta3_sum <= 0:       reasons.append(f"delta pressure negative ({delta_note})")
+    elif short_cross:
+        if cur_close >= cur_vwap: reasons.append(f"EMA cross↓ but above VWAP {cur_vwap:.4f}")
+        if delta3_sum >= 0:       reasons.append(f"delta pressure positive ({delta_note})")
+    return _flat(NAME, TF, " | ".join(reasons) or "Cross filter mismatch")
+
+
+# ════════════════════════════════════════════════════════════════════════════════
 # STRATEGY 10 — Market Structure Shift  (Forex only, 15m entry / daily trend)
 # ════════════════════════════════════════════════════════════════════════════════
 
@@ -1118,6 +1340,7 @@ def mss_forex_15m(df: pd.DataFrame) -> IntradaySignal:
 
 _STRATEGIES_5M  = [vwap_rsi_5m, orb_5m, trend_momentum_5m,
                    pdh_pdl_sweep_5m, camarilla_pivot_5m, nr7_breakout_5m,
+                   bb_scalp_5m, stoch_cross_5m, ema_micro_cross_5m,
                    mss_forex_15m]
 _STRATEGIES_15M = [ema_pullback_15m, squeeze_15m, absorption_15m]
 
@@ -1132,6 +1355,9 @@ _STRATEGY_NAME_MAP: dict[str, str] = {
     "camarilla_pivot_5m":"CAMARILLA_5M",
     "nr7_breakout_5m":   "NR7_BREAKOUT_5M",
     "mss_forex_15m":     "MSS_FOREX_15M",
+    "bb_scalp_5m":          "BB_SCALP_5M",
+    "stoch_cross_5m":       "STOCH_CROSS_5M",
+    "ema_micro_cross_5m":   "EMA_MICRO_CROSS_5M",
 }
 
 

@@ -31,10 +31,11 @@ _ADX_RANGING  = 20.0
 
 # Mean-reversion strategies (penalised in trending markets)
 # PDH_PDL_SWEEP fades institutional sweeps — breaks down when trend is strongly directional
-_MR_STRATEGIES = {"VWAP_RSI_5M", "PDH_PDL_SWEEP_5M"}
+_MR_STRATEGIES = {"VWAP_RSI_5M", "PDH_PDL_SWEEP_5M", "BB_SCALP_5M", "STOCH_CROSS_5M"}
 # Trend-following / breakout strategies (penalised in ranging markets)
 # NR7 breakouts fail in choppy low-ADX conditions
-_TREND_STRATEGIES = {"ORB_5M", "TREND_MOM_5M", "EMA_PB_15M", "SQUEEZE_15M", "NR7_BREAKOUT_5M", "MSS_FOREX_15M"}
+_TREND_STRATEGIES = {"ORB_5M", "TREND_MOM_5M", "EMA_PB_15M", "SQUEEZE_15M",
+                     "NR7_BREAKOUT_5M", "MSS_FOREX_15M", "EMA_MICRO_CROSS_5M"}
 # ABSORB is order-flow based — regime-independent, never penalised
 
 # Minimum final confidence to issue a signal (raised from 0.35 → 0.60)
@@ -127,12 +128,15 @@ def run_signal(
                     df[col] = df[col] / _TROY_OZ_TO_GRAM
 
         # --- Run strategies ---
+        from data.strategy_params import apply_params as _apply_adaptive
         all_signals: list[IntradaySignal] = []
         for fn in _STRATEGIES_5M:
             try:
-                all_signals.append(fn(df))
+                sig = fn(df)
+                sig = _apply_adaptive(sig)   # apply learned SL/TP/conf adjustments
             except Exception as exc:
-                all_signals.append(_flat(fn.__name__.upper(), "5m", str(exc)))
+                sig = _flat(fn.__name__.upper(), "5m", str(exc))
+            all_signals.append(sig)
 
         # Absorption confluence boost (direction-agnostic order-flow confirmation)
         try:

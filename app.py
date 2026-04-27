@@ -575,6 +575,33 @@ with st.expander("⚙️  Settings & Instruments", expanded=False):
                 "<div class='log-box'>" + "<br>".join(_MT5["log"][-15:]) + "</div>",
                 unsafe_allow_html=True)
 
+# ── Strategy Learning panel ───────────────────────────────────────────────────
+with st.expander("🎓 Strategy Learning", expanded=False):
+    try:
+        import pandas as _pd_sl
+        from data.strategy_params import get_all_params
+        _sp = get_all_params()
+        _rows = []
+        for _sname, _p in _sp.items():
+            _wr = _p.get("win_rate")
+            _rows.append({
+                "Strategy":   _sname,
+                "Win %":      f"{_wr:.0%}" if _wr is not None else "—",
+                "SL ×":       f"{_p.get('sl_mult', 1.0):.2f}",
+                "TP ×":       f"{_p.get('tp_mult', 1.0):.2f}",
+                "Conf floor": f"{_p.get('conf_floor', 0.60):.2f}",
+                "Trades":     _p.get("trades_seen", 0),
+                "Status":     ("🔴 Disabled" if not _p.get("enabled", True)
+                               else ("🟢 Active" if (_wr or 0) >= 0.50
+                                     else ("🟡 Learning" if _p.get("trades_seen", 0) >= 5
+                                           else "🔵 New"))),
+            })
+        st.dataframe(_pd_sl.DataFrame(_rows).set_index("Strategy"), use_container_width=True)
+        if any(not _p.get("enabled", True) for _p in _sp.values()):
+            st.caption("🔴 Disabled strategies produce no signals until win-rate recovers above 50%.")
+    except Exception as _sle:
+        st.caption(f"Learning panel unavailable: {_sle}")
+
 # ── Persist settings ──────────────────────────────────────────────────────────
 st.session_state.update({
     "finnhub_key": finnhub_key, "account_size": account_size,

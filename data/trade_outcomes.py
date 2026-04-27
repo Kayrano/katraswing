@@ -130,6 +130,13 @@ def update_outcomes_from_mt5(magic: int = 234100) -> int:
     if updated:
         _save(trades)
         logger.info(f"Updated {updated} trade outcome(s) from MT5 history")
+        try:
+            from data.strategy_params import adapt_all
+            adapted = adapt_all(trades)
+            if adapted:
+                logger.info(f"Adaptive learning: {adapted} strategy param(s) updated")
+        except Exception as _ae:
+            logger.debug(f"adapt_all skipped: {_ae}")
     return updated
 
 
