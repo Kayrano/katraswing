@@ -586,7 +586,7 @@ def assess_trade(
         health_score = _compute_health_score(
             position, signal, original_confidence, current_price, atr
         )
-        _tm_log(f"    #{ticket} {symbol} health={health_score:.2f} | signal={signal.signal} conf={signal.confidence:.2f} atr={atr:.5f}")
+        _tm_log(f"    #{ticket} {symbol} health={health_score:.2f} | signal={signal.direction} conf={signal.confidence:.2f} atr={atr:.5f}")
 
         # ── Decision ──────────────────────────────────────────────────────────
         action, reason, urgency, new_sl, new_tp, partial_vol = _decide_action(
