@@ -214,6 +214,11 @@ def _mt5_loop_inner(stop_event, config):
             strategy_name = sr.chart_signals[0].strategy if sr.chart_signals else "UNKNOWN"
             _log(f"  {ticker} → {strategy_name} {sr.direction} {sr.confidence:.0%} | SL {sr.sl} TP {sr.tp}")
 
+            # Skip auto-send if no broker mapping yet (early connect race)
+            if auto_trade and not (mt5_symbol or "").strip():
+                _log(f"  ⏳ {ticker} signal held — waiting for broker symbol mapping")
+                continue
+
             if auto_trade:
                 try:
                     from utils.mt5_bridge import send_from_signal_result
@@ -464,8 +469,9 @@ def _resolve_instruments(broker_syms: list[dict]) -> list[dict]:
                    _MT5_TO_YF.get(mt5_sym.split("_")[0].upper(), inst["yf"]))
             result.append({"ticker": yf_t, "label": inst["label"], "mt5_symbol": mt5_sym})
         else:
-            # Not in broker — include with yfinance ticker so analysis still works
-            result.append({"ticker": inst["yf"], "label": inst["label"], "mt5_symbol": inst["yf"]})
+            # Not in broker — analysis works via yfinance, but mt5_symbol is empty
+            # so send_from_signal_result skips the order (no broker mapping yet).
+            result.append({"ticker": inst["yf"], "label": inst["label"], "mt5_symbol": ""})
 
     return result
 
@@ -473,7 +479,7 @@ def _resolve_instruments(broker_syms: list[dict]) -> list[dict]:
 # Build instruments list: curated list matched against broker when MT5 is running
 _all_broker_syms = _get_broker_symbols(_connected=_MT5["connected"]) if _MT5["running"] else []
 _resolved = _resolve_instruments(_all_broker_syms) if _all_broker_syms else [
-    {"ticker": i["yf"], "label": i["label"], "mt5_symbol": i["yf"]} for i in _CURATED
+    {"ticker": i["yf"], "label": i["label"], "mt5_symbol": ""} for i in _CURATED
 ]
 
 # Apply saved user selection (labels used as keys — broker-agnostic)
@@ -796,6 +802,9 @@ if needs_run:
             if sr is None or sr.error or sr.direction not in ("LONG", "SHORT"):
                 continue
             if sr.confidence < min_conf:
+                continue
+            if not (inst.get("mt5_symbol") or "").strip():
+                _log(f"⏳ {t} held — no broker symbol yet")
                 continue
             key = f"{t}:{sr.direction}:{today}"
             if key in _MT5["sent"] or key in _MT5["rejected"]:

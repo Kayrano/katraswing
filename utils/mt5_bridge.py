@@ -709,8 +709,23 @@ def send_from_signal_result(
     _RISK_MULTIPLIER = {"LOW": 1.5, "MEDIUM": 1.0, "HIGH": 0.5}
     effective_risk_pct = risk_pct * _RISK_MULTIPLIER.get(getattr(sr, "risk_level", "MEDIUM"), 1.0)
 
-    # Use mt5_symbol if available (avoids SYMBOL_MAP lookup)
-    ticker = getattr(sr, "mt5_symbol", None) or sr.ticker
+    # Use mt5_symbol when broker-resolved; refuse to send if it's a yfinance ticker
+    # (=X / =F / ^ / -USD), since the broker won't know that symbol name.
+    ticker = getattr(sr, "mt5_symbol", "") or ""
+    if not ticker or any(c in ticker for c in ("=", "^")) or ticker.endswith("-USD"):
+        # Fall back to SYMBOL_MAP lookup on sr.ticker
+        mapped = SYMBOL_MAP.get((sr.ticker or "").upper())
+        if not mapped:
+            return MT5OrderResult(
+                False, 0, sr.ticker, sr.direction, 0.0, sr.entry, sr.sl, sr.tp,
+                f"No broker symbol mapped for '{sr.ticker}' — waiting for MT5 connect"
+            )
+        ticker = mapped
+
+    # Sanitised comment — broker rejects '%' and other punctuation; cap 24 chars.
+    strat = (sr.chart_signals[0].strategy if sr.chart_signals else "")
+    raw_cmt = f"KS {int(round(sr.confidence * 100))} {getattr(sr, 'risk_level', 'M')[:1]} {strat}"
+    safe_cmt = "".join(ch for ch in raw_cmt if ch.isalnum() or ch in " _")[:24].strip()
 
     return send_signal(
         ticker=ticker,
@@ -720,7 +735,7 @@ def send_from_signal_result(
         tp=sr.tp,
         lots=lots,
         risk_pct=effective_risk_pct,
-        comment=(f"KS {sr.confidence:.0%} {getattr(sr, 'risk_level', 'M')} {sr.chart_signals[0].strategy if sr.chart_signals else ''}")[:31].strip(),
+        comment=safe_cmt,
     )
 
 
