@@ -22,15 +22,15 @@
     "adapt_count": 0
   },
   "TREND_MOM_5M": {
-    "sl_mult": 1.5,
-    "tp_mult": 0.75,
-    "conf_floor": 0.8,
+    "sl_mult": 1.0,
+    "tp_mult": 1.0,
+    "conf_floor": 0.6,
     "enabled": true,
     "trades_seen": 9,
     "wins": 3,
     "win_rate": 0.333,
     "last_adapted": "2026-04-28T11:13:26.616908+00:00",
-    "adapt_count": 11
+    "adapt_count": 0
   },
   "EMA_PB_15M": {
     "sl_mult": 1.0,
@@ -77,15 +77,15 @@
     "adapt_count": 0
   },
   "CAMARILLA_5M": {
-    "sl_mult": 1.5,
-    "tp_mult": 0.75,
-    "conf_floor": 0.8,
+    "sl_mult": 1.0,
+    "tp_mult": 1.0,
+    "conf_floor": 0.6,
     "enabled": true,
     "trades_seen": 6,
     "wins": 2,
     "win_rate": 0.333,
     "last_adapted": "2026-04-27T17:56:39.357426+00:00",
-    "adapt_count": 10
+    "adapt_count": 0
   },
   "NR7_BREAKOUT_5M": {
     "sl_mult": 1.0,
@@ -141,16 +141,5 @@
     "win_rate": null,
     "last_adapted": null,
     "adapt_count": 0
-  },
-  "MT5_IMPORT": {
-    "sl_mult": 1.5,
-    "tp_mult": 0.75,
-    "conf_floor": 0.8,
-    "enabled": true,
-    "trades_seen": 23,
-    "wins": 7,
-    "win_rate": 0.35,
-    "last_adapted": "2026-04-27T17:56:39.365013+00:00",
-    "adapt_count": 11
   }
 }
