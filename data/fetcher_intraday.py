@@ -17,12 +17,25 @@ yfinance limits:
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as _FutureTimeout
 from typing import Optional
 
 import numpy as np
 import pandas as pd
 import yfinance as yf
 from zoneinfo import ZoneInfo
+
+
+def _yf_history(ticker: str, timeout: int = 20, **kwargs) -> "pd.DataFrame | None":
+    """yfinance .history() with a hard timeout so a slow network never blocks forever."""
+    try:
+        with ThreadPoolExecutor(max_workers=1) as _ex:
+            _fut = _ex.submit(lambda: yf.Ticker(ticker).history(**kwargs))
+            return _fut.result(timeout=timeout)
+    except (_FutureTimeout, Exception):
+        return None
+
 
 # ── In-memory OHLCV cache (5-min TTL) ────────────────────────────────────────
 # Avoids redundant yfinance/MT5 fetches when multiple scan cycles run close
@@ -94,10 +107,7 @@ def fetch_daily_trend(ticker: str) -> dict:
             raise ValueError(
                 f"No data for '{ticker}': MT5 returned nothing and no yfinance mapping exists"
             )
-        try:
-            raw = yf.Ticker(yf_tick).history(period="90d", interval="1d", auto_adjust=True)
-        except Exception:
-            raw = None
+        raw = _yf_history(yf_tick, period="90d", interval="1d", auto_adjust=True)
         if raw is None or raw.empty or len(raw) < 50:
             raise ValueError(f"Insufficient daily data for '{ticker}' (need ≥50 bars)")
 
@@ -174,9 +184,9 @@ def fetch_h4_trend(ticker: str, mt5_symbol: str | None = None) -> dict:
             raise ValueError(
                 f"No data for '{ticker}': MT5 returned nothing and no yfinance mapping exists"
             )
-        try:
-            raw_1h = yf.Ticker(yf_tick).history(period="60d", interval="1h", auto_adjust=True)
-            if raw_1h is not None and not raw_1h.empty:
+        raw_1h = _yf_history(yf_tick, period="60d", interval="1h", auto_adjust=True)
+        if raw_1h is not None and not raw_1h.empty:
+            try:
                 raw = raw_1h.resample("4h").agg({
                     "Open":   "first",
                     "High":   "max",
@@ -184,8 +194,8 @@ def fetch_h4_trend(ticker: str, mt5_symbol: str | None = None) -> dict:
                     "Close":  "last",
                     "Volume": "sum",
                 }).dropna(subset=["Close"])
-        except Exception:
-            raw = None
+            except Exception:
+                raw = None
 
     if raw is None or len(raw) < 30:
         raise ValueError(f"Insufficient H4 data for '{ticker}' (need ≥30 bars)")
@@ -409,12 +419,7 @@ def fetch_intraday_data(
             raise ValueError(
                 f"No data for '{ticker}': MT5 returned nothing and no yfinance mapping exists"
             )
-        try:
-            yf_raw = yf.Ticker(yf_ticker).history(
-                period=f"{days}d", interval=interval, auto_adjust=True
-            )
-        except Exception:
-            yf_raw = None
+        yf_raw = _yf_history(yf_ticker, period=f"{days}d", interval=interval, auto_adjust=True)
         if yf_raw is None or yf_raw.empty:
             raise ValueError(f"No {interval} data for '{ticker}' (MT5 not connected, yfinance returned nothing)")
         raw = yf_raw

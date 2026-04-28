@@ -115,8 +115,14 @@ def fetch_news_yfinance(ticker: str) -> list[NewsItem]:
     items: list[NewsItem] = []
     try:
         import yfinance as yf
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FT
         yf_sym = _mt5_to_yf(ticker)
-        news   = yf.Ticker(yf_sym).news or []
+        try:
+            with ThreadPoolExecutor(max_workers=1) as _ex:
+                _fut = _ex.submit(lambda: yf.Ticker(yf_sym).news or [])
+                news = _fut.result(timeout=8)
+        except (_FT, Exception):
+            news = []
         now_ts = time.time()
         for article in news:
             headline  = article.get("title", "")

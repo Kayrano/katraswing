@@ -699,7 +699,7 @@ if not instruments:
 
 if needs_run:
     from agents.signal_engine import run_signal
-    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as _FutureTimeout
 
     def _refresh_daily(ticker):
         k_val, k_ts = f"_dt_{ticker}", f"_dt_ts_{ticker}"
@@ -768,9 +768,20 @@ if needs_run:
 
     results = {}
     with st.spinner(f"Scanning {len(instruments)} instruments…"):
-        with ThreadPoolExecutor(max_workers=max(len(instruments), 1)) as ex:
-            for ticker, sr in ex.map(_scan_one, [i["ticker"] for i in instruments]):
-                results[ticker] = sr
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            _fs = {ex.submit(_scan_one, i["ticker"]): i["ticker"] for i in instruments}
+            for _fut in as_completed(_fs, timeout=120):
+                try:
+                    _tk, _sr = _fut.result(timeout=30)
+                    results[_tk] = _sr
+                except _FutureTimeout:
+                    _tk = _fs[_fut]
+                    from agents.signal_engine import SignalResult as _SR
+                    results[_tk] = _SR(ticker=_tk, error="Scan timed out after 30s")
+                except Exception as _exc:
+                    _tk = _fs[_fut]
+                    from agents.signal_engine import SignalResult as _SR
+                    results[_tk] = _SR(ticker=_tk, error=str(_exc))
 
     st.session_state["results"] = results
     st.session_state["last_refresh_ts"] = time.time()
@@ -1535,5 +1546,5 @@ with tab_learning:
 
 # ── Auto-refresh while monitoring ─────────────────────────────────────────────
 if _MT5["running"]:
-    time.sleep(1)
+    time.sleep(3)
     st.rerun()

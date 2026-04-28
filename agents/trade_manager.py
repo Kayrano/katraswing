@@ -733,11 +733,12 @@ def assess_all_open_trades(
     mode = "LIVE" if not dry_run else "DRY-RUN"
     _tm_log(f"── Assessing {len(positions)} open position(s) [{mode}] ──")
 
+    from concurrent.futures import TimeoutError as _FutureTimeout
     with ThreadPoolExecutor(max_workers=min(len(positions), 4)) as ex:
         futures = {ex.submit(_one, p): p for p in positions}
-        for fut in as_completed(futures):
+        for fut in as_completed(futures, timeout=90):
             try:
-                a = fut.result()
+                a = fut.result(timeout=60)
                 assessments.append(a)
                 _append_assessment_log(a)
 
@@ -755,6 +756,9 @@ def assess_all_open_trades(
                     _append_assessment_log(a)
                     status = "✓ executed" if ok else "✗ failed"
                     _tm_log(f"    → {a.action} #{a.ticket}: {status}")
+            except _FutureTimeout:
+                pos = futures[fut]
+                _tm_log(f"  #{pos.ticket} {pos.symbol} | TIMEOUT — skipping assessment")
             except Exception as exc:
                 logger.error(f"assess future error: {exc}")
                 _tm_log(f"  ERROR assessing position: {exc}")
