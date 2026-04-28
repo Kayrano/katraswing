@@ -778,21 +778,56 @@ if needs_run:
         )
 
     results = {}
+    _MAX_WORKERS    = 4
+    _PER_TICKER_SEC = 30
+    # Scale outer budget so it can never trip before per-future timeouts do.
+    # ceil(N / workers) batches × per-ticker cap + 30s buffer.
+    _outer_timeout = max(
+        120,
+        _PER_TICKER_SEC * ((len(instruments) + _MAX_WORKERS - 1) // _MAX_WORKERS) + 30,
+    )
     with st.spinner(f"Scanning {len(instruments)} instruments…"):
-        with ThreadPoolExecutor(max_workers=4) as ex:
+        with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
             _fs = {ex.submit(_scan_one, i["ticker"]): i["ticker"] for i in instruments}
-            for _fut in as_completed(_fs, timeout=120):
-                try:
-                    _tk, _sr = _fut.result(timeout=30)
-                    results[_tk] = _sr
-                except _FutureTimeout:
-                    _tk = _fs[_fut]
-                    from agents.signal_engine import SignalResult as _SR
-                    results[_tk] = _SR(ticker=_tk, error="Scan timed out after 30s")
-                except Exception as _exc:
-                    _tk = _fs[_fut]
-                    from agents.signal_engine import SignalResult as _SR
-                    results[_tk] = _SR(ticker=_tk, error=str(_exc))
+            from agents.signal_engine import SignalResult as _SR
+            try:
+                for _fut in as_completed(_fs, timeout=_outer_timeout):
+                    try:
+                        _tk, _sr = _fut.result(timeout=_PER_TICKER_SEC)
+                        results[_tk] = _sr
+                    except _FutureTimeout:
+                        _tk = _fs[_fut]
+                        results[_tk] = _SR(
+                            ticker=_tk,
+                            error=f"Scan timed out after {_PER_TICKER_SEC}s",
+                        )
+                    except Exception as _exc:
+                        _tk = _fs[_fut]
+                        results[_tk] = _SR(ticker=_tk, error=str(_exc))
+            except _FutureTimeout:
+                # Outer budget exhausted — record any futures that never finished
+                # so the UI shows partial results instead of a Python traceback.
+                _unfinished = [
+                    _f for _f in _fs if _fs[_f] not in results and not _f.done()
+                ]
+                log.warning(
+                    "ctx=manual_scan_outer_timeout budget=%ds unfinished=%d/%d",
+                    _outer_timeout, len(_unfinished), len(instruments),
+                )
+                for _f, _tk in _fs.items():
+                    if _tk in results:
+                        continue
+                    if _f.done():
+                        try:
+                            _tkr, _sr = _f.result(timeout=0)
+                            results[_tkr] = _sr
+                        except Exception as _exc:
+                            results[_tk] = _SR(ticker=_tk, error=str(_exc))
+                    else:
+                        _f.cancel()
+                        results[_tk] = _SR(
+                            ticker=_tk, error="Scan timed out (server busy)",
+                        )
 
     st.session_state["results"] = results
     st.session_state["last_refresh_ts"] = time.time()
