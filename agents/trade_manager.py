@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone, timedelta
@@ -19,6 +20,20 @@ from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# Configure a StreamHandler so logger output goes to console
+if not logger.handlers:
+    _handler = logging.StreamHandler(sys.stdout)
+    _handler.setFormatter(logging.Formatter("[TM %(asctime)s] %(levelname)s %(message)s",
+                                            datefmt="%H:%M:%S"))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.DEBUG)
+
+
+def _tm_log(msg: str) -> None:
+    """Print a timestamped trade manager log line to stdout."""
+    ts = datetime.now().strftime("%H:%M:%S")
+    print(f"[TM {ts}] {msg}", flush=True)
 
 _ASSESSMENT_LOG = Path(__file__).parent.parent / "data" / "assessment_log.json"
 _COOLDOWN_MINUTES = 30
@@ -474,6 +489,8 @@ def assess_trade(
         direction = position.direction
         ticket    = position.ticket
 
+        _tm_log(f"  Assessing #{ticket} {symbol} {direction} @ open={position.open_price} profit=${position.profit:+.2f}")
+
         # Look up current live price
         tick = mt5.symbol_info_tick(symbol)
         current_price = (tick.bid if direction == "LONG" else tick.ask) if tick else position.open_price
@@ -500,6 +517,7 @@ def assess_trade(
                 opened = datetime.fromisoformat(sent_at).replace(tzinfo=timezone.utc)
                 age_min = (datetime.now(tz=timezone.utc) - opened).total_seconds() / 60
                 if age_min < _MIN_BARS_MINUTES:
+                    _tm_log(f"    #{ticket} too new ({age_min:.0f} min < {_MIN_BARS_MINUTES} min) — skipping")
                     return TradeAssessment(
                         ticket=ticket, symbol=symbol, direction=direction,
                         open_price=position.open_price, breakeven_price=breakeven,
@@ -515,6 +533,7 @@ def assess_trade(
 
         # ── Guard 2: Cooldown ─────────────────────────────────────────────────
         if _is_on_cooldown(ticket, cooldown_state):
+            _tm_log(f"  #{ticket} {symbol} {direction} | HOLD (cooldown active — acted recently)")
             return TradeAssessment(
                 ticket=ticket, symbol=symbol, direction=direction,
                 open_price=position.open_price, breakeven_price=breakeven,
@@ -567,6 +586,7 @@ def assess_trade(
         health_score = _compute_health_score(
             position, signal, original_confidence, current_price, atr
         )
+        _tm_log(f"    #{ticket} {symbol} health={health_score:.2f} | signal={signal.signal} conf={signal.confidence:.2f} atr={atr:.5f}")
 
         # ── Decision ──────────────────────────────────────────────────────────
         action, reason, urgency, new_sl, new_tp, partial_vol = _decide_action(
@@ -579,9 +599,10 @@ def assess_trade(
         # Apply news hold guard: allow CLOSE if health critical; block other modifications
         if blocked and action in ("CLOSE", "PARTIAL_CLOSE", "MODIFY_SL", "MODIFY_TP", "MODIFY_BOTH"):
             if health_score < 0.50 and action == "CLOSE":
-                # Unhealthy position before a news event — closing is safer than holding
                 reason = f"Closing before news: {news_reason} (health={health_score:.2f})"
+                _tm_log(f"    #{ticket} NEWS CLOSE — {news_reason}")
             else:
+                _tm_log(f"    #{ticket} NEWS HOLD overrides {action} — {news_reason}")
                 action   = "HOLD"
                 reason   = f"News hold — {news_reason}"
                 urgency  = "MEDIUM"
@@ -668,9 +689,12 @@ def _execute_assessment(assessment: TradeAssessment, cooldown_state: dict) -> bo
             assessment.acted_on = True
             _set_cooldown(ticket, cooldown_state)
             logger.info(f"TradeManager acted: {action} #{ticket}")
+        else:
+            logger.warning(f"TradeManager action failed: {action} #{ticket}")
         return ok
     except Exception as exc:
         logger.error(f"_execute_assessment #{ticket}: {exc}")
+        _tm_log(f"  EXECUTE ERROR #{ticket}: {exc}")
         return False
 
 
@@ -706,6 +730,9 @@ def assess_all_open_trades(
             dry_run=dry_run,
         )
 
+    mode = "LIVE" if not dry_run else "DRY-RUN"
+    _tm_log(f"── Assessing {len(positions)} open position(s) [{mode}] ──")
+
     with ThreadPoolExecutor(max_workers=min(len(positions), 4)) as ex:
         futures = {ex.submit(_one, p): p for p in positions}
         for fut in as_completed(futures):
@@ -713,12 +740,26 @@ def assess_all_open_trades(
                 a = fut.result()
                 assessments.append(a)
                 _append_assessment_log(a)
+
+                profit_str = f"P&L ${a.current_profit:+.2f}"
+                health_str = f"health={a.health_score:.2f}"
+                if a.error:
+                    _tm_log(f"  #{a.ticket} {a.symbol} {a.direction} | ERROR: {a.error}")
+                elif a.action == "HOLD":
+                    _tm_log(f"  #{a.ticket} {a.symbol} {a.direction} | HOLD  {health_str} {profit_str} | {a.reason}")
+                else:
+                    _tm_log(f"  #{a.ticket} {a.symbol} {a.direction} | {a.action} [{a.urgency}] {health_str} {profit_str} | {a.reason}")
+
                 if not dry_run and a.action != "HOLD" and not a.error:
-                    _execute_assessment(a, cooldown_state)
-                    _append_assessment_log(a)   # re-log with acted_on updated
+                    ok = _execute_assessment(a, cooldown_state)
+                    _append_assessment_log(a)
+                    status = "✓ executed" if ok else "✗ failed"
+                    _tm_log(f"    → {a.action} #{a.ticket}: {status}")
             except Exception as exc:
                 logger.error(f"assess future error: {exc}")
+                _tm_log(f"  ERROR assessing position: {exc}")
 
     urgency_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
     assessments.sort(key=lambda a: (urgency_order.get(a.urgency, 2), a.health_score))
+    _tm_log(f"── Assessment complete: {len(assessments)} result(s) ──")
     return assessments
