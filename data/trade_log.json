@@ -470,9 +470,9 @@
     "sl": 27370.8925,
     "tp": 27428.215,
     "sent_at": "2026-04-27T17:53:39",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T14:13:28",
+    "profit": -47.4,
+    "outcome": "LOSS"
   },
   {
     "ticket": 212475674,
@@ -745,9 +745,9 @@
     "sl": 72.9142,
     "tp": 72.1845,
     "sent_at": "2026-04-28T12:13:47",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T15:16:26",
+    "profit": -12.15,
+    "outcome": "LOSS"
   },
   {
     "ticket": 214615928,
@@ -759,9 +759,9 @@
     "sl": 97.8924,
     "tp": 99.0552,
     "sent_at": "2026-04-28T12:13:48",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T15:20:18",
+    "profit": -3.68,
+    "outcome": "LOSS"
   },
   {
     "ticket": 214693442,
@@ -1011,6 +1011,62 @@
     "sl": 0.71788,
     "tp": 0.71884,
     "sent_at": "2026-04-28T15:59:14",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null
+  },
+  {
+    "ticket": 214908068,
+    "ticker": "EURUSD=X",
+    "strategy": "CAMARILLA_5M",
+    "direction": "LONG",
+    "confidence": 0.737,
+    "entry": 1.171,
+    "sl": 1.16964,
+    "tp": 1.17382,
+    "sent_at": "2026-04-28T16:56:37",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null
+  },
+  {
+    "ticket": 214911809,
+    "ticker": "AUDUSD=X",
+    "strategy": "NR7_BREAKOUT_5M",
+    "direction": "LONG",
+    "confidence": 0.74,
+    "entry": 0.7184,
+    "sl": 0.7183,
+    "tp": 0.7186,
+    "sent_at": "2026-04-28T17:02:23",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null
+  },
+  {
+    "ticket": 214911810,
+    "ticker": "GC=F",
+    "strategy": "CAMARILLA_5M",
+    "direction": "SHORT",
+    "confidence": 0.71,
+    "entry": 148.0123,
+    "sl": 150.11203,
+    "tp": 143.81372,
+    "sent_at": "2026-04-28T17:02:23",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null
+  },
+  {
+    "ticket": 214911811,
+    "ticker": "SI=F",
+    "strategy": "CAMARILLA_5M",
+    "direction": "SHORT",
+    "confidence": 0.71,
+    "entry": 73.735,
+    "sl": 74.77649,
+    "tp": 71.65245,
+    "sent_at": "2026-04-28T17:02:24",
     "closed_at": null,
     "profit": null,
     "outcome": null

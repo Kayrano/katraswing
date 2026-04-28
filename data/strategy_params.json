@@ -4,7 +4,7 @@
     "tp_mult": 1.0,
     "conf_floor": 0.6,
     "enabled": true,
-    "trades_seen": 1,
+    "trades_seen": 4,
     "wins": 0,
     "win_rate": 0.0,
     "last_adapted": null,
