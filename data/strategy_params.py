@@ -242,18 +242,22 @@ def adapt_strategy(strategy: str, all_trades: list[dict]) -> bool:
 
 def adapt_all(all_trades: list[dict]) -> int:
     """
-    Run adapt_strategy() for every strategy that has at least one new closed
-    trade since it was last adapted. Returns the count of strategies updated.
+    Run adapt_strategy() for every app-managed strategy that has closed trades.
+    Ignores MT5_IMPORT trades (manually opened or imported from MT5 history).
+    Returns the count of strategies updated.
     """
     if not _PARAMS:
         load_params()
 
+    # Only learn from trades the app itself sent — exclude MT5_IMPORT
+    app_trades = [t for t in all_trades if t.get("strategy", "") != "MT5_IMPORT"]
+
     updated = 0
-    strategies_in_log = {t.get("strategy") for t in all_trades if t.get("strategy")}
+    strategies_in_log = {t.get("strategy") for t in app_trades if t.get("strategy")}
 
     for strategy in strategies_in_log:
         try:
-            if adapt_strategy(strategy, all_trades):
+            if adapt_strategy(strategy, app_trades):
                 updated += 1
         except Exception as exc:
             logger.error(f"adapt_strategy({strategy}): {exc}")

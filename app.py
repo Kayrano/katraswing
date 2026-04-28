@@ -635,7 +635,7 @@ with st.expander("🎓 Strategy Learning", expanded=False):
         import pandas as _pd_sl
         from data.strategy_params import get_all_params, adapt_all as _adapt_all_now
         from data.trade_outcomes import _load as _load_trades
-        # Sync stats from existing trade log on every render (fast — no-op when nothing changed)
+        # Sync stats from app-managed trades only (MT5_IMPORT excluded inside adapt_all)
         _adapt_all_now(_load_trades())
         _sp = get_all_params()
         _rows = []
