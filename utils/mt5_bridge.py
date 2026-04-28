@@ -520,6 +520,16 @@ _RETCODE_HINTS = {
     10030: "Filling mode not supported — broker rejected the order type.",
 }
 
+# Transient retcodes worth retrying with a refreshed price.
+#   10004 = REQUOTE         (price moved between quote and send)
+#   10006 = REJECT          (broker temporary reject — e.g. queue full)
+#   10021 = NO_PRICES       (off-quotes; common during news prints)
+# Terminal retcodes (10018 closed, 10019 no money, 10014 bad volume,
+# 10027 autotrading off, 10030 filling mode) are NOT retried — the
+# next attempt would fail identically.
+_RETRYABLE_RETCODES = (10004, 10006, 10021)
+_RETRY_BACKOFF_SEC  = (0.5, 1.0, 2.0)   # sleep before attempt 2, 3, 4
+
 
 def send_signal(
     ticker: str,
@@ -641,7 +651,42 @@ def send_signal(
         "type_filling": fill_type,
     }
 
+    # ── Send with retry-with-backoff for transient retcodes ──────────────────
+    # Transient rejections (10004 requote, 10006 broker reject, 10021 off
+    # quotes) are common during volatile prints — retry up to 3 times after
+    # refreshing the tick and rebasing SL/TP from the new price.
     result = mt5.order_send(request)
+    for retry_idx in range(len(_RETRY_BACKOFF_SEC)):
+        if result is None or result.retcode not in _RETRYABLE_RETCODES:
+            break
+        time.sleep(_RETRY_BACKOFF_SEC[retry_idx])
+        new_tick = mt5.symbol_info_tick(symbol)
+        if new_tick is None:
+            logger.warning(
+                f"Retry skipped — no tick after retcode={result.retcode} for {symbol}"
+            )
+            break
+        # Rebase price + stops from the fresh tick using the original distances
+        new_price = new_tick.ask if direction == "LONG" else new_tick.bid
+        cur_sl_dist = max(sl_dist, effective_min)
+        cur_tp_dist = max(tp_dist, effective_min)
+        if direction == "LONG":
+            new_sl = round(new_price - cur_sl_dist, digits)
+            new_tp = round(new_price + cur_tp_dist, digits)
+        else:
+            new_sl = round(new_price + cur_sl_dist, digits)
+            new_tp = round(new_price - cur_tp_dist, digits)
+        request["price"] = new_price
+        request["sl"]    = new_sl
+        request["tp"]    = new_tp
+        live_sl, live_tp, price = new_sl, new_tp, new_price
+        logger.warning(
+            f"Transient rejection retcode={result.retcode} ({result.comment}); "
+            f"retry {retry_idx + 1}/{len(_RETRY_BACKOFF_SEC)} for {symbol} "
+            f"@ {new_price:.{digits}f} SL={new_sl} TP={new_tp}"
+        )
+        result = mt5.order_send(request)
+
     if result is None:
         err = str(mt5.last_error())
         logger.error(f"order_send returned None: {err}")

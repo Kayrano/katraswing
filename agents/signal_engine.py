@@ -69,6 +69,8 @@ class SignalResult:
     # Accuracy improvements
     consensus_boost: float = 0.0
     strategy_agreement: str = ""   # e.g. "3/3 LONG" or "2/3 LONG, 1 SHORT"
+    raw_confidence: float = 0.0    # blended confidence BEFORE isotonic calibration
+    calibration_applied: bool = False
     adx_regime: str = "NEUTRAL"    # TRENDING / RANGING / NEUTRAL
     adx_value: float = 0.0
     bt_adjustment: float = 0.0     # backtest-informed calibration delta
@@ -369,6 +371,26 @@ def run_signal(
                 mtf_adj = 0.0
             final_conf = min(1.0, max(0.0, final_conf + mtf_adj))
 
+        # ── Isotonic confidence calibration ──────────────────────────────────
+        # Maps the blended raw confidence onto an empirically-grounded
+        # win probability fitted from closed trades. Identity below 50
+        # samples (see models.calibration). Keep the original visible
+        # via raw_confidence so the floor decision is auditable.
+        raw_confidence = final_conf
+        calibration_applied = False
+        try:
+            from models.calibration import get_calibrator
+            _cal = get_calibrator()
+            if _cal.is_fitted:
+                final_conf = max(0.0, min(1.0, _cal.transform(final_conf)))
+                calibration_applied = True
+        except Exception as _ce:
+            # Never let calibration break a live signal
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "calibration skipped: %s", _ce,
+            )
+
         # ── Enforce 0.60 confidence floor ────────────────────────────────────
         if not daily_trend_vetoed and final_conf < _SIGNAL_FLOOR:
             direction = "NO TRADE"
@@ -408,6 +430,8 @@ def run_signal(
             sl_tp_source=sl_tp_source,
             mt5_symbol=mt5_symbol or "",
             risk_level=risk_level,
+            raw_confidence=round(raw_confidence, 3),
+            calibration_applied=calibration_applied,
         )
 
     except Exception as exc:

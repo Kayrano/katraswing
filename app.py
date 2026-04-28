@@ -4,12 +4,15 @@ Run: streamlit run app.py
 Requires MetaTrader5 terminal open on the same Windows machine.
 """
 
+import logging
 import threading
 import time
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import streamlit as st
+
+log = logging.getLogger(__name__)
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Katraswing", page_icon="⚡", layout="wide",
@@ -123,8 +126,8 @@ def _mt5_loop_inner(stop_event, config):
         _ai = _gai_bg()
         if _ai and _ai.get("balance"):
             _MT5["account_size"] = float(_ai["balance"])
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("ctx=mt5_get_account_info_bg: %s", e)
 
     instruments  = config["instruments"]   # list of {ticker, label, mt5_symbol}
     min_conf     = config["min_conf"]
@@ -149,8 +152,8 @@ def _mt5_loop_inner(stop_event, config):
                 from data.trade_outcomes import compute_optimal_stops
                 _opt_stops = compute_optimal_stops()
                 _opt_stops_ts = time.time()
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning("ctx=refresh_optimal_stops_bg: %s", e)
 
         _log(f"── Scanning {len(instruments)} instruments ──")
         for inst in instruments:
@@ -178,8 +181,8 @@ def _mt5_loop_inner(stop_event, config):
                         _h4_cache[ticker] = (h4_trend, time.time())
                     else:
                         h4_trend = cached_h4[0]
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.warning("ctx=mtf_trends_bg ticker=%s: %s", ticker, e)
 
             try:
                 sr = run_signal(
@@ -241,8 +244,8 @@ def _mt5_loop_inner(stop_event, config):
 
         try:
             _MT5["positions"] = get_open_positions()
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("ctx=get_open_positions_bg: %s", e)
 
         try:
             from data.trade_outcomes import update_outcomes_from_mt5, compute_detailed_win_rates
@@ -250,8 +253,8 @@ def _mt5_loop_inner(stop_event, config):
             if updated:
                 _log(f"📚 {updated} outcome(s) recorded")
             _MT5["live_win_rates"] = compute_detailed_win_rates()
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("ctx=update_outcomes_bg: %s", e)
 
         # Auto-assess open trades when both toggles are ON
         # Reads/writes _MT5 dict only — no st.session_state access from background thread
@@ -715,7 +718,8 @@ if needs_run:
                 trend = fetch_daily_trend(ticker)
                 st.session_state[k_val] = trend
                 st.session_state[k_ts]  = time.time()
-            except Exception:
+            except Exception as e:
+                log.warning("ctx=refresh_daily ticker=%s: %s", ticker, e)
                 st.session_state[k_val] = None
                 st.session_state[k_ts]  = time.time()
         return st.session_state.get(k_val)
@@ -728,7 +732,8 @@ if needs_run:
                 trend = fetch_h4_trend(ticker, mt5_symbol=mt5_symbol)
                 st.session_state[k_val] = trend
                 st.session_state[k_ts]  = time.time()
-            except Exception:
+            except Exception as e:
+                log.warning("ctx=refresh_h4 ticker=%s: %s", ticker, e)
                 st.session_state[k_val] = None
                 st.session_state[k_ts]  = time.time()
         return st.session_state.get(k_val)
@@ -740,8 +745,8 @@ if needs_run:
         from data.trade_outcomes import compute_detailed_win_rates, compute_optimal_stops
         _live_wr   = compute_detailed_win_rates()
         _opt_stops = compute_optimal_stops()
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("ctx=load_live_wr_and_optimal_stops: %s", e)
 
     # Pre-fetch inputs on main thread
     ticker_inputs = {}
@@ -1371,8 +1376,8 @@ with tab_journal:
                     yaxis=dict(gridcolor="#1e2330", zeroline=True, zerolinecolor="#374151"),
                 )
                 st.plotly_chart(fig, width='stretch')
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("ctx=monthly_pnl_chart: %s", e)
 
         # ── By symbol + by strategy (side by side) ────────────────────────────
         sc1, sc2 = st.columns(2)

@@ -16,6 +16,7 @@ yfinance limits:
 
 from __future__ import annotations
 
+import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as _FutureTimeout
@@ -25,6 +26,8 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 from zoneinfo import ZoneInfo
+
+log = logging.getLogger(__name__)
 
 
 def _yf_history(ticker: str, timeout: int = 20, **kwargs) -> "pd.DataFrame | None":
@@ -132,7 +135,8 @@ def fetch_daily_trend(ticker: str) -> dict:
         valid = adx_s.dropna()
         if not valid.empty:
             adx_daily = float(valid.iloc[-1])
-    except Exception:
+    except Exception as e:
+        log.debug("ctx=adx_daily ticker=%s: %s", ticker, e)
         adx_daily = 0.0
 
     if last_close > last_ema20 and last_ema20 > last_ema50:
@@ -194,7 +198,8 @@ def fetch_h4_trend(ticker: str, mt5_symbol: str | None = None) -> dict:
                     "Close":  "last",
                     "Volume": "sum",
                 }).dropna(subset=["Close"])
-            except Exception:
+            except Exception as e:
+                log.warning("ctx=h4_resample ticker=%s: %s", ticker, e)
                 raw = None
 
     if raw is None or len(raw) < 30:
@@ -218,7 +223,8 @@ def fetch_h4_trend(ticker: str, mt5_symbol: str | None = None) -> dict:
         valid = adx_s.dropna()
         if not valid.empty:
             adx_h4 = float(valid.iloc[-1])
-    except Exception:
+    except Exception as e:
+        log.debug("ctx=adx_h4 ticker=%s: %s", ticker, e)
         adx_h4 = 0.0
 
     if last_close > last_ema20 and last_ema20 > last_ema50:
