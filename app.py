@@ -73,6 +73,7 @@ if "_MT5" not in st.session_state:
         "last_sent": None, "positions": [],
         "log": [], "error": "",
         "live_win_rates": {},
+        "account_size": 100_000.0,
         # Trade Manager shared state — written by main thread, read by background thread
         "auto_assess": True, "live_mode": True,
         "tm_cooldown": {}, "trade_assessments": [],
@@ -83,7 +84,7 @@ _MT5: dict = st.session_state["_MT5"]
 def _log(msg: str):
     ts = datetime.now().strftime("%H:%M:%S")
     _MT5["log"].append(f"{ts}  {msg}")
-    _MT5["log"] = _MT5["log"][-30:]
+    _MT5["log"] = _MT5["log"][-200:]
 
 
 # ── MT5 background monitoring loop ───────────────────────────────────────────
@@ -117,6 +118,13 @@ def _mt5_loop_inner(stop_event, config):
     _MT5["connected"] = True
     _MT5["error"] = ""
     _log("Connected — auto-trade active")
+    try:
+        from utils.mt5_bridge import get_account_info as _gai_bg
+        _ai = _gai_bg()
+        if _ai and _ai.get("balance"):
+            _MT5["account_size"] = float(_ai["balance"])
+    except Exception:
+        pass
 
     instruments  = config["instruments"]   # list of {ticker, label, mt5_symbol}
     min_conf     = config["min_conf"]
@@ -144,12 +152,12 @@ def _mt5_loop_inner(stop_event, config):
             except Exception:
                 pass
 
+        _log(f"── Scanning {len(instruments)} instruments ──")
         for inst in instruments:
             if stop_event.is_set():
                 break
             ticker     = inst["ticker"]
             mt5_symbol = inst.get("mt5_symbol")
-            _log(f"Polling {ticker}…")
 
             daily_trend = None
             h4_trend    = None
@@ -190,18 +198,21 @@ def _mt5_loop_inner(stop_event, config):
                 continue
 
             if sr.error:
-                _log(f"{ticker}: {sr.error}")
+                _log(f"  {ticker} ERROR: {sr.error}")
                 continue
             if sr.direction not in ("LONG", "SHORT"):
-                _log(f"{ticker}: no signal (conf={sr.confidence:.0%})")
+                _log(f"  {ticker} — FLAT")
                 continue
             if sr.confidence < min_conf:
-                _log(f"{ticker}: {sr.direction} {sr.confidence:.0%} below threshold")
+                _log(f"  {ticker} — {sr.direction} {sr.confidence:.0%} (below {min_conf:.0%})")
                 continue
 
             key = f"{ticker}:{sr.direction}:{today}"
             if key in _MT5["sent"] or key in _MT5["rejected"]:
                 continue
+
+            strategy_name = sr.chart_signals[0].strategy if sr.chart_signals else "UNKNOWN"
+            _log(f"  {ticker} → {strategy_name} {sr.direction} {sr.confidence:.0%} | SL {sr.sl} TP {sr.tp}")
 
             if auto_trade:
                 try:
@@ -211,14 +222,13 @@ def _mt5_loop_inner(stop_event, config):
                         _MT5["sent"].add(key)
                         _MT5["last_sent"] = {"ticker": ticker, "ticket": res.ticket,
                                              "direction": sr.direction, "conf": sr.confidence}
-                        _log(f"✅ #{res.ticket} {sr.direction} {ticker} {sr.confidence:.0%}")
+                        _log(f"✅ Signal sent: #{res.ticket} {sr.direction} {ticker} {sr.confidence:.0%}")
                         try:
                             from data.trade_outcomes import record_trade
-                            strategy = sr.chart_signals[0].strategy if sr.chart_signals else "UNKNOWN"
-                            record_trade(res.ticket, ticker, strategy, sr.direction,
+                            record_trade(res.ticket, ticker, strategy_name, sr.direction,
                                          sr.confidence, sr.entry, sr.sl, sr.tp)
-                        except Exception:
-                            pass
+                        except Exception as _rte:
+                            _log(f"⚠ record_trade #{res.ticket}: {_rte}")
                     else:
                         _log(f"⚠ Rejected: {res.error}")
                 except Exception as exc:
@@ -257,13 +267,17 @@ def _mt5_loop_inner(stop_event, config):
                 )
                 _MT5["trade_assessments"] = _res
                 _MT5["tm_cooldown"] = _cd
-                acted = [a for a in _res if a.acted_on]
-                if acted:
-                    _log(f"🤖 Trade Manager acted on {len(acted)} position(s)")
-                else:
-                    urgent = [a for a in _res if a.urgency == "HIGH"]
-                    if urgent:
-                        _log(f"⚠ Trade Manager: {len(urgent)} HIGH urgency position(s) — Live Mode {'OFF' if not _live_mode else 'ON'}")
+                for _a in _res:
+                    _pl = f"P&L ${_a.current_profit:+.2f}" if hasattr(_a, "current_profit") and _a.current_profit is not None else ""
+                    _hs = f"health={_a.health_score:.2f}" if hasattr(_a, "health_score") and _a.health_score is not None else ""
+                    if getattr(_a, "error", None):
+                        _log(f"⚠ TM #{_a.ticket} {_a.symbol}: {_a.error}")
+                    elif getattr(_a, "acted_on", False):
+                        _log(f"🤖 TM #{_a.ticket} {_a.symbol} {_a.action} [{_a.urgency}] {_hs} {_pl}")
+                    elif getattr(_a, "action", "HOLD") != "HOLD":
+                        _log(f"⚠ TM #{_a.ticket} {_a.symbol} {_a.action} [{_a.urgency}] {_hs} — not executed")
+                    else:
+                        _log(f"  TM #{_a.ticket} {_a.symbol} HOLD {_hs} {_pl}")
         except Exception as _atm_exc:
             _log(f"Auto-assess error: {_atm_exc}")
 
@@ -375,15 +389,15 @@ def _get_broker_symbols(_connected: bool = False) -> list[dict]:
         return []
 
 
-# ── Read persisted settings ───────────────────────────────────────────────────
-finnhub_key  = st.session_state.get("finnhub_key",  "d7j16r1r01qn2qavovt0d7j16r1r01qn2qavovtg")
-account_size = st.session_state.get("account_size", 100_000.0)
-risk_pct     = st.session_state.get("risk_pct",     1.0)
-min_conf     = st.session_state.get("min_conf",     0.65)
-auto_trade   = st.session_state.get("auto_trade",   True)
-use_daily    = st.session_state.get("use_daily",    True)
-use_bt_cal   = st.session_state.get("use_bt_cal",   True)
-auto_refresh = st.session_state.get("auto_refresh", False)
+# ── Hardcoded parameters ──────────────────────────────────────────────────────
+finnhub_key  = "d7j16r1r01qn2qavovt0d7j16r1r01qn2qavovtg"
+account_size = _MT5.get("account_size", 100_000.0)
+risk_pct     = 1.0
+min_conf     = 0.65
+auto_trade   = True
+use_daily    = True
+use_bt_cal   = True
+auto_refresh = True
 
 # Curated instrument list — matched against broker symbols when MT5 is connected,
 # or used directly with yfinance tickers when MT5 is offline.
@@ -480,8 +494,8 @@ if _mt5_action:
         _stop_mt5()
     st.rerun()
 
-# ── Auto-start MT5 thread on first load if auto_trade is enabled ──────────────
-if auto_trade and not _MT5["running"] and not st.session_state.get("_mt5_autostart_attempted"):
+# ── Auto-start MT5 thread on first load ──────────────────────────────────────
+if not _MT5["running"] and not st.session_state.get("_mt5_autostart_attempted"):
     st.session_state["_mt5_autostart_attempted"] = True
     from utils.mt5_bridge import is_available as _mt5_avail_check
     if _mt5_avail_check():
@@ -504,7 +518,7 @@ with h_left:
 with h_mid:
     if _MT5["running"] and _MT5["connected"]:
         lc = _MT5["last_check"].strftime("%H:%M") if _MT5["last_check"] else "—"
-        mode = "🤖 AUTO" if auto_trade else "👁 WATCH"
+        mode = "🤖 AUTO"
         st.markdown(
             f"<div style='padding-top:20px;'>"
             f"<span style='color:#22c55e;font-weight:700;font-size:14px;'>● LIVE {mode}</span>"
@@ -551,83 +565,88 @@ with h_right:
     scan_btn = st.button("🔄 Scan", type="primary", width='stretch')
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ── Settings & Instruments expander ──────────────────────────────────────────
-with st.expander("⚙️  Settings & Instruments", expanded=False):
-    st.markdown("#### Trading Parameters")
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        account_size = st.number_input("Account ($)", value=account_size, step=1000.0, format="%.0f")
-        risk_pct     = st.number_input("Risk per trade (%)", value=risk_pct, step=0.1, format="%.1f",
-                                       min_value=0.1, max_value=10.0)
-    with c2:
-        min_conf   = st.slider("Min confidence", 0.50, 0.95, min_conf, 0.05)
-        finnhub_key = st.text_input("Finnhub API key", value=finnhub_key, type="password")
-    with c3:
-        auto_trade  = st.checkbox("🤖 Auto-trade", value=auto_trade,
-                                   help="Send orders automatically without approval")
-        use_daily   = st.checkbox("Daily trend gate", value=use_daily,
-                                   help="Veto signals that oppose the daily trend")
-        use_bt_cal  = st.checkbox("Backtest calibration", value=use_bt_cal,
-                                   help="Adjust confidence from historical win rates")
-    with c4:
-        auto_refresh = st.checkbox("Auto-scan every 5 min", value=auto_refresh)
+# ── Instruments strip + Live Log Console ──────────────────────────────────────
+from utils.mt5_bridge import is_available as _mt5_avail
 
-    st.markdown("---")
-    st.markdown("#### MT5 Instruments")
+_ctrl_inst, _ctrl_start, _ctrl_stop, _ctrl_close, _ctrl_clear = st.columns([4, 1, 1, 1, 1])
 
-    from utils.mt5_bridge import is_available as _mt5_avail, is_connected as _mt5_ic
+with _ctrl_inst:
+    _all_labels = [i["label"] for i in _CURATED]
+    _cur_labels = st.session_state.get("_curated_sel", _all_labels)
+    _cur_labels = [l for l in _cur_labels if l in _all_labels] or _all_labels
+    _sel_labels = st.multiselect(
+        "Instruments",
+        options=_all_labels,
+        default=_cur_labels,
+        label_visibility="collapsed",
+    )
+    st.session_state["_curated_sel"] = _sel_labels
+    if _sel_labels:
+        instruments = [i for i in _resolved if i["label"] in _sel_labels]
 
-    mt5_col1, mt5_col2 = st.columns([1, 2])
-    with mt5_col1:
-        if not _MT5["running"]:
-            if st.button("▶ Start Auto-Trade", type="primary", width='stretch'):
-                st.session_state["_mt5_action"] = {
-                    "action": "start",
-                    "cfg": {
-                        "instruments": instruments,
-                        "min_conf":     min_conf,
-                        "account_size": account_size,
-                        "risk_pct":     risk_pct,
-                        "finnhub_key":  finnhub_key,
-                        "interval":     900,
-                        "auto_trade":   auto_trade,
-                        "use_daily":    use_daily,
-                    },
-                }
-        else:
-            c_stop, c_close = st.columns(2)
-            with c_stop:
-                if st.button("⏹ Stop", width='stretch'):
-                    st.session_state["_mt5_action"] = {"action": "stop"}
-            with c_close:
-                if _MT5["connected"] and st.button("🚨 Close All", width='stretch'):
-                    from utils.mt5_bridge import close_all_positions
-                    close_all_positions()
-                    st.success("All positions closed.")
+with _ctrl_start:
+    if not _MT5["running"]:
+        if st.button("▶ Start", type="primary", width='stretch'):
+            st.session_state["_mt5_action"] = {
+                "action": "start",
+                "cfg": {
+                    "instruments": instruments,
+                    "min_conf":     min_conf,
+                    "account_size": account_size,
+                    "risk_pct":     risk_pct,
+                    "finnhub_key":  finnhub_key,
+                    "interval":     900,
+                    "auto_trade":   True,
+                    "use_daily":    use_daily,
+                },
+            }
 
-        if not _mt5_avail():
-            st.warning("Install MT5:\n`pip install MetaTrader5`")
+with _ctrl_stop:
+    if _MT5["running"]:
+        if st.button("⏹ Stop", width='stretch'):
+            st.session_state["_mt5_action"] = {"action": "stop"}
 
-    with mt5_col2:
-        _all_labels    = [i["label"] for i in _CURATED]
-        _cur_labels    = st.session_state.get("_curated_sel", _all_labels)
-        _cur_labels    = [l for l in _cur_labels if l in _all_labels] or _all_labels
-        _sel_labels    = st.multiselect(
-            "Instruments to scan",
-            options=_all_labels,
-            default=_cur_labels,
-        )
-        st.session_state["_curated_sel"] = _sel_labels
-        if _sel_labels:
-            instruments = [i for i in _resolved if i["label"] in _sel_labels]
-        mt5_status = "✅ MT5 connected" if _MT5["connected"] else ("⏳ Connecting…" if _MT5["running"] else "⚠️ MT5 not started")
-        st.caption(mt5_status)
+with _ctrl_close:
+    if _MT5["connected"] and st.button("🚨 Close All", width='stretch'):
+        from utils.mt5_bridge import close_all_positions
+        close_all_positions()
+        st.success("All positions closed.")
 
-    if _MT5["log"]:
-        with st.expander("Activity log", expanded=False):
-            st.markdown(
-                "<div class='log-box'>" + "<br>".join(_MT5["log"][-15:]) + "</div>",
-                unsafe_allow_html=True)
+with _ctrl_clear:
+    if st.button("🗑 Clear", width='stretch'):
+        _MT5["log"] = []
+        st.rerun()
+
+_mt5_status_txt = ("✅ MT5 connected" if _MT5["connected"]
+                   else ("⏳ Connecting…" if _MT5["running"]
+                         else "⚠ MT5 not started"))
+st.caption(_mt5_status_txt)
+
+# Live Activity Log
+_log_entries = list(reversed(_MT5["log"][-100:]))
+_parts = []
+for _e in _log_entries:
+    _ts  = _e[:8]
+    _msg = _e[10:] if len(_e) > 10 else _e
+    _msg_esc = _msg.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    if   "✅" in _msg or "sent" in _msg.lower(): _col = "#22c55e"
+    elif "🤖" in _msg:                            _col = "#60a5fa"
+    elif "⚠" in _msg or "ERROR" in _msg:         _col = "#f59e0b"
+    elif "🚨" in _msg or "CLOSE" in _msg:         _col = "#ef4444"
+    elif "──" in _msg:                            _col = "#374151"
+    else:                                          _col = "#9ca3af"
+    _parts.append(
+        f"<span style='color:#4b5563'>[{_ts}]</span> "
+        f"<span style='color:{_col}'>{_msg_esc}</span>"
+    )
+st.markdown(
+    "<div style='background:#0d1117;border-radius:6px;padding:10px 14px;"
+    "font-size:11px;font-family:monospace;line-height:1.8;"
+    "max-height:280px;overflow-y:auto;border:1px solid #1e2330;margin-top:4px;'>"
+    + "<br>".join(_parts or ["<span style='color:#374151'>Waiting for activity…</span>"])
+    + "</div>",
+    unsafe_allow_html=True,
+)
 
 # ── Strategy Learning panel ───────────────────────────────────────────────────
 with st.expander("🎓 Strategy Learning", expanded=False):
@@ -659,14 +678,8 @@ with st.expander("🎓 Strategy Learning", expanded=False):
     except Exception as _sle:
         st.caption(f"Learning panel unavailable: {_sle}")
 
-# ── Persist settings ──────────────────────────────────────────────────────────
-st.session_state.update({
-    "finnhub_key": finnhub_key, "account_size": account_size,
-    "risk_pct": risk_pct, "min_conf": min_conf,
-    "auto_trade": auto_trade, "use_daily": use_daily,
-    "use_bt_cal": use_bt_cal, "auto_refresh": auto_refresh,
-    "instruments": instruments,
-})
+# ── Persist selection ─────────────────────────────────────────────────────────
+st.session_state.update({"instruments": instruments})
 
 # ── Sync TM toggle state into _MT5 on every render ────────────────────────────
 # Must run outside any tab block so the background thread always gets current values.
@@ -788,8 +801,8 @@ if needs_run:
                         strat = sr.chart_signals[0].strategy if sr.chart_signals else "UNKNOWN"
                         record_trade(res.ticket, t, strat, sr.direction,
                                      sr.confidence, sr.entry, sr.sl, sr.tp)
-                    except Exception:
-                        pass
+                    except Exception as _rte:
+                        _log(f"⚠ record_trade #{res.ticket}: {_rte}")
                 else:
                     _MT5["rejected"].add(key)
                     _log(f"⚠ Auto-send {t}: {res.error}")
@@ -934,8 +947,8 @@ with tab_signals:
                                     strat_name = sr.chart_signals[0].strategy if sr.chart_signals else "UNKNOWN"
                                     record_trade(res.ticket, inst["ticker"], strat_name, sr.direction,
                                                  sr.confidence, sr.entry, sr.sl, sr.tp)
-                                except Exception:
-                                    pass
+                                except Exception as _rte:
+                                    _log(f"⚠ record_trade #{res.ticket}: {_rte}")
                                 st.rerun()
                             else:
                                 st.error(res.error)
