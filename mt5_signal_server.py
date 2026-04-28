@@ -25,7 +25,9 @@ import argparse
 import logging
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as _FT
 from datetime import datetime, date
+from threading import Lock
 
 # ── Logging setup ─────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -45,6 +47,28 @@ DEFAULT_DISPLAY_NAMES = {"NQ=F": "NQ Mini", "ES=F": "ES Mini", "XAUUSD=X": "Gram
 DEFAULT_INTERVAL_SEC = 60       # poll every 60 seconds
 DEFAULT_MIN_CONF     = 0.60     # minimum confidence to enter
 FINNHUB_API_KEY      = ""       # optional — set here or via --finnhub-key
+
+# Maximum concurrent run_signal calls per poll. Each ticker's signal fetch is
+# independent (separate yfinance/Finnhub connections); the bottleneck is
+# network latency, not CPU. 6 is a balance between parallelism and being
+# polite to data providers.
+MAX_SCAN_WORKERS = 6
+
+# Per-ticker run_signal timeout (seconds). The signal pipeline already has
+# inner timeouts on yfinance (20s) and news (12s); this is the outer ceiling.
+PER_TICKER_TIMEOUT = 60
+
+# Bar-window cache: run_signal output is reused within the same 5-minute wall-
+# clock window since the underlying 5m bar can't have changed. Keyed by ticker
+# → (window_start_epoch, SignalResult). Bounded to len(args.tickers).
+_SIGNAL_CACHE: dict[str, tuple[int, object]] = {}
+_SIGNAL_CACHE_LOCK = Lock()
+
+
+def _bar_window_key(now_ts: float | None = None) -> int:
+    """Floor-divide the current epoch by 300s. Two calls within the same 5-min
+    window return the same key — we use this to memoise run_signal."""
+    return int((now_ts or time.time()) // 300) * 300
 
 
 def _banner():
@@ -143,6 +167,26 @@ def run_server(args: argparse.Namespace):
     # Dedup set: track which (ticker, direction, session_date) have open positions
     sent_signals: set[str] = set()
 
+    def _scan_with_cache(ticker: str):
+        """Fetch run_signal for one ticker, reusing the cached result if we
+        already computed it in the current 5-min bar window."""
+        now_window = _bar_window_key()
+        with _SIGNAL_CACHE_LOCK:
+            cached = _SIGNAL_CACHE.get(ticker)
+        if cached and cached[0] == now_window:
+            return cached[1]
+        display = DEFAULT_DISPLAY_NAMES.get(ticker, ticker)
+        sr = run_signal(
+            ticker=ticker,
+            finnhub_api_key=args.finnhub_key,
+            account_size=args.account_size,
+            risk_pct=args.risk_pct,
+            display_name=display,
+        )
+        with _SIGNAL_CACHE_LOCK:
+            _SIGNAL_CACHE[ticker] = (now_window, sr)
+        return sr
+
     try:
         while True:
             poll_start = time.time()
@@ -158,21 +202,49 @@ def run_server(args: argparse.Namespace):
             else:
                 open_symbols = set()
 
-            for ticker in args.tickers:
-                display = DEFAULT_DISPLAY_NAMES.get(ticker, ticker)
-                log.info(f"Polling {display} ({ticker})...")
-
+            # ── Phase 1: fetch signals in parallel ───────────────────────
+            # Each run_signal is network-bound (yfinance/Finnhub) and
+            # independent. Bar-level cache hits return immediately.
+            workers = min(MAX_SCAN_WORKERS, len(args.tickers)) or 1
+            signal_results: dict[str, object] = {}
+            log.info(f"── Scanning {len(args.tickers)} ticker(s) (workers={workers}) ──")
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                futures = {ex.submit(_scan_with_cache, t): t for t in args.tickers}
+                outer_budget = max(120, PER_TICKER_TIMEOUT * ((len(args.tickers) + workers - 1) // workers) + 30)
                 try:
-                    sr = run_signal(
-                        ticker=ticker,
-                        finnhub_api_key=args.finnhub_key,
-                        account_size=args.account_size,
-                        risk_pct=args.risk_pct,
-                        display_name=display,
+                    for fut in as_completed(futures, timeout=outer_budget):
+                        ticker = futures[fut]
+                        try:
+                            signal_results[ticker] = fut.result(timeout=PER_TICKER_TIMEOUT)
+                        except (_FT, Exception) as exc:
+                            log.error(f"Signal engine error for {ticker}: {exc}")
+                            signal_results[ticker] = None
+                except _FT:
+                    n_unfinished = sum(1 for f in futures if not f.done())
+                    log.warning(
+                        f"Outer scan timeout ({outer_budget}s); {n_unfinished} ticker(s) unfinished"
                     )
-                except Exception as exc:
-                    log.error(f"Signal engine error for {ticker}: {exc}")
+                    for f, t in futures.items():
+                        if t in signal_results:
+                            continue
+                        if f.done():
+                            try:
+                                signal_results[t] = f.result(timeout=0)
+                            except Exception as exc:
+                                log.error(f"Signal result error for {t}: {exc}")
+                                signal_results[t] = None
+                        else:
+                            f.cancel()
+                            signal_results[t] = None
+
+            # ── Phase 2: process signals + send orders sequentially ──────
+            # MT5 order_send IPC isn't safe to call from multiple threads
+            # concurrently — keep this loop single-threaded.
+            for ticker in args.tickers:
+                sr = signal_results.get(ticker)
+                if sr is None:
                     continue
+                display = DEFAULT_DISPLAY_NAMES.get(ticker, ticker)
 
                 if sr.error:
                     log.warning(f"{ticker} error: {sr.error}")
@@ -189,7 +261,6 @@ def run_server(args: argparse.Namespace):
                     )
                     continue
 
-                # Log patterns with win rates
                 top_patterns = [(p.name, p.win_rate) for p in sr.patterns.patterns[:3]]
                 pattern_str  = " | ".join(f"{n} {w:.0%}" for n, w in top_patterns) or "—"
 

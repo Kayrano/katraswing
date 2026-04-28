@@ -194,8 +194,71 @@ def fetch_news_rss(ticker: str) -> list[NewsItem]:
     return items
 
 
+def _fetch_news_finnhub(
+    ticker: str, api_key: str, lookback_hours: int,
+) -> list[NewsItem]:
+    """Fetch from Finnhub. Returns [] on any error or rate-limit."""
+    headers  = {"X-Finnhub-Token": api_key}
+    now      = int(time.time())
+    from_ts  = now - lookback_hours * 3600
+    items: list[NewsItem] = []
+    is_futures = ticker.upper().endswith("=F")
+
+    try:
+        if is_futures:
+            resp = requests.get(
+                "https://finnhub.io/api/v1/news",
+                params={"category": "general"},
+                headers=headers,
+                timeout=10,
+            )
+        else:
+            from_date = datetime.fromtimestamp(from_ts).strftime("%Y-%m-%d")
+            to_date   = datetime.now().strftime("%Y-%m-%d")
+            resp = requests.get(
+                "https://finnhub.io/api/v1/company-news",
+                params={"symbol": ticker, "from": from_date, "to": to_date},
+                headers=headers,
+                timeout=10,
+            )
+        if resp.status_code != 200:
+            return items
+
+        for article in resp.json():
+            headline  = article.get("headline", "")
+            summary   = article.get("summary", "")
+            full_text = headline + " " + summary
+            if is_futures and not _is_relevant(full_text, ticker):
+                continue
+            pub_ts = article.get("datetime", 0)
+            if pub_ts < from_ts:
+                continue
+            sentiment, score = _classify_sentiment(
+                full_text, article.get("sentiment"),
+            )
+            items.append(NewsItem(
+                headline=headline,
+                summary=summary[:200] if summary else "",
+                sentiment=sentiment,
+                sentiment_score=score,
+                impact=_classify_impact(full_text),
+                published_at=datetime.fromtimestamp(pub_ts, tz=timezone.utc),
+                url=article.get("url", ""),
+                source=article.get("source", ""),
+            ))
+    except Exception as exc:
+        logger.warning("ctx=finnhub_news ticker=%s: %s", ticker, exc)
+
+    return items
+
+
 def fetch_news(ticker: str, api_key: str, lookback_hours: int = 6) -> list[NewsItem]:
-    """Fetch news from Finnhub + yfinance (always) + RSS (if feedparser installed). Cached 10 min."""
+    """Fetch news from Finnhub + yfinance (always) + RSS (if feedparser installed).
+
+    The three sources run concurrently in a 3-worker pool — they're independent
+    network calls that previously blocked sequentially (~25s worst case). Cached
+    10 min via _NEWS_CACHE.
+    """
     if not api_key:
         return []
 
@@ -204,85 +267,30 @@ def fetch_news(ticker: str, api_key: str, lookback_hours: int = 6) -> list[NewsI
     if cached is not None and time.time() - cached[1] < _NEWS_TTL:
         return cached[0]
 
-    headers = {"X-Finnhub-Token": api_key}
-    now = int(time.time())
-    from_ts = now - lookback_hours * 3600
     items: list[NewsItem] = []
+    yf_items: list[NewsItem]  = []
+    rss_items: list[NewsItem] = []
 
-    is_futures = ticker.upper().endswith("=F")
-
-    if is_futures:
-        # General market news for macro/index futures
+    # Run the three sources concurrently. Each has its own internal timeout
+    # (Finnhub: 10s; yfinance: 8s; RSS: bounded by feedparser parse).
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FT
+    with ThreadPoolExecutor(max_workers=3) as _ex:
+        _f_finn = _ex.submit(_fetch_news_finnhub, ticker, api_key, lookback_hours)
+        _f_yf   = _ex.submit(fetch_news_yfinance, ticker)
+        _f_rss  = _ex.submit(fetch_news_rss, ticker)
         try:
-            resp = requests.get(
-                "https://finnhub.io/api/v1/news",
-                params={"category": "general"},
-                headers=headers,
-                timeout=10,
-            )
-            if resp.status_code == 200:
-                for article in resp.json():
-                    headline = article.get("headline", "")
-                    summary = article.get("summary", "")
-                    full_text = headline + " " + summary
-                    if not _is_relevant(full_text, ticker):
-                        continue
-                    pub_ts = article.get("datetime", 0)
-                    if pub_ts < from_ts:
-                        continue
-                    sentiment, score = _classify_sentiment(
-                        full_text, article.get("sentiment")
-                    )
-                    items.append(NewsItem(
-                        headline=headline,
-                        summary=summary[:200] if summary else "",
-                        sentiment=sentiment,
-                        sentiment_score=score,
-                        impact=_classify_impact(full_text),
-                        published_at=datetime.fromtimestamp(pub_ts, tz=timezone.utc),
-                        url=article.get("url", ""),
-                        source=article.get("source", ""),
-                    ))
-        except Exception:
-            pass
-    else:
-        # Company-specific news
+            items = _f_finn.result(timeout=12)
+        except (_FT, Exception) as exc:
+            logger.warning("ctx=finnhub_news_timeout ticker=%s: %s", ticker, exc)
+            items = []
         try:
-            from_date = datetime.fromtimestamp(from_ts).strftime("%Y-%m-%d")
-            to_date = datetime.now().strftime("%Y-%m-%d")
-            resp = requests.get(
-                "https://finnhub.io/api/v1/company-news",
-                params={"symbol": ticker, "from": from_date, "to": to_date},
-                headers=headers,
-                timeout=10,
-            )
-            if resp.status_code == 200:
-                for article in resp.json():
-                    headline = article.get("headline", "")
-                    summary = article.get("summary", "")
-                    full_text = headline + " " + summary
-                    pub_ts = article.get("datetime", 0)
-                    if pub_ts < from_ts:
-                        continue
-                    sentiment, score = _classify_sentiment(
-                        full_text, article.get("sentiment")
-                    )
-                    items.append(NewsItem(
-                        headline=headline,
-                        summary=summary[:200] if summary else "",
-                        sentiment=sentiment,
-                        sentiment_score=score,
-                        impact=_classify_impact(full_text),
-                        published_at=datetime.fromtimestamp(pub_ts, tz=timezone.utc),
-                        url=article.get("url", ""),
-                        source=article.get("source", ""),
-                    ))
-        except Exception:
-            pass
-
-    # Merge yfinance + RSS sources
-    yf_items  = fetch_news_yfinance(ticker)
-    rss_items = fetch_news_rss(ticker) if api_key else []
+            yf_items = _f_yf.result(timeout=10)
+        except (_FT, Exception):
+            yf_items = []
+        try:
+            rss_items = _f_rss.result(timeout=10)
+        except (_FT, Exception):
+            rss_items = []
 
     # Deduplicate by URL, then by headline prefix (first 40 chars)
     seen_urls: set[str] = {i.url for i in items if i.url}

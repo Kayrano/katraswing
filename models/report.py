@@ -91,23 +91,6 @@ class MTFResult:
 
 
 @dataclass
-class CanSlimLetterScore:
-    letter: str       # "C", "A", "N", "S", "L", "I", "M"
-    name: str         # full criterion name
-    score: float      # 0-100
-    label: str        # "Strong", "Pass", "Weak", "N/A"
-    detail: str       # one-line explanation for the UI
-
-
-@dataclass
-class CanSlimResult:
-    overall_score: float
-    letters: list          # list[CanSlimLetterScore], exactly 7
-    recommendation: str    # "IDEAL" | "STRONG" | "ACCEPTABLE" | "AVOID"
-    criteria_passed: int   # letters with score >= 60
-
-
-@dataclass
 class PoliticianTradesData:
     sentiment: float          # -1.0 (full sell) to +1.0 (full buy)
     buy_count: int
@@ -134,7 +117,6 @@ class ReportData:
     trade_setup: TradeSetup
     score: ScoreResult
     mtf: Optional[MTFResult] = None
-    canslim: Optional[CanSlimResult] = None
     politician: Optional[PoliticianTradesData] = None
     generated_at: datetime = field(default_factory=datetime.now)
     filter_notes: list = field(default_factory=list)

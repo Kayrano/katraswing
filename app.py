@@ -385,6 +385,28 @@ def _refresh_backtest_rates(ticker: str):
     return cached
 
 
+@st.cache_data(ttl=900, show_spinner=False)
+def _cached_daily_trend(ticker: str):
+    """Cross-session cache for daily-trend fetch (TTL 15 min)."""
+    try:
+        from data.fetcher_intraday import fetch_daily_trend
+        return fetch_daily_trend(ticker)
+    except Exception as e:
+        log.warning("ctx=cached_daily_trend ticker=%s: %s", ticker, e)
+        return None
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _cached_h4_trend(ticker: str, mt5_symbol: str | None = None):
+    """Cross-session cache for H4 trend fetch (TTL 30 min)."""
+    try:
+        from data.fetcher_intraday import fetch_h4_trend
+        return fetch_h4_trend(ticker, mt5_symbol=mt5_symbol)
+    except Exception as e:
+        log.warning("ctx=cached_h4_trend ticker=%s: %s", ticker, e)
+        return None
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def _get_broker_symbols(_connected: bool = False) -> list[dict]:
     """Fetch available symbols from MT5 broker (cached 5 min, keyed by connection state)."""
@@ -710,33 +732,13 @@ if needs_run:
     from agents.signal_engine import run_signal
     from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as _FutureTimeout
 
+    # Delegate to module-level @st.cache_data helpers — they cache across all
+    # browser sessions/tabs and use Streamlit's built-in argument hashing.
     def _refresh_daily(ticker):
-        k_val, k_ts = f"_dt_{ticker}", f"_dt_ts_{ticker}"
-        if time.time() - st.session_state.get(k_ts, 0) > 900:
-            try:
-                from data.fetcher_intraday import fetch_daily_trend
-                trend = fetch_daily_trend(ticker)
-                st.session_state[k_val] = trend
-                st.session_state[k_ts]  = time.time()
-            except Exception as e:
-                log.warning("ctx=refresh_daily ticker=%s: %s", ticker, e)
-                st.session_state[k_val] = None
-                st.session_state[k_ts]  = time.time()
-        return st.session_state.get(k_val)
+        return _cached_daily_trend(ticker)
 
     def _refresh_h4(ticker, mt5_symbol=None):
-        k_val, k_ts = f"_h4_{ticker}", f"_h4_ts_{ticker}"
-        if time.time() - st.session_state.get(k_ts, 0) > 1800:
-            try:
-                from data.fetcher_intraday import fetch_h4_trend
-                trend = fetch_h4_trend(ticker, mt5_symbol=mt5_symbol)
-                st.session_state[k_val] = trend
-                st.session_state[k_ts]  = time.time()
-            except Exception as e:
-                log.warning("ctx=refresh_h4 ticker=%s: %s", ticker, e)
-                st.session_state[k_val] = None
-                st.session_state[k_ts]  = time.time()
-        return st.session_state.get(k_val)
+        return _cached_h4_trend(ticker, mt5_symbol)
 
     # Load live win rates and learned optimal stops once for all instruments
     _live_wr: dict = {}

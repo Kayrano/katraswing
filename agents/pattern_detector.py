@@ -16,6 +16,7 @@ Quantified Strategies, and Liberated Stock Trader backtests.
 from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
+from scipy.signal import argrelextrema
 
 
 @dataclass
@@ -126,19 +127,29 @@ def detect_patterns(df: pd.DataFrame) -> PatternReport:
 # ── Pivot helpers ─────────────────────────────────────────────────────────────
 
 def _find_local_highs(highs: np.ndarray, order: int = 3) -> list[int]:
-    result = []
-    for i in range(order, len(highs) - order):
-        if highs[i] == max(highs[i - order: i + order + 1]):
-            result.append(i)
-    return result
+    """Vectorized via scipy.signal.argrelextrema with `np.greater_equal` —
+    matches the original `highs[i] == max(window)` semantics (plateaus with
+    ties all qualify). Result is filtered to interior indices to mirror the
+    original `range(order, n - order)` bound and avoid scipy's edge clipping.
+    """
+    n = len(highs)
+    if n < 2 * order + 1:
+        return []
+    arr = np.asarray(highs)
+    candidates = argrelextrema(arr, np.greater_equal, order=order)[0]
+    interior = candidates[(candidates >= order) & (candidates < n - order)]
+    return interior.tolist()
 
 
 def _find_local_lows(lows: np.ndarray, order: int = 3) -> list[int]:
-    result = []
-    for i in range(order, len(lows) - order):
-        if lows[i] == min(lows[i - order: i + order + 1]):
-            result.append(i)
-    return result
+    """Vectorized counterpart of `_find_local_highs` for troughs."""
+    n = len(lows)
+    if n < 2 * order + 1:
+        return []
+    arr = np.asarray(lows)
+    candidates = argrelextrema(arr, np.less_equal, order=order)[0]
+    interior = candidates[(candidates >= order) & (candidates < n - order)]
+    return interior.tolist()
 
 
 def _candle_body(o, c):
