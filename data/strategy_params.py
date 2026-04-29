@@ -154,6 +154,70 @@ def apply_params(signal) -> object:
     return signal
 
 
+# ── Walk-forward validation ───────────────────────────────────────────────────
+
+# Defaults for the walk-forward gate. Tunable per call.
+WF_TRAIN_SIZE = 20
+WF_TEST_SIZE  = 10
+WF_OOS_RATIO  = 0.5   # reject if oos_wr < ins_wr × WF_OOS_RATIO
+
+
+def _walk_forward_validate(
+    strategy: str,
+    all_trades: list[dict],
+    current_floor: float,
+    proposed_floor: float,
+    train_size: int = WF_TRAIN_SIZE,
+    test_size:  int = WF_TEST_SIZE,
+) -> bool:
+    """Sanity-check a confidence-floor increase using held-out evidence.
+
+    Splits the strategy's closed-trade history into a training slice (older)
+    and a test slice (newest). Simulates what trades would have remained under
+    `proposed_floor` in each slice and compares win rates. If the proposed
+    floor's out-of-sample win rate falls below `WF_OOS_RATIO × in-sample
+    win rate`, the change is rejected — the historical edge doesn't generalize
+    forward, so adapt_strategy should leave the floor alone.
+
+    Returns True (accept) when there isn't enough data to validate or when
+    the change is a floor *decrease* (no filtering means nothing to test).
+    """
+    if proposed_floor <= current_floor:
+        return True   # no filtering effect — nothing to validate
+
+    closed = [
+        t for t in all_trades
+        if t.get("strategy") == strategy and t.get("outcome") in ("WIN", "LOSS")
+    ]
+    if len(closed) < train_size + test_size:
+        return True   # insufficient evidence — let the change through
+
+    # Newest at the end; train precedes test
+    train = closed[-(train_size + test_size):-test_size]
+    test  = closed[-test_size:]
+
+    train_kept = [t for t in train if float(t.get("confidence", 0)) >= proposed_floor]
+    test_kept  = [t for t in test  if float(t.get("confidence", 0)) >= proposed_floor]
+
+    # If the floor would have starved either slice of trades we can't tell —
+    # be conservative and accept the change rather than overfit on a tiny set.
+    if len(train_kept) < 3 or len(test_kept) < 3:
+        return True
+
+    train_wr = sum(1 for t in train_kept if t["outcome"] == "WIN") / len(train_kept)
+    test_wr  = sum(1 for t in test_kept  if t["outcome"] == "WIN") / len(test_kept)
+
+    accepted = test_wr >= train_wr * WF_OOS_RATIO
+    if not accepted:
+        logger.info(
+            "walk-forward rejected %s conf_floor %.2f→%.2f: "
+            "train_wr=%.2f test_wr=%.2f (n_train=%d n_test=%d)",
+            strategy, current_floor, proposed_floor,
+            train_wr, test_wr, len(train_kept), len(test_kept),
+        )
+    return accepted
+
+
 # ── Adaptation logic ──────────────────────────────────────────────────────────
 
 def adapt_strategy(strategy: str, all_trades: list[dict]) -> bool:
@@ -193,8 +257,12 @@ def adapt_strategy(strategy: str, all_trades: list[dict]) -> bool:
 
     # ── Confidence floor ──────────────────────────────────────────────────
     if win_rate < 0.40 and params["conf_floor"] < _CONF_FLOOR_MAX:
-        params["conf_floor"] = round(min(_CONF_FLOOR_MAX, params["conf_floor"] + 0.02), 3)
-        changed = True
+        proposed = round(min(_CONF_FLOOR_MAX, params["conf_floor"] + 0.02), 3)
+        # Walk-forward gate: only raise the floor if the change holds up on a
+        # held-out test slice. Avoids overfitting to a recent losing streak.
+        if _walk_forward_validate(strategy, all_trades, params["conf_floor"], proposed):
+            params["conf_floor"] = proposed
+            changed = True
     elif win_rate > 0.65 and params["conf_floor"] > _CONF_FLOOR_MIN:
         params["conf_floor"] = round(max(_CONF_FLOOR_MIN, params["conf_floor"] - 0.01), 3)
         changed = True

@@ -233,8 +233,10 @@ def _mt5_loop_inner(stop_event, config):
                         _log(f"✅ Signal sent: #{res.ticket} {sr.direction} {ticker} {sr.confidence:.0%}")
                         try:
                             from data.trade_outcomes import record_trade
+                            _pats = sr.patterns.patterns if sr.patterns else None
                             record_trade(res.ticket, ticker, strategy_name, sr.direction,
-                                         sr.confidence, sr.entry, sr.sl, sr.tp)
+                                         sr.confidence, sr.entry, sr.sl, sr.tp,
+                                         patterns=_pats)
                         except Exception as _rte:
                             _log(f"⚠ record_trade #{res.ticket}: {_rte}")
                     else:
@@ -861,8 +863,10 @@ if needs_run:
                     try:
                         from data.trade_outcomes import record_trade
                         strat = sr.chart_signals[0].strategy if sr.chart_signals else "UNKNOWN"
+                        _pats = sr.patterns.patterns if sr.patterns else None
                         record_trade(res.ticket, t, strat, sr.direction,
-                                     sr.confidence, sr.entry, sr.sl, sr.tp)
+                                     sr.confidence, sr.entry, sr.sl, sr.tp,
+                                     patterns=_pats)
                     except Exception as _rte:
                         _log(f"⚠ record_trade #{res.ticket}: {_rte}")
                 else:
@@ -1007,8 +1011,10 @@ with tab_signals:
                                 try:
                                     from data.trade_outcomes import record_trade
                                     strat_name = sr.chart_signals[0].strategy if sr.chart_signals else "UNKNOWN"
+                                    _pats = sr.patterns.patterns if sr.patterns else None
                                     record_trade(res.ticket, inst["ticker"], strat_name, sr.direction,
-                                                 sr.confidence, sr.entry, sr.sl, sr.tp)
+                                                 sr.confidence, sr.entry, sr.sl, sr.tp,
+                                                 patterns=_pats)
                                 except Exception as _rte:
                                     _log(f"⚠ record_trade #{res.ticket}: {_rte}")
                                 st.rerun()

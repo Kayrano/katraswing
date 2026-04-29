@@ -52,12 +52,32 @@ def record_trade(
     entry: float,
     sl: float,
     tp: float,
+    patterns: Optional[list] = None,
 ) -> None:
-    """Record a newly sent trade. Called immediately after order_send succeeds."""
+    """Record a newly sent trade. Called immediately after order_send succeeds.
+
+    `patterns` is the list[PatternMatch] that fired at entry — recorded so the
+    pattern win-rate learner (models.pattern_stats) can attribute each closed
+    trade's outcome back to the patterns that triggered it.
+    """
     trades = _load()
     # Avoid duplicates (e.g. rerun after reconnect)
     if any(t["ticket"] == ticket for t in trades):
         return
+
+    pattern_records = []
+    if patterns:
+        for p in patterns:
+            try:
+                pattern_records.append({
+                    "name":       getattr(p, "name", ""),
+                    "bias":       getattr(p, "bias", ""),
+                    "confidence": float(getattr(p, "confidence", 0.0)),
+                    "win_rate":   float(getattr(p, "win_rate", 0.0)),
+                })
+            except Exception:
+                continue
+
     trades.append({
         "ticket":     ticket,
         "ticker":     ticker,
@@ -67,6 +87,7 @@ def record_trade(
         "entry":      entry,
         "sl":         sl,
         "tp":         tp,
+        "patterns":   pattern_records,
         "sent_at":    datetime.utcnow().isoformat(timespec="seconds"),
         "closed_at":  None,
         "profit":     None,
@@ -137,6 +158,12 @@ def update_outcomes_from_mt5(magic: int = 234100) -> int:
                 logger.info(f"Adaptive learning: {adapted} strategy param(s) updated")
         except Exception as _ae:
             logger.debug(f"adapt_all skipped: {_ae}")
+        # Refresh per-pattern win rates from the new closed-trade evidence
+        try:
+            from models.pattern_stats import refresh as _refresh_pattern_stats
+            _refresh_pattern_stats()
+        except Exception as _pe:
+            logger.debug(f"pattern_stats refresh skipped: {_pe}")
     return updated
 
 

@@ -222,6 +222,16 @@ def run_signal(
         # --- Pattern detection ---
         patterns = _safe_detect_patterns(df)
 
+        # Replace each pattern's hardcoded textbook win_rate with the learned
+        # posterior (Beta(1,1) prior, ramps to learned-only at n≥30 trades).
+        # No-op if the user has fewer closed trades than the ramp threshold.
+        try:
+            from models.pattern_stats import apply_to_report as _apply_pattern_wrs
+            _apply_pattern_wrs(patterns)
+        except Exception as _pe:
+            import logging as _logging
+            _logging.getLogger(__name__).debug("pattern_stats apply skipped: %s", _pe)
+
         # --- Indicators ---
         indicators = _safe_indicators(df)
 

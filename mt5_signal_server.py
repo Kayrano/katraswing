@@ -97,6 +97,8 @@ def _parse_args() -> argparse.Namespace:
                    help="Log signals without sending orders to MT5")
     p.add_argument("--close-all",       action="store_true",
                    help="Emergency: close all Katraswing positions and exit")
+    p.add_argument("--health-port",     type=int,   default=9100,
+                   help="Port for /healthz and /metrics HTTP endpoints (0 to disable, default 9100)")
     return p.parse_args()
 
 
@@ -163,6 +165,19 @@ def run_server(args: argparse.Namespace):
     log.info(f"Monitoring: {args.tickers}")
     log.info(f"Poll interval: {args.interval}s | Min confidence: {args.min_confidence:.0%}")
     log.info("Press Ctrl+C to stop.\n")
+
+    # Health/metrics HTTP server on a daemon thread. Non-fatal if port is busy
+    # — the trading loop continues without observability rather than aborting.
+    metrics = None
+    if args.health_port > 0:
+        try:
+            from utils.health_server import Metrics, start_http_server
+            metrics = Metrics()
+            metrics.mt5_connected = is_connected() if not args.dry_run else False
+            start_http_server(metrics, port=args.health_port)
+        except Exception as _he:
+            log.warning(f"Could not start health HTTP server on :{args.health_port}: {_he}")
+            metrics = None
 
     # Dedup set: track which (ticker, direction, session_date) have open positions
     sent_signals: set[str] = set()
@@ -293,8 +308,18 @@ def run_server(args: argparse.Namespace):
                         f"{result.direction} {result.symbol} @ {result.entry:.4f}"
                     )
                     sent_signals.add(key)
+                    if metrics is not None:
+                        metrics.record_signal()
                 else:
                     log.warning(f"  ✗ Order failed: {result.error}")
+                    if metrics is not None:
+                        # Try to extract retcode from "retcode=NNNN | ..." format
+                        import re as _re
+                        m = _re.search(r"retcode=(\d+)", str(result.error))
+                        if m:
+                            metrics.record_rejection(int(m.group(1)))
+                        else:
+                            metrics.record_rejection(0)   # unknown / pre-flight
 
             # Show open positions
             if not args.dry_run and is_connected():
@@ -308,6 +333,9 @@ def run_server(args: argparse.Namespace):
                         )
 
             elapsed = time.time() - poll_start
+            if metrics is not None:
+                connected = is_connected() if not args.dry_run else True
+                metrics.record_poll(duration=elapsed, connected=connected)
             sleep_for = max(1, args.interval - elapsed)
             log.info(f"Next poll in {sleep_for:.0f}s...\n")
             time.sleep(sleep_for)
