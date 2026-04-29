@@ -42,8 +42,24 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
-DEFAULT_TICKERS      = ["NQ=F", "ES=F", "XAUUSD=X"]
-DEFAULT_DISPLAY_NAMES = {"NQ=F": "NQ Mini", "ES=F": "ES Mini", "XAUUSD=X": "Gram Gold"}
+# Covers the three asset classes the engine has the most strategy coverage for:
+#   forex majors (MSS_FOREX_15M, VWAP_RSI_5M, PDH_PDL_SWEEP_5M)
+#   US index futures (ORB_5M, NR7_BREAKOUT_5M, TREND_MOM_5M)
+#   gold (CAMARILLA_5M mean-reversion at S/R levels)
+# 6 instruments × ~5–10s/scan = well under the 60s poll interval.
+# Override at runtime with --tickers <space-separated list>.
+DEFAULT_TICKERS = [
+    "EURUSD=X", "GBPUSD=X", "USDJPY=X",
+    "NQ=F", "ES=F", "XAUUSD=X",
+]
+DEFAULT_DISPLAY_NAMES = {
+    "EURUSD=X": "EUR/USD",
+    "GBPUSD=X": "GBP/USD",
+    "USDJPY=X": "USD/JPY",
+    "NQ=F":     "NQ Mini",
+    "ES=F":     "ES Mini",
+    "XAUUSD=X": "Gram Gold",
+}
 DEFAULT_INTERVAL_SEC = 60       # poll every 60 seconds
 DEFAULT_MIN_CONF     = 0.60     # minimum confidence to enter
 FINNHUB_API_KEY      = ""       # optional — set here or via --finnhub-key

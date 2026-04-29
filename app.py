@@ -44,26 +44,36 @@ st.markdown("""
 # ── Backtest cache ────────────────────────────────────────────────────────────
 _BT_CACHE: dict = {"rates": {}, "ts": {}, "running": set()}
 _BT_LOCK = threading.Lock()
+# Cap concurrent backtests so a cold-start scan with 20 stale tickers doesn't
+# spawn 20 threads each fetching 59 days of bars (the previous behaviour).
+_BT_SEMA = threading.BoundedSemaphore(2)
+# Backtest results don't meaningfully change within a day. 24h TTL prevents
+# the same backtest from running multiple times per session.
+_BT_TTL_SEC = 86400
 
 _ET  = ZoneInfo("America/New_York")
 _JST = ZoneInfo("Asia/Tokyo")
 
 
 def _bt_background(ticker: str) -> None:
-    try:
-        from agents.intraday_backtester import run_intraday_backtest
-        summary = run_intraday_backtest(ticker, timeframe="5m")
-        rates = {r.strategy: r.win_rate for r in summary.results if r.total_trades >= 5}
-        with _BT_LOCK:
-            _BT_CACHE["rates"][ticker] = rates if rates else {}
-            _BT_CACHE["ts"][ticker]    = time.time()
-    except Exception:
-        with _BT_LOCK:
-            _BT_CACHE["rates"][ticker] = None
-            _BT_CACHE["ts"][ticker]    = time.time()
-    finally:
-        with _BT_LOCK:
-            _BT_CACHE["running"].discard(ticker)
+    # Throttle: at most 2 backtests run concurrently. Surplus threads block
+    # here until a slot is free, then proceed. Combined with the 24h TTL this
+    # eliminates the cold-start thread storm the user observed.
+    with _BT_SEMA:
+        try:
+            from agents.intraday_backtester import run_intraday_backtest
+            summary = run_intraday_backtest(ticker, timeframe="5m")
+            rates = {r.strategy: r.win_rate for r in summary.results if r.total_trades >= 5}
+            with _BT_LOCK:
+                _BT_CACHE["rates"][ticker] = rates if rates else {}
+                _BT_CACHE["ts"][ticker]    = time.time()
+        except Exception:
+            with _BT_LOCK:
+                _BT_CACHE["rates"][ticker] = None
+                _BT_CACHE["ts"][ticker]    = time.time()
+        finally:
+            with _BT_LOCK:
+                _BT_CACHE["running"].discard(ticker)
 
 
 # ── MT5 shared state (persists across reruns via session_state) ───────────────
@@ -373,12 +383,30 @@ def _fetch_mt5_history(days: int = 30):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+# Bar-window memo for run_signal results in the manual scan. Keyed by ticker →
+# (5-min window epoch, SignalResult). Within the same 5-min window the
+# underlying 5m bar can't have changed, so a repeat click on "Scan" returns
+# the cached result instead of re-running ~13 strategies + 22 pattern
+# detectors + news fetch per ticker. Bounded by len(instruments).
+_SCAN_SIGNAL_CACHE: dict[str, tuple[int, object]] = {}
+_SCAN_SIGNAL_LOCK = threading.Lock()
+
+
+def _scan_window_key(now_ts: float | None = None) -> int:
+    """Return the start of the current 5-minute wall-clock bucket. Two calls
+    within the same 5-min window get the same key → memo hit."""
+    return int((now_ts or time.time()) // 300) * 300
+
+
 def _refresh_backtest_rates(ticker: str):
+    # Read cache state under lock
     with _BT_LOCK:
         last_ts = _BT_CACHE["ts"].get(ticker, 0)
-        stale   = time.time() - last_ts > 3600
+        stale   = time.time() - last_ts > _BT_TTL_SEC
         running = ticker in _BT_CACHE["running"]
         cached  = _BT_CACHE["rates"].get(ticker)
+    # If stale and no thread is already working on this ticker, queue one.
+    # The semaphore inside _bt_background caps total concurrent work.
     if stale and not running:
         t = threading.Thread(target=_bt_background, args=(ticker,), daemon=True)
         with _BT_LOCK:
@@ -765,9 +793,18 @@ if needs_run:
         }
 
     def _scan_one(ticker):
+        # Bar-window cache hit? Repeat clicks within the same 5-min bucket
+        # reuse the prior SignalResult — the underlying 5m bar can't have
+        # changed and run_signal is deterministic given the same bars.
+        window = _scan_window_key()
+        with _SCAN_SIGNAL_LOCK:
+            cached = _SCAN_SIGNAL_CACHE.get(ticker)
+        if cached and cached[0] == window:
+            return ticker, cached[1]
+
         inp = ticker_inputs[ticker]
         inst = inp["inst"]
-        return ticker, run_signal(
+        sr = run_signal(
             ticker=ticker,
             display_name=inst.get("label", ticker),
             finnhub_api_key=finnhub_key,
@@ -780,6 +817,9 @@ if needs_run:
             live_win_rates=_live_wr or None,
             mt5_symbol=inst.get("mt5_symbol"),
         )
+        with _SCAN_SIGNAL_LOCK:
+            _SCAN_SIGNAL_CACHE[ticker] = (window, sr)
+        return ticker, sr
 
     results = {}
     _MAX_WORKERS    = 4

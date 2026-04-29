@@ -60,11 +60,19 @@ def _trend_weight(adx_val: float) -> float:
 
 # Mean-reversion strategies (penalised in trending markets)
 # PDH_PDL_SWEEP fades institutional sweeps — breaks down when trend is strongly directional
-_MR_STRATEGIES = {"VWAP_RSI_5M", "PDH_PDL_SWEEP_5M", "BB_SCALP_5M", "STOCH_CROSS_5M"}
+# CAMARILLA_5M trades S3/R3 bounces — same fade-the-edge profile, prone to fail when ADX is high
+# DOUBLE_BOT_BREAKOUT and HS_BREAKDOWN are reversal patterns — they fight the prevailing
+# trend and are exactly what an MR-penalty-in-trending-markets is meant to filter
+_MR_STRATEGIES = {
+    "VWAP_RSI_5M", "PDH_PDL_SWEEP_5M", "BB_SCALP_5M", "STOCH_CROSS_5M", "CAMARILLA_5M",
+    "DOUBLE_BOT_BREAKOUT_5M", "HS_BREAKDOWN_5M",
+}
 # Trend-following / breakout strategies (penalised in ranging markets)
 # NR7 breakouts fail in choppy low-ADX conditions
+# FLAG_BREAKOUT_5M is a continuation pattern — needs an existing trend to project the pole
 _TREND_STRATEGIES = {"ORB_5M", "TREND_MOM_5M", "EMA_PB_15M", "SQUEEZE_15M",
-                     "NR7_BREAKOUT_5M", "MSS_FOREX_15M", "EMA_MICRO_CROSS_5M"}
+                     "NR7_BREAKOUT_5M", "MSS_FOREX_15M", "EMA_MICRO_CROSS_5M",
+                     "FLAG_BREAKOUT_5M"}
 # ABSORB is order-flow based — regime-independent, never penalised
 
 # Minimum final confidence to issue a signal (raised from 0.35 → 0.60)

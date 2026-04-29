@@ -27,7 +27,17 @@ _ALL_STRATEGIES = [
     "VWAP_RSI_5M", "ORB_5M", "TREND_MOM_5M", "EMA_PB_15M", "SQUEEZE_15M",
     "ABSORB_15M", "PDH_PDL_SWEEP_5M", "CAMARILLA_5M", "NR7_BREAKOUT_5M",
     "MSS_FOREX_15M", "BB_SCALP_5M", "STOCH_CROSS_5M", "EMA_MICRO_CROSS_5M",
+    # Round 2: pattern-triggered strategies. Default to enabled=False — these
+    # are new entry strategies on real money; the user must walk-forward
+    # backtest each before flipping enabled=True.
+    "DOUBLE_BOT_BREAKOUT_5M", "HS_BREAKDOWN_5M", "FLAG_BREAKOUT_5M",
 ]
+
+# Strategies that ship disabled-by-default. The user must explicitly enable
+# them after reviewing backtest results.
+_DEFAULT_DISABLED = {
+    "DOUBLE_BOT_BREAKOUT_5M", "HS_BREAKDOWN_5M", "FLAG_BREAKOUT_5M",
+}
 
 _DEFAULT_ENTRY = {
     "sl_mult":      1.0,
@@ -76,8 +86,13 @@ _PARAMS: dict[str, dict] = {}
 
 # ── Load / save ───────────────────────────────────────────────────────────────
 
-def _default_entry() -> dict:
-    return {k: v for k, v in _DEFAULT_ENTRY.items()}
+def _default_entry(strategy: str = "") -> dict:
+    entry = {k: v for k, v in _DEFAULT_ENTRY.items()}
+    # Pattern-triggered strategies (R2.3) ship disabled — user must review
+    # walk-forward backtest results and explicitly flip enabled=True.
+    if strategy in _DEFAULT_DISABLED:
+        entry["enabled"] = False
+    return entry
 
 
 def load_params() -> dict:
@@ -95,10 +110,20 @@ def load_params() -> dict:
     # Ensure all known strategies have entries with all required keys
     for strat in _ALL_STRATEGIES:
         if strat not in _PARAMS:
-            _PARAMS[strat] = _default_entry()
+            _PARAMS[strat] = _default_entry(strat)
         else:
             for k, v in _DEFAULT_ENTRY.items():
                 _PARAMS[strat].setdefault(k, v)
+            # If a pattern strategy was added later (existing config didn't
+            # have it), preserve the disabled-by-default semantics. We only
+            # override `enabled` when the field was JUST defaulted from the
+            # template — not when the user has explicitly flipped it.
+            # Detection: if trades_seen==0 AND adapt_count==0 AND the strategy
+            # is in _DEFAULT_DISABLED, force enabled=False (no human input yet).
+            if strat in _DEFAULT_DISABLED:
+                if (_PARAMS[strat].get("trades_seen", 0) == 0
+                        and _PARAMS[strat].get("adapt_count", 0) == 0):
+                    _PARAMS[strat]["enabled"] = False
 
     return _PARAMS
 
@@ -119,7 +144,7 @@ def get_params(strategy: str) -> dict:
     if not _PARAMS:
         load_params()
     if strategy not in _PARAMS:
-        _PARAMS[strategy] = _default_entry()
+        _PARAMS[strategy] = _default_entry(strategy)
         save_params()
     return _PARAMS[strategy]
 

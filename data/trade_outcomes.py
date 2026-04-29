@@ -19,24 +19,55 @@ logger = logging.getLogger(__name__)
 _LOG_PATH = Path(__file__).parent / "trade_log.json"
 _MIN_TRADES = 5   # minimum closed trades before a strategy's win rate is used
 
+# ── mtime-keyed caches ───────────────────────────────────────────────────────
+# These are read on every poll cycle (background thread) and on every UI rerun
+# (Streamlit). The trade log only changes when an order is placed or an
+# outcome is recorded — typically minutes apart. Cache the parsed list and
+# the two derived stats dicts; invalidate when the file's mtime advances.
+_LOAD_CACHE:           tuple[float, list[dict]] | None = None
+_DETAILED_WR_CACHE:    dict[int, tuple[float, dict[str, float]]] = {}
+_OPTIMAL_STOPS_CACHE:  dict[int, tuple[float, dict[str, dict]]]  = {}
+_WIN_RATES_CACHE:      dict[int, tuple[float, dict[str, float]]] = {}
+
+
+def _file_mtime() -> float:
+    try:
+        return _LOG_PATH.stat().st_mtime if _LOG_PATH.exists() else 0.0
+    except Exception:
+        return 0.0
+
 
 # ── Persistence ───────────────────────────────────────────────────────────────
 
 def _load() -> list[dict]:
+    """Read trade_log.json with an mtime-keyed cache. Subsequent calls within
+    the same file revision return the cached parsed list — eliminates JSON
+    parse cost on hot paths (every UI rerun + every poll iteration)."""
+    global _LOAD_CACHE
+    mtime = _file_mtime()
+    if mtime == 0.0:
+        return []
+    if _LOAD_CACHE is not None and _LOAD_CACHE[0] == mtime:
+        return _LOAD_CACHE[1]
     try:
-        if _LOG_PATH.exists():
-            return json.loads(_LOG_PATH.read_text(encoding="utf-8"))
+        data = json.loads(_LOG_PATH.read_text(encoding="utf-8"))
     except Exception as exc:
         logger.warning(f"trade_log load error: {exc}")
-    return []
+        return []
+    _LOAD_CACHE = (mtime, data)
+    return data
 
 
 def _save(trades: list[dict]) -> None:
+    global _LOAD_CACHE
     try:
         _LOG_PATH.write_text(
             json.dumps(trades, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
+        # Invalidate the load cache eagerly so the next read picks up the
+        # new mtime; downstream stat caches will refresh on demand.
+        _LOAD_CACHE = None
     except Exception as exc:
         logger.warning(f"trade_log save error: {exc}")
 
@@ -171,7 +202,13 @@ def compute_win_rates(min_trades: int = _MIN_TRADES) -> dict[str, float]:
     """
     Return {strategy: win_rate} for strategies with >= min_trades closed results.
     Used as backtest_win_rates in run_signal() to calibrate confidence scores.
+    Result is cached by trade_log mtime + min_trades param.
     """
+    mtime = _file_mtime()
+    cached = _WIN_RATES_CACHE.get(min_trades)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+
     trades = _load()
     from collections import defaultdict
     buckets: dict[str, list[bool]] = defaultdict(list)
@@ -179,11 +216,13 @@ def compute_win_rates(min_trades: int = _MIN_TRADES) -> dict[str, float]:
         if t["outcome"] in ("WIN", "LOSS"):   # exclude BREAKEVEN from ratio
             buckets[t["strategy"]].append(t["outcome"] == "WIN")
 
-    return {
+    result = {
         s: sum(results) / len(results)
         for s, results in buckets.items()
         if len(results) >= min_trades
     }
+    _WIN_RATES_CACHE[min_trades] = (mtime, result)
+    return result
 
 
 def compute_detailed_win_rates(min_trades: int = 3) -> dict[str, float]:
@@ -199,7 +238,15 @@ def compute_detailed_win_rates(min_trades: int = 3) -> dict[str, float]:
     min_trades=3 (lower than compute_win_rates) because granular buckets fill up slower.
     Losses drag the rate down just as much as wins raise it — no special weighting needed;
     the signal engine applies an asymmetric penalty multiplier at calibration time.
+
+    Result is cached by trade_log mtime + min_trades param. Saves the repeated
+    O(N) bucketing on every poll/UI rerun.
     """
+    mtime = _file_mtime()
+    cached = _DETAILED_WR_CACHE.get(min_trades)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+
     from collections import defaultdict
     trades = _load()
     buckets: dict[str, list[bool]] = defaultdict(list)
@@ -221,11 +268,13 @@ def compute_detailed_win_rates(min_trades: int = 3) -> dict[str, float]:
         if sym and direction:
             buckets[f"{strat}:{sym}:{direction}"].append(win)
 
-    return {
+    result = {
         k: round(sum(v) / len(v), 4)
         for k, v in buckets.items()
         if len(v) >= min_trades
     }
+    _DETAILED_WR_CACHE[min_trades] = (mtime, result)
+    return result
 
 
 def compute_optimal_stops(min_trades: int = 3) -> dict[str, dict]:
@@ -250,7 +299,15 @@ def compute_optimal_stops(min_trades: int = 3) -> dict[str, dict]:
         stop placements that survived to profit.
       • If losing trades have a smaller median SL than winning ones, the model
         adds a 5 % buffer to reduce premature stop-outs.
+
+    Result is cached by trade_log mtime + min_trades param. Saves the
+    O(N) median computation on every poll/UI rerun.
     """
+    mtime = _file_mtime()
+    cached = _OPTIMAL_STOPS_CACHE.get(min_trades)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+
     import statistics
     from collections import defaultdict
 
@@ -308,6 +365,7 @@ def compute_optimal_stops(min_trades: int = 3) -> dict[str, dict]:
             "sample":   len(records),
         }
 
+    _OPTIMAL_STOPS_CACHE[min_trades] = (mtime, result)
     return result
 
 

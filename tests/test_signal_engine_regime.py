@@ -130,3 +130,34 @@ class TestExtremeBehavior:
         tw = _trend_weight(15)
         penalty = _TREND_MAX_PENALTY * (1.0 - tw)
         assert 0.08 < penalty <= _TREND_MAX_PENALTY
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Strategy classification — every strategy in _STRATEGIES_5M / _STRATEGIES_15M
+# must be classified into either _MR_STRATEGIES or _TREND_STRATEGIES, otherwise
+# the soft regime router silently skips it and applies no penalty.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestStrategyClassification:
+    def test_camarilla_classified_as_mean_reversion(self):
+        """CAMARILLA_5M trades S3/R3 bounces (fade-the-edge) — same profile
+        as the other MR strategies. R2.4 fix: it must receive an MR penalty
+        in trending markets."""
+        from agents.signal_engine import _MR_STRATEGIES
+        assert "CAMARILLA_5M" in _MR_STRATEGIES
+
+    def test_no_strategy_falls_through_unclassified(self):
+        """Catch future regressions: every registered strategy id must
+        appear in exactly one of the two regime sets, OR be the explicit
+        order-flow exception (ABSORB_15M)."""
+        from agents.signal_engine import _MR_STRATEGIES, _TREND_STRATEGIES
+        from agents.intraday_strategies import _STRATEGY_NAME_MAP
+        ABSORB_EXEMPT = {"ABSORB_15M"}
+        all_ids = set(_STRATEGY_NAME_MAP.values())
+        classified = _MR_STRATEGIES | _TREND_STRATEGIES | ABSORB_EXEMPT
+        unclassified = all_ids - classified
+        assert unclassified == set(), (
+            f"strategies {unclassified} are not in _MR_STRATEGIES, "
+            f"_TREND_STRATEGIES, or ABSORB_EXEMPT — they will receive "
+            f"no soft regime penalty"
+        )

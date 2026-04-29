@@ -24,17 +24,37 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
+import requests
 import yfinance as yf
+from requests.adapters import HTTPAdapter
 from zoneinfo import ZoneInfo
 
 log = logging.getLogger(__name__)
 
 
+# Shared yfinance HTTP session — keeps TCP connections alive across calls so
+# the per-scan 60+ ticker fetches reuse handshakes instead of opening 60 new
+# sockets. Pool sized for our 6-worker mt5 scan + 4-worker UI scan running
+# concurrently (~10 in flight at peak).
+_yf_session = requests.Session()
+_yf_session.mount(
+    "https://",
+    HTTPAdapter(pool_connections=10, pool_maxsize=20, max_retries=2),
+)
+_yf_session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Katraswing/yfinance)",
+})
+
+
 def _yf_history(ticker: str, timeout: int = 20, **kwargs) -> "pd.DataFrame | None":
-    """yfinance .history() with a hard timeout so a slow network never blocks forever."""
+    """yfinance .history() through a pooled HTTP session with a hard outer
+    timeout. The session reuses connections; the ThreadPoolExecutor wrapper
+    guards against yfinance hangs that bypass the requests-level timeout."""
     try:
         with ThreadPoolExecutor(max_workers=1) as _ex:
-            _fut = _ex.submit(lambda: yf.Ticker(ticker).history(**kwargs))
+            _fut = _ex.submit(
+                lambda: yf.Ticker(ticker, session=_yf_session).history(**kwargs)
+            )
             return _fut.result(timeout=timeout)
     except (_FutureTimeout, Exception):
         return None

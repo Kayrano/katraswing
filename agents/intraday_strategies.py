@@ -1335,13 +1335,223 @@ def mss_forex_15m(df: pd.DataFrame) -> IntradaySignal:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
+# PATTERN-TRIGGERED STRATEGIES — fire on detected chart patterns
+# ════════════════════════════════════════════════════════════════════════════════
+#
+# Round 2 addition. Where the existing 13 strategies use technical indicators
+# (RSI, MACD, EMAs, etc.) to enter, these three use the chart pattern detector
+# itself as the trigger. Patterns previously contributed only a ±0.05 nudge
+# to existing strategy confidence; now high-confidence patterns can initiate
+# a trade on their own when the confirmation gate passes.
+#
+# Confirmation gate (shared by all three):
+#   • Pattern confidence ≥ threshold (0.70 or 0.75 depending on pattern type)
+#   • RVOL ≥ 1.2 — current bar volume must exceed 20-bar average (signals
+#     real participation in the breakout, not low-liquidity noise)
+#   • ATR > 0 — required for stop placement
+#
+# The MTF gate (daily + H4 alignment) is applied downstream by signal_engine,
+# not duplicated inside the strategy.
+# ════════════════════════════════════════════════════════════════════════════════
+
+
+_PATTERN_STRATEGY_MIN_BARS = 60   # detect_patterns scans up to last 100 bars
+
+
+def _safe_rvol(df: pd.DataFrame) -> float:
+    """Latest bar's volume / 20-bar average. Defaults to 1.0 if unavailable."""
+    try:
+        if "rvol" in df.columns and not pd.isna(df["rvol"].iloc[-1]):
+            return float(df["rvol"].iloc[-1])
+        if "Volume" in df.columns and len(df) >= 20:
+            recent_v = df["Volume"].iloc[-20:]
+            avg = float(recent_v.mean())
+            cur = float(recent_v.iloc[-1])
+            return cur / avg if avg > 0 else 1.0
+    except Exception:
+        pass
+    return 1.0
+
+
+def _safe_pattern_report(df: pd.DataFrame):
+    """Run pattern detection, swallowing edge-case errors (NaN bars, etc.)."""
+    try:
+        from agents.pattern_detector import detect_patterns
+        return detect_patterns(df.tail(100).reset_index(drop=True))
+    except Exception:
+        return None
+
+
+def _safe_atr(df: pd.DataFrame, length: int = 14) -> float:
+    try:
+        atr_s = ta.atr(df["High"], df["Low"], df["Close"], length=length)
+        valid = atr_s.dropna() if atr_s is not None else None
+        if valid is not None and not valid.empty:
+            return float(valid.iloc[-1])
+    except Exception:
+        pass
+    return 0.0
+
+
+def double_bottom_breakout_5m(df: pd.DataFrame) -> IntradaySignal:
+    """LONG when a Double Bottom or Triple Bottom prints with confidence ≥ 0.75
+    on the 5m chart, RVOL confirms participation, and the detector signals the
+    neckline break (the detector only fires if `closes[-1] > neckline * 0.99`).
+
+    SL placed 1.5×ATR below entry; TP at 3×ATR above (1:2 R:R).
+    """
+    NAME, TF = "DOUBLE_BOT_BREAKOUT_5M", "5m"
+    if df is None or len(df) < _PATTERN_STRATEGY_MIN_BARS:
+        return _flat(NAME, TF, "Insufficient bars")
+
+    report = _safe_pattern_report(df)
+    if report is None or not report.patterns:
+        return _flat(NAME, TF, "No patterns detected")
+
+    candidate = next(
+        (p for p in report.patterns
+         if p.name in ("Double Bottom", "Triple Bottom")
+         and p.bias == "BULLISH"
+         and p.confidence >= 0.75),
+        None,
+    )
+    if candidate is None:
+        return _flat(NAME, TF, "No Double/Triple Bottom ≥0.75 confidence")
+
+    rvol = _safe_rvol(df)
+    if rvol < 1.2:
+        return _flat(NAME, TF, f"{candidate.name} found but RVOL={rvol:.2f} < 1.2")
+
+    atr = _safe_atr(df)
+    if atr <= 0:
+        return _flat(NAME, TF, "ATR=0")
+
+    entry = float(df["Close"].iloc[-1])
+    confidence = min(0.95, candidate.confidence + (0.05 if rvol >= 1.5 else 0.0))
+    return _make_signal(
+        NAME, TF, "LONG", confidence, entry, atr,
+        sl_atr_mult=1.5, tp_atr_mult=3.0,
+        reason=(
+            f"{candidate.name} (conf={candidate.confidence:.2f}, "
+            f"WR={candidate.win_rate:.0%}) | RVOL={rvol:.1f}x | breakout LONG"
+        ),
+    )
+
+
+def head_shoulders_breakdown_5m(df: pd.DataFrame) -> IntradaySignal:
+    """Symmetric strategy for both H&S (SHORT) and Inverse H&S (LONG) on 5m.
+    Pattern detector confirms neckline break before yielding the match.
+
+    SL placed 1.5×ATR opposite the trade direction; TP at 3×ATR (1:2).
+    """
+    NAME, TF = "HS_BREAKDOWN_5M", "5m"
+    if df is None or len(df) < _PATTERN_STRATEGY_MIN_BARS:
+        return _flat(NAME, TF, "Insufficient bars")
+
+    report = _safe_pattern_report(df)
+    if report is None or not report.patterns:
+        return _flat(NAME, TF, "No patterns detected")
+
+    bearish = next(
+        (p for p in report.patterns
+         if p.name == "Head & Shoulders" and p.confidence >= 0.75),
+        None,
+    )
+    bullish = next(
+        (p for p in report.patterns
+         if p.name == "Inv. Head & Shoulders" and p.confidence >= 0.75),
+        None,
+    )
+    candidate = bearish or bullish
+    if candidate is None:
+        return _flat(NAME, TF, "No H&S or Inv. H&S ≥0.75 confidence")
+
+    direction = "SHORT" if candidate is bearish else "LONG"
+
+    rvol = _safe_rvol(df)
+    if rvol < 1.2:
+        return _flat(NAME, TF, f"{candidate.name} found but RVOL={rvol:.2f} < 1.2")
+
+    atr = _safe_atr(df)
+    if atr <= 0:
+        return _flat(NAME, TF, "ATR=0")
+
+    entry = float(df["Close"].iloc[-1])
+    confidence = min(0.95, candidate.confidence + (0.05 if rvol >= 1.5 else 0.0))
+    return _make_signal(
+        NAME, TF, direction, confidence, entry, atr,
+        sl_atr_mult=1.5, tp_atr_mult=3.0,
+        reason=(
+            f"{candidate.name} (conf={candidate.confidence:.2f}, "
+            f"WR={candidate.win_rate:.0%}) | RVOL={rvol:.1f}x | "
+            f"neckline {direction}"
+        ),
+    )
+
+
+def flag_breakout_5m(df: pd.DataFrame) -> IntradaySignal:
+    """Continuation strategy: fires LONG on Bull Flag, SHORT on Bear Flag with
+    confidence ≥ 0.70 (lower threshold than reversal patterns — flags have
+    higher base reliability per Bulkowski) and RVOL confirming the break.
+
+    Tighter stops than reversal strategies: 1.0×ATR SL, 2.5×ATR TP. The pole
+    typically projects further than the flag's depth, justifying the wider TP.
+    """
+    NAME, TF = "FLAG_BREAKOUT_5M", "5m"
+    if df is None or len(df) < _PATTERN_STRATEGY_MIN_BARS:
+        return _flat(NAME, TF, "Insufficient bars")
+
+    report = _safe_pattern_report(df)
+    if report is None or not report.patterns:
+        return _flat(NAME, TF, "No patterns detected")
+
+    bull = next(
+        (p for p in report.patterns
+         if p.name == "Bull Flag" and p.confidence >= 0.70),
+        None,
+    )
+    bear = next(
+        (p for p in report.patterns
+         if p.name == "Bear Flag" and p.confidence >= 0.70),
+        None,
+    )
+    candidate = bull or bear
+    if candidate is None:
+        return _flat(NAME, TF, "No Bull/Bear Flag ≥0.70 confidence")
+
+    direction = "LONG" if candidate is bull else "SHORT"
+
+    rvol = _safe_rvol(df)
+    if rvol < 1.2:
+        return _flat(NAME, TF, f"{candidate.name} found but RVOL={rvol:.2f} < 1.2")
+
+    atr = _safe_atr(df)
+    if atr <= 0:
+        return _flat(NAME, TF, "ATR=0")
+
+    entry = float(df["Close"].iloc[-1])
+    confidence = min(0.92, candidate.confidence + (0.05 if rvol >= 1.5 else 0.0))
+    return _make_signal(
+        NAME, TF, direction, confidence, entry, atr,
+        sl_atr_mult=1.0, tp_atr_mult=2.5,
+        reason=(
+            f"{candidate.name} (conf={candidate.confidence:.2f}, "
+            f"WR={candidate.win_rate:.0%}) | RVOL={rvol:.1f}x | "
+            f"continuation {direction}"
+        ),
+    )
+
+
+# ════════════════════════════════════════════════════════════════════════════════
 # ORCHESTRATOR — run_intraday_signals
 # ════════════════════════════════════════════════════════════════════════════════
 
 _STRATEGIES_5M  = [vwap_rsi_5m, orb_5m, trend_momentum_5m,
                    pdh_pdl_sweep_5m, camarilla_pivot_5m, nr7_breakout_5m,
                    bb_scalp_5m, stoch_cross_5m, ema_micro_cross_5m,
-                   mss_forex_15m]
+                   mss_forex_15m,
+                   double_bottom_breakout_5m, head_shoulders_breakdown_5m,
+                   flag_breakout_5m]
 _STRATEGIES_15M = [ema_pullback_15m, squeeze_15m, absorption_15m]
 
 _STRATEGY_NAME_MAP: dict[str, str] = {
@@ -1358,6 +1568,9 @@ _STRATEGY_NAME_MAP: dict[str, str] = {
     "bb_scalp_5m":          "BB_SCALP_5M",
     "stoch_cross_5m":       "STOCH_CROSS_5M",
     "ema_micro_cross_5m":   "EMA_MICRO_CROSS_5M",
+    "double_bottom_breakout_5m":  "DOUBLE_BOT_BREAKOUT_5M",
+    "head_shoulders_breakdown_5m":"HS_BREAKDOWN_5M",
+    "flag_breakout_5m":           "FLAG_BREAKOUT_5M",
 }
 
 
