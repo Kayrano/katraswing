@@ -4,9 +4,9 @@
     "tp_mult": 1.0,
     "conf_floor": 0.6,
     "enabled": true,
-    "trades_seen": 4,
-    "wins": 0,
-    "win_rate": 0.0,
+    "trades_seen": 6,
+    "wins": 2,
+    "win_rate": 0.333,
     "last_adapted": null,
     "adapt_count": 0
   },
@@ -22,15 +22,15 @@
     "adapt_count": 0
   },
   "TREND_MOM_5M": {
-    "sl_mult": 1.0,
-    "tp_mult": 1.0,
-    "conf_floor": 0.6,
+    "sl_mult": 1.5,
+    "tp_mult": 0.75,
+    "conf_floor": 0.8,
     "enabled": true,
-    "trades_seen": 9,
+    "trades_seen": 11,
     "wins": 3,
-    "win_rate": 0.333,
-    "last_adapted": "2026-04-28T11:13:26.616908+00:00",
-    "adapt_count": 0
+    "win_rate": 0.273,
+    "last_adapted": "2026-04-29T06:47:43.532874+00:00",
+    "adapt_count": 10
   },
   "EMA_PB_15M": {
     "sl_mult": 1.0,
@@ -70,9 +70,9 @@
     "tp_mult": 1.0,
     "conf_floor": 0.6,
     "enabled": true,
-    "trades_seen": 0,
-    "wins": 0,
-    "win_rate": null,
+    "trades_seen": 3,
+    "wins": 1,
+    "win_rate": 0.333,
     "last_adapted": null,
     "adapt_count": 0
   },
@@ -81,20 +81,20 @@
     "tp_mult": 1.0,
     "conf_floor": 0.6,
     "enabled": true,
-    "trades_seen": 6,
-    "wins": 2,
-    "win_rate": 0.333,
-    "last_adapted": "2026-04-27T17:56:39.357426+00:00",
-    "adapt_count": 0
+    "trades_seen": 10,
+    "wins": 4,
+    "win_rate": 0.4,
+    "last_adapted": "2026-04-29T06:46:52.076020+00:00",
+    "adapt_count": 1
   },
   "NR7_BREAKOUT_5M": {
     "sl_mult": 1.0,
     "tp_mult": 1.0,
     "conf_floor": 0.6,
     "enabled": true,
-    "trades_seen": 1,
-    "wins": 1,
-    "win_rate": 1.0,
+    "trades_seen": 7,
+    "wins": 3,
+    "win_rate": 0.429,
     "last_adapted": null,
     "adapt_count": 0
   },
@@ -103,8 +103,8 @@
     "tp_mult": 1.0,
     "conf_floor": 0.6,
     "enabled": true,
-    "trades_seen": 2,
-    "wins": 1,
+    "trades_seen": 4,
+    "wins": 2,
     "win_rate": 0.5,
     "last_adapted": null,
     "adapt_count": 0
@@ -136,9 +136,9 @@
     "tp_mult": 1.0,
     "conf_floor": 0.6,
     "enabled": true,
-    "trades_seen": 0,
-    "wins": 0,
-    "win_rate": null,
+    "trades_seen": 2,
+    "wins": 2,
+    "win_rate": 1.0,
     "last_adapted": null,
     "adapt_count": 0
   }

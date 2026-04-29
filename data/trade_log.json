@@ -773,9 +773,9 @@
     "sl": 49299.5208,
     "tp": 49400.0185,
     "sent_at": "2026-04-28T13:24:32",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T16:30:01",
+    "profit": 16.09,
+    "outcome": "WIN"
   },
   {
     "ticket": 214707027,
@@ -787,9 +787,9 @@
     "sl": 215.1098,
     "tp": 215.3264,
     "sent_at": "2026-04-28T13:36:47",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T17:02:38",
+    "profit": -7.67,
+    "outcome": "LOSS"
   },
   {
     "ticket": 214707034,
@@ -801,9 +801,9 @@
     "sl": 0.7166,
     "tp": 0.7173,
     "sent_at": "2026-04-28T13:36:47",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T16:39:19",
+    "profit": -5.46,
+    "outcome": "LOSS"
   },
   {
     "ticket": 214713393,
@@ -815,9 +815,9 @@
     "sl": 1.3675,
     "tp": 1.3649,
     "sent_at": "2026-04-28T13:42:20",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T17:36:49",
+    "profit": -5.5,
+    "outcome": "LOSS"
   },
   {
     "ticket": 214743662,
@@ -829,9 +829,9 @@
     "sl": 159.5331,
     "tp": 159.6288,
     "sent_at": "2026-04-28T14:08:07",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T17:22:19",
+    "profit": 9.77,
+    "outcome": "WIN"
   },
   {
     "ticket": 214743668,
@@ -843,9 +843,9 @@
     "sl": 159.5331,
     "tp": 159.6288,
     "sent_at": "2026-04-28T14:08:07",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T17:22:19",
+    "profit": 9.77,
+    "outcome": "WIN"
   },
   {
     "ticket": 214743779,
@@ -857,9 +857,9 @@
     "sl": 27156.648,
     "tp": 27325.704,
     "sent_at": "2026-04-28T14:08:16",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T17:23:52",
+    "profit": -8.2,
+    "outcome": "LOSS"
   },
   {
     "ticket": 214755734,
@@ -871,9 +871,9 @@
     "sl": 49310.4046,
     "tp": 49483.1908,
     "sent_at": "2026-04-28T14:20:10",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T18:33:42",
+    "profit": 12.78,
+    "outcome": "WIN"
   },
   {
     "ticket": 214755745,
@@ -885,9 +885,9 @@
     "sl": 2.7131,
     "tp": 2.7458,
     "sent_at": "2026-04-28T14:20:10",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T18:15:13",
+    "profit": 0.0,
+    "outcome": "BREAKEVEN"
   },
   {
     "ticket": 214763161,
@@ -899,9 +899,9 @@
     "sl": 215.017,
     "tp": 216.29498,
     "sent_at": "2026-04-28T14:28:57",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T18:15:14",
+    "profit": 0.67,
+    "outcome": "WIN"
   },
   {
     "ticket": 214768448,
@@ -913,9 +913,9 @@
     "sl": 186.6427,
     "tp": 186.8116,
     "sent_at": "2026-04-28T14:34:50",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T17:57:33",
+    "profit": 9.2,
+    "outcome": "WIN"
   },
   {
     "ticket": 214783768,
@@ -927,9 +927,9 @@
     "sl": 0.7169,
     "tp": 0.7174,
     "sent_at": "2026-04-28T14:46:51",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T17:47:34",
+    "profit": -5.0,
+    "outcome": "LOSS"
   },
   {
     "ticket": 214802623,
@@ -941,9 +941,9 @@
     "sl": 99.243,
     "tp": 100.9141,
     "sent_at": "2026-04-28T15:00:32",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T18:27:38",
+    "profit": 2.41,
+    "outcome": "WIN"
   },
   {
     "ticket": 214823190,
@@ -955,9 +955,9 @@
     "sl": 1.3497,
     "tp": 1.3516,
     "sent_at": "2026-04-28T15:21:29",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T19:42:36",
+    "profit": 2.76,
+    "outcome": "WIN"
   },
   {
     "ticket": 214853072,
@@ -969,9 +969,9 @@
     "sl": 1.17047,
     "tp": 1.17213,
     "sent_at": "2026-04-28T15:51:03",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T19:23:20",
+    "profit": -4.24,
+    "outcome": "LOSS"
   },
   {
     "ticket": 214853098,
@@ -983,9 +983,9 @@
     "sl": 215.017,
     "tp": 216.685,
     "sent_at": "2026-04-28T15:51:04",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T19:18:27",
+    "profit": -0.48,
+    "outcome": "LOSS"
   },
   {
     "ticket": 214853129,
@@ -997,9 +997,9 @@
     "sl": 97.73602,
     "tp": 102.99736,
     "sent_at": "2026-04-28T15:51:05",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T19:18:48",
+    "profit": -1.13,
+    "outcome": "LOSS"
   },
   {
     "ticket": 214859117,
@@ -1011,9 +1011,9 @@
     "sl": 0.71788,
     "tp": 0.71884,
     "sent_at": "2026-04-28T15:59:14",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T19:19:08",
+    "profit": -4.8,
+    "outcome": "LOSS"
   },
   {
     "ticket": 214908068,
@@ -1025,9 +1025,9 @@
     "sl": 1.16964,
     "tp": 1.17382,
     "sent_at": "2026-04-28T16:56:37",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T21:27:50",
+    "profit": 0.38,
+    "outcome": "WIN"
   },
   {
     "ticket": 214911809,
@@ -1039,9 +1039,9 @@
     "sl": 0.7183,
     "tp": 0.7186,
     "sent_at": "2026-04-28T17:02:23",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T20:04:01",
+    "profit": -5.46,
+    "outcome": "LOSS"
   },
   {
     "ticket": 214911810,
@@ -1053,9 +1053,9 @@
     "sl": 150.11203,
     "tp": 143.81372,
     "sent_at": "2026-04-28T17:02:23",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-04-28T20:13:02",
+    "profit": -4.2,
+    "outcome": "LOSS"
   },
   {
     "ticket": 214911811,
@@ -1067,6 +1067,48 @@
     "sl": 74.77649,
     "tp": 71.65245,
     "sent_at": "2026-04-28T17:02:24",
+    "closed_at": "2026-04-28T20:19:03",
+    "profit": 7.65,
+    "outcome": "WIN"
+  },
+  {
+    "ticket": 215376101,
+    "ticker": "GC=F",
+    "strategy": "CAMARILLA_5M",
+    "direction": "SHORT",
+    "confidence": 0.86,
+    "entry": 148.202,
+    "sl": 149.91281,
+    "tp": 144.78364,
+    "sent_at": "2026-04-29T06:52:01",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null
+  },
+  {
+    "ticket": 215376112,
+    "ticker": "SI=F",
+    "strategy": "CAMARILLA_5M",
+    "direction": "SHORT",
+    "confidence": 0.81,
+    "entry": 73.635,
+    "sl": 74.62438,
+    "tp": 71.65789,
+    "sent_at": "2026-04-29T06:52:01",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null
+  },
+  {
+    "ticket": 215392038,
+    "ticker": "EURUSD=X",
+    "strategy": "CAMARILLA_5M",
+    "direction": "LONG",
+    "confidence": 0.804,
+    "entry": 1.1704,
+    "sl": 1.16914,
+    "tp": 1.17301,
+    "sent_at": "2026-04-29T07:09:51",
     "closed_at": null,
     "profit": null,
     "outcome": null
