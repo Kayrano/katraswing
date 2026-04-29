@@ -1,1 +1,52 @@
-{}
+{
+  "Descending Triangle": {
+    "wins": 1,
+    "trades": 2,
+    "win_rate": 0.5
+  },
+  "Triple Top": {
+    "wins": 1,
+    "trades": 2,
+    "win_rate": 0.5
+  },
+  "Double Top": {
+    "wins": 1,
+    "trades": 2,
+    "win_rate": 0.5
+  },
+  "Inside Bar": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
+  },
+  "Ascending Triangle": {
+    "wins": 1,
+    "trades": 2,
+    "win_rate": 0.5
+  },
+  "Triple Bottom": {
+    "wins": 1,
+    "trades": 2,
+    "win_rate": 0.5
+  },
+  "Double Bottom": {
+    "wins": 1,
+    "trades": 2,
+    "win_rate": 0.5
+  },
+  "Inv. Head & Shoulders": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Falling Wedge": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Fair Value Gap (Bull)": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
+  }
+}
