@@ -309,6 +309,18 @@ def _decide_action(
     if live_win_rates and live_wr_key and live_win_rates.get(live_wr_key, 0.5) < 0.45:
         health_score = max(0.0, health_score - 0.05)
 
+    # ── Self-learning bias: adjust health by recent intervention quality ─────
+    # If the trade_manager has been closing winners (CLOSE actions correlate
+    # with WIN outcomes — an intervention regret signal), shift health UP so
+    # close decisions are harder to trigger. Bounded ±0.05.
+    try:
+        from models.intervention_stats import get_health_bias
+        bias = get_health_bias(strategy)
+        if bias != 0.0:
+            health_score = max(0.0, min(1.0, health_score + bias))
+    except Exception:
+        pass
+
     # ── Hard closes ──────────────────────────────────────────────────────────
     mtf_score = getattr(signal, "mtf_score", 0)
     sig_dir   = signal.direction

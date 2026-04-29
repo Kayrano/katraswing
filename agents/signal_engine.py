@@ -5,6 +5,7 @@ into a single SignalResult for the dashboard.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -25,9 +26,37 @@ _TROY_OZ_TO_GRAM = 31.1035
 # Tickers that need gram-gold price conversion
 _GRAM_GOLD_TICKERS = {"XAUUSD=X", "GC=F"}
 
-# ADX regime thresholds
+# ADX regime thresholds (used only for the human-readable label below).
+# Penalty math now scales smoothly via _trend_weight() — see below.
 _ADX_TRENDING = 25.0
 _ADX_RANGING  = 20.0
+
+# Soft regime parameters: logistic centered at the midpoint of the discrete
+# bands (22.5). Slope of 2.5 means ±5 ADX points covers most of the curve.
+#   ADX 15 → trend_weight ≈ 0.05 (firmly ranging)
+#   ADX 20 → trend_weight ≈ 0.27
+#   ADX 22.5 → trend_weight = 0.50 (transitional)
+#   ADX 25 → trend_weight ≈ 0.73
+#   ADX 30 → trend_weight ≈ 0.95 (firmly trending)
+_ADX_CENTER = 22.5
+_ADX_SLOPE  = 2.5
+
+# Maximum penalties applied at the regime extremes — same as the prior
+# hard-cliff logic so the in-regime numbers stay calibrated.
+_MR_MAX_PENALTY    = 0.12
+_TREND_MAX_PENALTY = 0.10
+
+
+def _trend_weight(adx_val: float) -> float:
+    """Smooth indicator in [0, 1] of how trending the market is.
+
+    Replaces the old hard cliffs at ADX=25/20 with a logistic curve centered
+    at 22.5. ADX ≤ 0 (unknown) returns 0.5 (neutral) so any signal scoring
+    that branches on regime stays balanced.
+    """
+    if adx_val <= 0:
+        return 0.5
+    return 1.0 / (1.0 + math.exp(-(adx_val - _ADX_CENTER) / _ADX_SLOPE))
 
 # Mean-reversion strategies (penalised in trending markets)
 # PDH_PDL_SWEEP fades institutional sweeps — breaks down when trend is strongly directional
@@ -130,12 +159,15 @@ def run_signal(
                     df[col] = df[col] / _TROY_OZ_TO_GRAM
 
         # --- Run strategies ---
+        # Pre-compute the cleaned symbol so per-(strategy, symbol) adaptive
+        # params kick in once a pair has accumulated enough trades.
+        sym_for_params = ticker.replace("=X", "").replace("=F", "").upper()
         from data.strategy_params import apply_params as _apply_adaptive
         all_signals: list[IntradaySignal] = []
         for fn in _STRATEGIES_5M:
             try:
                 sig = fn(df)
-                sig = _apply_adaptive(sig)   # apply learned SL/TP/conf adjustments
+                sig = _apply_adaptive(sig, symbol=sym_for_params)   # apply learned SL/TP/conf adjustments
             except Exception as exc:
                 sig = _flat(fn.__name__.upper(), "5m", str(exc))
             all_signals.append(sig)
@@ -163,21 +195,31 @@ def run_signal(
             except Exception:
                 adx_val = 0.0
 
+        # Discrete regime label kept for UI/logging only — penalty math below
+        # uses a continuous trend_weight derived from the same ADX value.
         if adx_val > _ADX_TRENDING:
             adx_regime = "TRENDING"
         elif 0 < adx_val < _ADX_RANGING:
             adx_regime = "RANGING"
 
         if adx_val > 0:
+            tw = _trend_weight(adx_val)
             for sig in all_signals:
                 if sig.signal not in ("LONG", "SHORT"):
                     continue
-                if adx_regime == "TRENDING" and sig.strategy in _MR_STRATEGIES:
-                    sig.confidence = max(0.0, sig.confidence - 0.12)
-                    sig.reason += f" [ADX={adx_val:.0f} trending→MR↓]"
-                elif adx_regime == "RANGING" and sig.strategy in _TREND_STRATEGIES:
-                    sig.confidence = max(0.0, sig.confidence - 0.10)
-                    sig.reason += f" [ADX={adx_val:.0f} ranging→trend↓]"
+                if sig.strategy in _MR_STRATEGIES:
+                    # Mean-reversion: penalty grows with how trending we are.
+                    penalty = _MR_MAX_PENALTY * tw
+                    if penalty > 0.005:
+                        sig.confidence = max(0.0, sig.confidence - penalty)
+                        sig.reason += f" [ADX={adx_val:.0f} tw={tw:.2f}→MR-{penalty:.02f}]"
+                elif sig.strategy in _TREND_STRATEGIES:
+                    # Trend-following: penalty grows with how ranging we are.
+                    penalty = _TREND_MAX_PENALTY * (1.0 - tw)
+                    if penalty > 0.005:
+                        sig.confidence = max(0.0, sig.confidence - penalty)
+                        sig.reason += f" [ADX={adx_val:.0f} tw={tw:.2f}→trend-{penalty:.02f}]"
+                # ABSORB and other order-flow strategies pass through unchanged
 
         # Rank after regime adjustments
         active = sorted(

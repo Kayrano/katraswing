@@ -51,6 +51,25 @@ _DISABLE_THRESHOLD    = 0.35 # disable if win_rate < this with ≥15 trades
 _DISABLE_MIN_TRADES   = 15
 _REENABLE_THRESHOLD   = 0.50 # re-enable if win_rate recovers to this
 
+# Hierarchical (symbol, strategy) partitioning. Per-symbol params are only
+# trusted once we have ≥ this many closed trades on that pair — otherwise
+# we fall back to strategy-level params shared across all symbols.
+_PER_SYMBOL_MIN_TRADES = 30
+
+
+def _normalize_symbol(symbol: str | None) -> str:
+    """Strip yfinance-style suffixes so 'EURUSD=X' and 'EURUSD' map together."""
+    if not symbol:
+        return ""
+    return symbol.replace("=X", "").replace("=F", "").upper()
+
+
+def _per_symbol_key(strategy: str, symbol: str | None) -> str:
+    """Build the composite '{STRATEGY}:{SYMBOL}' key. Returns the strategy-only
+    key when symbol is empty so callers can use the same lookup function."""
+    sym = _normalize_symbol(symbol)
+    return f"{strategy}:{sym}" if sym else strategy
+
 # Module-level cache (loaded once, written on every change)
 _PARAMS: dict[str, dict] = {}
 
@@ -105,6 +124,24 @@ def get_params(strategy: str) -> dict:
     return _PARAMS[strategy]
 
 
+def get_effective_params(strategy: str, symbol: str | None = None) -> dict:
+    """Hierarchical lookup: per-(strategy, symbol) params if they exist and
+    have crossed `_PER_SYMBOL_MIN_TRADES`, otherwise the strategy-only fallback.
+
+    Lets the engine learn that XAUUSD's volatility differs from EURUSD's
+    without starving low-volume symbols of evidence — they keep using the
+    cross-symbol strategy params until enough data accumulates.
+    """
+    if not _PARAMS:
+        load_params()
+    sym_key = _per_symbol_key(strategy, symbol)
+    if sym_key != strategy and sym_key in _PARAMS:
+        per_sym = _PARAMS[sym_key]
+        if per_sym.get("trades_seen", 0) >= _PER_SYMBOL_MIN_TRADES:
+            return per_sym
+    return get_params(strategy)
+
+
 def get_all_params() -> dict:
     """Return the full params dict (all strategies)."""
     if not _PARAMS:
@@ -114,19 +151,24 @@ def get_all_params() -> dict:
 
 # ── Apply params to a signal ─────────────────────────────────────────────────
 
-def apply_params(signal) -> object:
+def apply_params(signal, symbol: str | None = None) -> object:
     """
     Post-process an IntradaySignal through the adaptive parameter layer.
     Returns a (possibly modified) IntradaySignal:
       - FLAT if strategy is disabled or confidence below adaptive floor
       - Adjusted SL/TP distances if sl_mult/tp_mult differ from 1.0
+
+    `symbol` enables hierarchical params: if a per-(strategy, symbol) entry
+    has accumulated enough trades, its sl_mult/tp_mult/conf_floor override
+    the strategy-level defaults. Symbol-less calls (legacy or pre-symbol
+    code) continue to use strategy-only params.
     """
     from agents.intraday_strategies import _flat  # local import — avoids circular
 
     if signal.signal == "FLAT":
         return signal
 
-    params = get_params(signal.strategy)
+    params = get_effective_params(signal.strategy, symbol)
 
     if not params.get("enabled", True):
         return _flat(signal.strategy, signal.timeframe,
@@ -169,6 +211,7 @@ def _walk_forward_validate(
     proposed_floor: float,
     train_size: int = WF_TRAIN_SIZE,
     test_size:  int = WF_TEST_SIZE,
+    symbol: str | None = None,
 ) -> bool:
     """Sanity-check a confidence-floor increase using held-out evidence.
 
@@ -179,15 +222,21 @@ def _walk_forward_validate(
     win rate`, the change is rejected — the historical edge doesn't generalize
     forward, so adapt_strategy should leave the floor alone.
 
+    When `symbol` is given the validation uses only trades on that pair —
+    matching the bucket whose floor is being adjusted.
+
     Returns True (accept) when there isn't enough data to validate or when
     the change is a floor *decrease* (no filtering means nothing to test).
     """
     if proposed_floor <= current_floor:
         return True   # no filtering effect — nothing to validate
 
+    sym_norm = _normalize_symbol(symbol)
     closed = [
         t for t in all_trades
-        if t.get("strategy") == strategy and t.get("outcome") in ("WIN", "LOSS")
+        if t.get("strategy") == strategy
+        and t.get("outcome") in ("WIN", "LOSS")
+        and (not sym_norm or _normalize_symbol(t.get("ticker", "")) == sym_norm)
     ]
     if len(closed) < train_size + test_size:
         return True   # insufficient evidence — let the change through
@@ -220,20 +269,32 @@ def _walk_forward_validate(
 
 # ── Adaptation logic ──────────────────────────────────────────────────────────
 
-def adapt_strategy(strategy: str, all_trades: list[dict]) -> bool:
+def adapt_strategy(strategy: str, all_trades: list[dict], symbol: str | None = None) -> bool:
     """
     Analyse closed trades for this strategy and update params if needed.
     Returns True if any parameter changed.
+
+    When `symbol` is provided, the function adapts the per-(strategy, symbol)
+    bucket using only trades on that pair — letting different instruments
+    converge on different SL/TP profiles. With `symbol=None` it adapts the
+    strategy-level params using all trades for that strategy.
     """
     if not _PARAMS:
         load_params()
 
+    sym_norm = _normalize_symbol(symbol)
+    bucket_key = _per_symbol_key(strategy, symbol)
+
     closed = [
         t for t in all_trades
-        if t.get("strategy") == strategy and t.get("outcome") in ("WIN", "LOSS")
+        if t.get("strategy") == strategy
+        and t.get("outcome") in ("WIN", "LOSS")
+        and (not sym_norm or _normalize_symbol(t.get("ticker", "")) == sym_norm)
     ]
 
-    params  = get_params(strategy)
+    if bucket_key not in _PARAMS:
+        _PARAMS[bucket_key] = _default_entry()
+    params  = _PARAMS[bucket_key]
     changed = False
 
     # Always sync trade count/win_rate stats even if not enough trades to adapt params
@@ -260,7 +321,9 @@ def adapt_strategy(strategy: str, all_trades: list[dict]) -> bool:
         proposed = round(min(_CONF_FLOOR_MAX, params["conf_floor"] + 0.02), 3)
         # Walk-forward gate: only raise the floor if the change holds up on a
         # held-out test slice. Avoids overfitting to a recent losing streak.
-        if _walk_forward_validate(strategy, all_trades, params["conf_floor"], proposed):
+        if _walk_forward_validate(
+            strategy, all_trades, params["conf_floor"], proposed, symbol=symbol,
+        ):
             params["conf_floor"] = proposed
             changed = True
     elif win_rate > 0.65 and params["conf_floor"] > _CONF_FLOOR_MIN:
@@ -311,8 +374,12 @@ def adapt_strategy(strategy: str, all_trades: list[dict]) -> bool:
 def adapt_all(all_trades: list[dict]) -> int:
     """
     Run adapt_strategy() for every app-managed strategy that has closed trades.
+    Also runs per-(strategy, symbol) adaptation so high-volume pairs (XAUUSD,
+    EURUSD, NQ) accumulate their own SL/TP/conf_floor profile alongside the
+    cross-symbol strategy defaults.
+
     Ignores MT5_IMPORT trades (manually opened or imported from MT5 history).
-    Returns the count of strategies updated.
+    Returns the count of buckets updated (strategy-level + per-symbol combined).
     """
     if not _PARAMS:
         load_params()
@@ -321,14 +388,37 @@ def adapt_all(all_trades: list[dict]) -> int:
     app_trades = [t for t in all_trades if t.get("strategy", "") != "MT5_IMPORT"]
 
     updated = 0
-    strategies_in_log = {t.get("strategy") for t in app_trades if t.get("strategy")}
 
+    # 1) Strategy-level (cross-symbol) adaptation
+    strategies_in_log = {t.get("strategy") for t in app_trades if t.get("strategy")}
     for strategy in strategies_in_log:
         try:
             if adapt_strategy(strategy, app_trades):
                 updated += 1
         except Exception as exc:
             logger.error(f"adapt_strategy({strategy}): {exc}")
+
+    # 2) Per-(strategy, symbol) adaptation. Only attempt when the bucket
+    # has at least _MIN_TRADES_TO_ADAPT closed trades — saves work and
+    # avoids creating noisy entries for low-volume pairs.
+    pair_counts: dict[tuple[str, str], int] = {}
+    for t in app_trades:
+        if t.get("outcome") not in ("WIN", "LOSS"):
+            continue
+        strat = t.get("strategy", "")
+        sym   = _normalize_symbol(t.get("ticker", ""))
+        if not strat or not sym:
+            continue
+        pair_counts[(strat, sym)] = pair_counts.get((strat, sym), 0) + 1
+
+    for (strat, sym), n in pair_counts.items():
+        if n < _MIN_TRADES_TO_ADAPT:
+            continue
+        try:
+            if adapt_strategy(strat, app_trades, symbol=sym):
+                updated += 1
+        except Exception as exc:
+            logger.error(f"adapt_strategy({strat}, symbol={sym}): {exc}")
 
     return updated
 

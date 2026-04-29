@@ -1,11 +1,7 @@
 """
-Tests for the walk-forward validator that gates conf_floor *increases* in
-data.strategy_params.adapt_strategy.
-
-The validator's job: when a recent losing streak triggers an upward
-conf_floor adjustment, simulate the proposed floor on a held-out test
-slice. Reject the change if the out-of-sample win rate doesn't justify
-it. This prevents adaptive learning from overfitting to noise.
+Tests for data.strategy_params:
+  • walk-forward validator that gates conf_floor *increases*
+  • per-(strategy, symbol) hierarchical parameter partitioning
 """
 from __future__ import annotations
 
@@ -13,15 +9,20 @@ import json
 
 import pytest
 
-from data.strategy_params import _walk_forward_validate, WF_OOS_RATIO
+from data.strategy_params import (
+    _walk_forward_validate,
+    _normalize_symbol,
+    _per_symbol_key,
+    WF_OOS_RATIO,
+)
 
 
-def _trade(*, conf, outcome, strategy="X"):
+def _trade(*, conf, outcome, strategy="X", ticker="EURUSD"):
     return {
         "strategy":   strategy,
         "confidence": conf,
         "outcome":    outcome,
-        "ticker":     "EURUSD",
+        "ticker":     ticker,
         "direction":  "LONG",
     }
 
@@ -189,3 +190,162 @@ class TestAdaptStrategyIntegration:
         # per current data; this asserts we didn't crash and stayed bounded).
         new_floor = strategy_params.get_params("VWAP_RSI_5M")["conf_floor"]
         assert 0.60 <= new_floor <= 0.62
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Per-(strategy, symbol) partitioning
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestSymbolNormalization:
+    def test_strips_yfinance_suffix(self):
+        assert _normalize_symbol("EURUSD=X") == "EURUSD"
+
+    def test_strips_futures_suffix(self):
+        assert _normalize_symbol("NQ=F") == "NQ"
+
+    def test_uppercases(self):
+        assert _normalize_symbol("eurusd") == "EURUSD"
+
+    def test_empty_returns_empty(self):
+        assert _normalize_symbol(None) == ""
+        assert _normalize_symbol("") == ""
+
+
+class TestPerSymbolKey:
+    def test_with_symbol(self):
+        assert _per_symbol_key("TREND_MOM_5M", "EURUSD=X") == "TREND_MOM_5M:EURUSD"
+
+    def test_without_symbol_returns_strategy_only(self):
+        # Used by hierarchical fallback — empty symbol → no compound key
+        assert _per_symbol_key("TREND_MOM_5M", None) == "TREND_MOM_5M"
+        assert _per_symbol_key("TREND_MOM_5M", "") == "TREND_MOM_5M"
+
+
+class TestHierarchicalLookup:
+    @pytest.fixture(autouse=True)
+    def _isolate(self, tmp_path, monkeypatch):
+        from data import strategy_params
+        monkeypatch.setattr(strategy_params, "_PARAMS_FILE", tmp_path / "strategy_params.json")
+        monkeypatch.setattr(strategy_params, "_PARAMS", {})
+        strategy_params.load_params()
+        yield
+
+    def test_empty_per_symbol_falls_back_to_strategy(self):
+        from data.strategy_params import get_effective_params, get_params
+        # Strategy-only params exist; per-symbol does not
+        strat_params = get_params("TREND_MOM_5M")
+        strat_params["sl_mult"] = 1.20
+
+        # No per-symbol entry → fall back
+        eff = get_effective_params("TREND_MOM_5M", "EURUSD")
+        assert eff is strat_params
+        assert eff["sl_mult"] == 1.20
+
+    def test_under_min_trades_falls_back(self):
+        from data import strategy_params
+        from data.strategy_params import get_effective_params, get_params
+
+        # Per-symbol entry with too few trades → fall back to strategy
+        strategy_params._PARAMS["TREND_MOM_5M:EURUSD"] = {
+            "sl_mult": 1.50, "tp_mult": 1.00, "conf_floor": 0.65,
+            "enabled": True, "trades_seen": 10, "wins": 6,
+            "win_rate": 0.6, "last_adapted": None, "adapt_count": 1,
+        }
+        strat_params = get_params("TREND_MOM_5M")
+        strat_params["sl_mult"] = 0.90
+
+        eff = get_effective_params("TREND_MOM_5M", "EURUSD=X")
+        # Below 30-trade threshold → fall back to strategy params
+        assert eff is strat_params
+        assert eff["sl_mult"] == 0.90
+
+    def test_at_min_trades_uses_per_symbol(self):
+        from data import strategy_params
+        from data.strategy_params import get_effective_params
+
+        strategy_params._PARAMS["TREND_MOM_5M:EURUSD"] = {
+            "sl_mult": 1.50, "tp_mult": 1.00, "conf_floor": 0.65,
+            "enabled": True, "trades_seen": 30, "wins": 20,
+            "win_rate": 0.667, "last_adapted": None, "adapt_count": 1,
+        }
+        eff = get_effective_params("TREND_MOM_5M", "EURUSD")
+        assert eff["sl_mult"] == 1.50   # per-symbol value, not the default 1.0
+
+    def test_apply_params_uses_symbol(self):
+        from data import strategy_params
+        from data.strategy_params import apply_params
+        from agents.intraday_strategies import IntradaySignal
+
+        # Per-symbol entry with high SL multiplier — should be picked up
+        strategy_params._PARAMS["TREND_MOM_5M:EURUSD"] = {
+            "sl_mult": 1.50, "tp_mult": 1.00, "conf_floor": 0.60,
+            "enabled": True, "trades_seen": 50, "wins": 30,
+            "win_rate": 0.6, "last_adapted": None, "adapt_count": 1,
+        }
+
+        sig = IntradaySignal(
+            strategy="TREND_MOM_5M", timeframe="5m", signal="LONG",
+            confidence=0.70, entry=1.10, stop_loss=1.09, take_profit=1.12,
+            reason="test", atr=0.01, rr_ratio=2.0,
+        )
+        out = apply_params(sig, symbol="EURUSD=X")
+        # SL distance was 0.01, multiplier 1.50 → 0.015 → SL=1.085
+        assert out.stop_loss == pytest.approx(1.085, abs=1e-4)
+
+
+class TestAdaptStrategyPerSymbol:
+    @pytest.fixture(autouse=True)
+    def _isolate(self, tmp_path, monkeypatch):
+        from data import strategy_params
+        monkeypatch.setattr(strategy_params, "_PARAMS_FILE", tmp_path / "strategy_params.json")
+        monkeypatch.setattr(strategy_params, "_PARAMS", {})
+        strategy_params.load_params()
+        yield
+
+    def test_per_symbol_adaptation_only_uses_matching_trades(self):
+        from data import strategy_params
+        from data.strategy_params import adapt_strategy
+
+        # 20 EURUSD trades for X (adapt threshold met)
+        trades = []
+        for _ in range(20):
+            trades.append(_trade(conf=0.75, outcome="WIN", strategy="X", ticker="EURUSD"))
+        # 20 GBPUSD trades all losers — should NOT influence EURUSD bucket
+        for _ in range(20):
+            trades.append(_trade(conf=0.75, outcome="LOSS", strategy="X", ticker="GBPUSD"))
+
+        adapt_strategy("X", trades, symbol="EURUSD")
+        eu_params = strategy_params._PARAMS["X:EURUSD"]
+        assert eu_params["trades_seen"] == 20
+        assert eu_params["wins"] == 20
+
+    def test_strategy_level_adapt_uses_all_symbols(self):
+        from data import strategy_params
+        from data.strategy_params import adapt_strategy
+
+        trades = []
+        for _ in range(15):
+            trades.append(_trade(conf=0.75, outcome="WIN", strategy="X", ticker="EURUSD"))
+        for _ in range(15):
+            trades.append(_trade(conf=0.75, outcome="LOSS", strategy="X", ticker="GBPUSD"))
+
+        adapt_strategy("X", trades)   # symbol=None → strategy-level
+        strat_params = strategy_params._PARAMS["X"]
+        assert strat_params["trades_seen"] == 30   # all 30 counted
+
+    def test_adapt_all_creates_both_buckets(self):
+        from data import strategy_params
+        from data.strategy_params import adapt_all
+
+        # 12 closed EURUSD trades on strategy X — meets per-symbol min adapt threshold
+        trades = []
+        for _ in range(8):
+            trades.append(_trade(conf=0.75, outcome="WIN", strategy="X", ticker="EURUSD"))
+        for _ in range(4):
+            trades.append(_trade(conf=0.75, outcome="LOSS", strategy="X", ticker="EURUSD"))
+
+        adapt_all(trades)
+        assert "X" in strategy_params._PARAMS
+        assert "X:EURUSD" in strategy_params._PARAMS
+        assert strategy_params._PARAMS["X"]["trades_seen"] == 12
+        assert strategy_params._PARAMS["X:EURUSD"]["trades_seen"] == 12
