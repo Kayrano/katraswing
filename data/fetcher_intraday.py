@@ -24,39 +24,34 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
-import requests
 import yfinance as yf
-from requests.adapters import HTTPAdapter
 from zoneinfo import ZoneInfo
 
 log = logging.getLogger(__name__)
 
 
-# Shared yfinance HTTP session — keeps TCP connections alive across calls so
-# the per-scan 60+ ticker fetches reuse handshakes instead of opening 60 new
-# sockets. Pool sized for our 6-worker mt5 scan + 4-worker UI scan running
-# concurrently (~10 in flight at peak).
-_yf_session = requests.Session()
-_yf_session.mount(
-    "https://",
-    HTTPAdapter(pool_connections=10, pool_maxsize=20, max_retries=2),
-)
-_yf_session.headers.update({
-    "User-Agent": "Mozilla/5.0 (Katraswing/yfinance)",
-})
-
-
 def _yf_history(ticker: str, timeout: int = 20, **kwargs) -> "pd.DataFrame | None":
-    """yfinance .history() through a pooled HTTP session with a hard outer
-    timeout. The session reuses connections; the ThreadPoolExecutor wrapper
-    guards against yfinance hangs that bypass the requests-level timeout."""
+    """yfinance .history() with a hard outer timeout.
+
+    Note: an earlier revision injected a shared `requests.Session` here for
+    connection pooling. Modern yfinance requires a `curl_cffi` session and
+    refuses anything else (raises YFDataException), and yfinance manages its
+    own connection pool internally — so we let yfinance handle session
+    construction. The ThreadPoolExecutor wrapper still guards against rare
+    hangs that bypass yfinance's own timeout.
+
+    Returns None on any failure; logs warnings so silent breakages surface.
+    """
     try:
         with ThreadPoolExecutor(max_workers=1) as _ex:
-            _fut = _ex.submit(
-                lambda: yf.Ticker(ticker, session=_yf_session).history(**kwargs)
-            )
+            _fut = _ex.submit(lambda: yf.Ticker(ticker).history(**kwargs))
             return _fut.result(timeout=timeout)
-    except (_FutureTimeout, Exception):
+    except _FutureTimeout:
+        log.warning("ctx=yf_history_timeout ticker=%s timeout=%ds", ticker, timeout)
+        return None
+    except Exception as exc:
+        log.warning("ctx=yf_history ticker=%s: %s: %s",
+                    ticker, type(exc).__name__, exc)
         return None
 
 
