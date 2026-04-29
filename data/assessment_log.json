@@ -3400,5 +3400,19 @@
     "reason": "Triple Top (90% conf) — reversal against LONG; locking partial profit",
     "acted_on": true,
     "dry_run": false
+  },
+  {
+    "ticket": 215392038,
+    "symbol": "EURUSD",
+    "direction": "LONG",
+    "assessed_at": "2026-04-29T07:36:16+00:00",
+    "health_score": 0.5,
+    "action": "HOLD",
+    "new_sl": null,
+    "new_tp": null,
+    "urgency": "LOW",
+    "reason": "Cooldown active — recently acted on this position",
+    "acted_on": false,
+    "dry_run": false
   }
 ]
