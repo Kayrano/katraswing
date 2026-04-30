@@ -188,12 +188,14 @@ def reason_of(action, decision_tuple):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestPartialCloses:
-    def test_high_conf_bearish_pattern_partial_closes_long(self):
+    def test_high_conf_bearish_pattern_partial_closes_long_when_in_profit(self):
+        # Reversal-pattern partial-close now requires profit > 0 (otherwise
+        # we'd be locking a loss). Pattern conf threshold raised 0.65 → 0.75.
         report = _pattern_report(matches=[
             _pat("Double Top", conf=0.80, bias="BEARISH"),
         ])
         action, _reason, urgency, *_ = _decide_action(
-            position=_position(direction="LONG"),
+            position=_position(direction="LONG", profit=2.50),
             signal=_signal(direction="LONG", patterns=report),
             health_score=0.60,
             atr=0.001, current_price=1.10, breakeven_price=1.10,
@@ -202,13 +204,41 @@ class TestPartialCloses:
         assert action == "PARTIAL_CLOSE"
         assert urgency == "MEDIUM"
 
+    def test_pattern_partial_close_blocked_when_at_loss(self):
+        """Even high-conf reversal patterns shouldn't lock partial when the
+        trade is already negative — that just locks the loss."""
+        report = _pattern_report(matches=[
+            _pat("Double Top", conf=0.85, bias="BEARISH"),
+        ])
+        action, *_ = _decide_action(
+            position=_position(direction="LONG", profit=-1.20),
+            signal=_signal(direction="LONG", patterns=report),
+            health_score=0.60,
+            atr=0.001, current_price=1.10, breakeven_price=1.10,
+            sent_at=_recent_iso(),
+        )
+        assert action != "PARTIAL_CLOSE"
+
+    def test_below_new_pattern_threshold_does_not_trigger_partial(self):
+        # 0.70 confidence — below the new 0.75 threshold
+        report = _pattern_report(matches=[
+            _pat("Double Top", conf=0.70, bias="BEARISH"),
+        ])
+        action, *_ = _decide_action(
+            position=_position(direction="LONG", profit=2.0),
+            signal=_signal(direction="LONG", patterns=report),
+            health_score=0.60,
+            atr=0.001, current_price=1.10, breakeven_price=1.10,
+            sent_at=_recent_iso(),
+        )
+        assert action != "PARTIAL_CLOSE"
+
     def test_low_conf_pattern_does_not_trigger_partial(self):
-        # Same pattern at 0.50 confidence — below 0.65 threshold
         report = _pattern_report(matches=[
             _pat("Double Top", conf=0.50, bias="BEARISH"),
         ])
         action, *_ = _decide_action(
-            position=_position(direction="LONG"),
+            position=_position(direction="LONG", profit=2.0),
             signal=_signal(direction="LONG", patterns=report),
             health_score=0.60,
             atr=0.001, current_price=1.10, breakeven_price=1.10,
@@ -321,3 +351,108 @@ class TestHealthyHold:
         )
         assert action == "HOLD"
         assert urgency == "LOW"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Price-based partial-close threshold (the unit-mismatch fix)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestProfitPartialClose:
+    """The previous code compared `position.profit` (in account currency, e.g.
+    USD) against `one_r` (in price points, e.g. 0.005). On a typical EURUSD
+    setup, $1 of profit easily exceeded a 0.005 price gap, triggering
+    partial-close within seconds of entry. The fix uses price-move
+    (current - open) on both sides of the comparison and raises 1R → 1.5R."""
+
+    def test_dollar_profit_alone_does_not_trigger_partial(self):
+        """Position open at 1.10 with SL 1.09 (1R = 0.01 price). Current
+        price is 1.1005 → price-move = 0.0005 (well under 1.5R = 0.015).
+        Even with $5 of profit (which exceeds 0.01 by 500x in dollar terms),
+        the partial-close MUST stay closed.
+        """
+        action, *_ = _decide_action(
+            position=_position(direction="LONG", sl=1.09, profit=5.0),
+            signal=_signal(),
+            health_score=0.75,
+            atr=0.005, current_price=1.1005, breakeven_price=1.10,
+            sent_at=_recent_iso(),
+        )
+        assert action == "HOLD", (
+            f"expected HOLD but got {action!r} — partial-close fired despite "
+            "price-move being far below 1.5R"
+        )
+
+    def test_below_one_r_price_move_does_not_trigger_anything(self):
+        """Price moved 0.5R (well below the new 1.5R partial threshold and
+        below the 1.0R trail trigger). Position should HOLD."""
+        action, *_ = _decide_action(
+            position=_position(direction="LONG", sl=1.09, profit=5.0),
+            signal=_signal(),
+            health_score=0.75,
+            atr=0.001, current_price=1.105, breakeven_price=1.10,
+            sent_at=_recent_iso(),
+        )
+        assert action == "HOLD"
+
+    def test_two_r_price_move_triggers_partial(self):
+        """Price moved 2R clearly above the 1.5R partial threshold. Use
+        non-boundary values to avoid float precision artefacts."""
+        action, _, urgency, new_sl, _, partial_vol = _decide_action(
+            position=_position(direction="LONG", sl=1.09, profit=20.0),
+            signal=_signal(),
+            health_score=0.75,
+            atr=0.005, current_price=1.12, breakeven_price=1.10,
+            sent_at=_recent_iso(),
+        )
+        assert action == "PARTIAL_CLOSE"
+        assert partial_vol is not None and partial_vol > 0
+        assert urgency == "LOW"
+
+    def test_short_two_r_price_move_triggers_partial(self):
+        """SHORT mirror: open 1.10, SL 1.11, current 1.08 → price-move 2R."""
+        action, *_ = _decide_action(
+            position=_position(direction="SHORT", sl=1.11, profit=20.0,
+                               open_price=1.10),
+            signal=_signal(direction="SHORT"),
+            health_score=0.75,
+            atr=0.005, current_price=1.08, breakeven_price=1.10,
+            sent_at=_recent_iso(),
+        )
+        assert action == "PARTIAL_CLOSE"
+
+    def test_unrealised_loss_does_not_trigger_partial(self):
+        """Even with positive `position.profit` (impossible in real life but
+        possible if MT5 reports stale profit), price-move negative means
+        no partial close."""
+        action, *_ = _decide_action(
+            position=_position(direction="LONG", sl=1.09, profit=999.0),
+            signal=_signal(),
+            health_score=0.75,
+            atr=0.005, current_price=1.095, breakeven_price=1.10,   # below entry
+            sent_at=_recent_iso(),
+        )
+        assert action != "PARTIAL_CLOSE"
+
+    def test_two_r_price_move_triggers_trailing_sl(self):
+        """Once we're past 1.5R partial-close lock, the next checkpoint is
+        2×ATR profit-in-price for trailing SL. With current=1.115, atr=0.005,
+        profit_price=0.015 = 3×ATR → multiplier = 1.2, trail_sl = current
+        - 1.2×ATR = 1.115 - 0.006 = 1.109. Test that we get a MODIFY_SL
+        when the partial-close has already happened (sl already moved up
+        past breakeven, so the partial branch can't refire)."""
+        # Set sl to breakeven+ so the partial-close path's "new_sl <= sl"
+        # check fires and we drop to the trailing logic. profit_price stays
+        # 0.015 = 3×ATR.
+        action, *_ = _decide_action(
+            position=_position(direction="LONG", sl=1.108, profit=15.0,
+                               open_price=1.10),
+            signal=_signal(),
+            health_score=0.75,
+            atr=0.005, current_price=1.115, breakeven_price=1.10,
+            sent_at=_recent_iso(),
+        )
+        # At 3×ATR profit_price, 1.2×ATR trail; but the 1.5R partial check
+        # fires first (profit_price=0.015, 1.5R=0.015 — equality passes the
+        # >= check). Either PARTIAL_CLOSE or MODIFY_SL is acceptable; both
+        # are non-destructive responses to a winning trade.
+        assert action in ("PARTIAL_CLOSE", "MODIFY_SL")

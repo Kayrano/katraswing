@@ -350,22 +350,28 @@ def _decide_action(
             return "CLOSE", "RSI bullish divergence — price made lower low but RSI higher low; momentum exhausting", "HIGH", None, None, None
 
     # High-confidence reversal patterns against position → partial close
+    # Two gates raised after early-close feedback (R2 follow-up):
+    #   • Confidence threshold 0.65 → 0.75 (only strong reversal signals)
+    #   • Only fire when the trade is already in profit. Locking "partial
+    #     profit" on a losing trade just locks the loss — and a single
+    #     reversal pattern at conf 0.75 is too weak a signal to bail on a
+    #     position that hasn't yet had a chance to work.
     _BEARISH_REVERSALS = {"Double Top", "Triple Top", "Head & Shoulders", "Bearish Engulfing",
                           "Evening Star", "Shooting Star", "Gravestone Doji", "Hanging Man",
                           "Bearish Harami", "Rising Wedge"}
     _BULLISH_REVERSALS = {"Double Bottom", "Triple Bottom", "Inv. Head & Shoulders", "Bullish Engulfing",
                           "Morning Star", "Hammer", "Dragonfly Doji", "Bullish Harami",
                           "Falling Wedge"}
-    if signal.patterns:
+    if signal.patterns and profit > 0:
         for pat in (signal.patterns.patterns or []):
             pat_name = getattr(pat, "name", "")
             pat_conf = getattr(pat, "confidence", 0.0)
-            if pat_conf < 0.65:
+            if pat_conf < 0.75:
                 continue
             if direction == "LONG" and pat_name in _BEARISH_REVERSALS:
-                return "PARTIAL_CLOSE", f"{pat_name} ({pat_conf:.0%} conf) — reversal against LONG; locking partial profit", "MEDIUM", None, None, None
+                return "PARTIAL_CLOSE", f"{pat_name} ({pat_conf:.0%} conf, in profit) — reversal against LONG; locking partial profit", "MEDIUM", None, None, None
             if direction == "SHORT" and pat_name in _BULLISH_REVERSALS:
-                return "PARTIAL_CLOSE", f"{pat_name} ({pat_conf:.0%} conf) — reversal against SHORT; locking partial profit", "MEDIUM", None, None, None
+                return "PARTIAL_CLOSE", f"{pat_name} ({pat_conf:.0%} conf, in profit) — reversal against SHORT; locking partial profit", "MEDIUM", None, None, None
 
     # Per-strategy time stop
     max_hours = _STRATEGY_MAX_HOURS.get(strategy, 8.0)
@@ -395,11 +401,35 @@ def _decide_action(
 
     # ── Score-based: profit management ───────────────────────────────────────
     if health_score >= 0.70:
-        sl_dist = abs(current_price - sl) if sl else atr
-        one_r   = sl_dist
+        # 1R is the ORIGINAL risk: entry-to-SL distance, not current-to-SL.
+        # The previous code used current-to-SL which grew as price moved
+        # favourably (price moves up while SL stays put), making "1R" a
+        # moving target that drifted with profit. Now 1R is fixed at trade
+        # open and stays fixed even after MODIFY_SL.
+        if sl:
+            one_r = abs(position.open_price - sl)
+        else:
+            one_r = atr
+        if one_r <= 0:
+            one_r = atr
 
-        # Partial close + move to breakeven when ≥ 1R profit
-        if profit >= one_r and profit >= atr:
+        # Convert position.profit (in account currency, e.g. USD) to a
+        # profit-in-price-points scalar so the threshold comparisons below
+        # are on the same scale as `one_r` and `atr` (which are price gaps).
+        # Without this, profit-in-dollars routinely exceeds 1R-in-price-points
+        # within seconds of entry — triggering partial-close immediately.
+        # Round to 5dp (forex-typical precision) to avoid float-boundary
+        # cases where 0.00749999… vs 0.0075 flips the comparison.
+        if direction == "LONG":
+            profit_price = max(0.0, round(current_price - position.open_price, 5))
+        else:
+            profit_price = max(0.0, round(position.open_price - current_price, 5))
+        one_r = round(one_r, 5)
+
+        # Partial close + move to breakeven when ≥ 1.5R price-move profit.
+        # 1.5R (was 1R) gives winners more room before locking — direct
+        # response to "trades closing too early" feedback.
+        if profit_price >= round(1.5 * one_r, 5) and profit_price >= round(1.5 * atr, 5):
             vol_step = 0.01
             try:
                 import MetaTrader5 as mt5
@@ -427,18 +457,25 @@ def _decide_action(
                 new_sl = None
             return (
                 "PARTIAL_CLOSE",
-                f"Profit ≥ 1R ({profit:.2f}) — locking half, moving SL to breakeven",
+                f"Profit ≥ 1.5R (${profit:.2f}, price+{profit_price:.5f}) — "
+                f"locking half, moving SL to breakeven",
                 "LOW",
                 new_sl,
                 None,
                 half_vol,
             )
 
-        # Progressive trailing SL — tighten multiplier as profit grows
-        if profit >= 2 * atr:
-            if profit >= 4 * atr:
+        # Progressive trailing SL — tighten multiplier as profit grows.
+        # Trigger uses MAX(2×ATR, 1×one_r) so on tight setups where ATR is
+        # small relative to SL distance, we don't trail before reaching 1R.
+        # Same unit-fix: compare profit-in-price-points, not dollars-vs-price.
+        trail_trigger = max(2 * atr, 1.0 * one_r)
+        if profit_price >= trail_trigger:
+            # Multiplier ladder also keyed off one_r so progression scales
+            # with the trade's actual risk geometry, not raw ATR.
+            if profit_price >= 4 * one_r:
                 multiplier = 1.0
-            elif profit >= 3 * atr:
+            elif profit_price >= 3 * one_r:
                 multiplier = 1.2
             else:
                 multiplier = 1.5
@@ -450,7 +487,7 @@ def _decide_action(
                 new_sl   = min(sl, trail_sl) if sl else trail_sl
             new_sl = round(new_sl, 5)
             if (direction == "LONG" and new_sl > sl) or (direction == "SHORT" and new_sl < sl):
-                return "MODIFY_SL", f"Trailing SL ({multiplier}×ATR) after {profit:.2f} profit", "LOW", new_sl, None, None
+                return "MODIFY_SL", f"Trailing SL ({multiplier}×ATR) after ${profit:.2f}", "LOW", new_sl, None, None
 
         # Extend TP when health > 0.85 + continuation pattern
         if health_score > 0.85 and tp:
