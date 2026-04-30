@@ -434,15 +434,23 @@ def run_signal(
         # ── Isotonic confidence calibration ──────────────────────────────────
         # Maps the blended raw confidence onto an empirically-grounded
         # win probability fitted from closed trades. Identity below 50
-        # samples (see models.calibration). Keep the original visible
-        # via raw_confidence so the floor decision is auditable.
+        # samples (see models.calibration).
+        #
+        # IMPORTANT: the calibrated number is informational — it reflects the
+        # *empirical* win rate of past trades at this raw-confidence level.
+        # The 0.60 floor below gates on the *raw* blended confidence (the
+        # statistical edge), not the calibrated value, because the system's
+        # historical WR (~35–45% on closed trades) is far below 60% and a
+        # naive calibrated-floor blocks every signal. We preserve calibration
+        # as a UI hint via SignalResult.raw_confidence vs .confidence.
         raw_confidence = final_conf
+        calibrated_conf = final_conf
         calibration_applied = False
         try:
             from models.calibration import get_calibrator
             _cal = get_calibrator()
             if _cal.is_fitted:
-                final_conf = max(0.0, min(1.0, _cal.transform(final_conf)))
+                calibrated_conf = max(0.0, min(1.0, _cal.transform(final_conf)))
                 calibration_applied = True
         except Exception as _ce:
             # Never let calibration break a live signal
@@ -451,9 +459,16 @@ def run_signal(
                 "calibration skipped: %s", _ce,
             )
 
-        # ── Enforce 0.60 confidence floor ────────────────────────────────────
-        if not daily_trend_vetoed and final_conf < _SIGNAL_FLOOR:
+        # ── Enforce 0.60 confidence floor (on RAW, not calibrated) ───────────
+        if not daily_trend_vetoed and raw_confidence < _SIGNAL_FLOOR:
             direction = "NO TRADE"
+
+        # final_conf stays = raw_confidence here. The calibrated value is
+        # surfaced via the .calibration_applied flag and is reserved for
+        # future UI display ("expected WR") — gating + risk-sizing should
+        # continue to use the raw blended score so behaviour matches the
+        # months of trades the rest of the system was calibrated on.
+        final_conf = raw_confidence
 
         # ── Derive risk level from confidence ─────────────────────────────────
         # HIGH confidence = LOW risk = larger position; LOW confidence = HIGH risk = smaller position
