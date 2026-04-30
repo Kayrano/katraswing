@@ -81,11 +81,11 @@
     "tp_mult": 0.75,
     "conf_floor": 0.8,
     "enabled": true,
-    "trades_seen": 16,
-    "wins": 7,
-    "win_rate": 0.438,
-    "last_adapted": "2026-04-29T15:11:57.586990+00:00",
-    "adapt_count": 14
+    "trades_seen": 20,
+    "wins": 9,
+    "win_rate": 0.45,
+    "last_adapted": "2026-04-29T20:00:17.882505+00:00",
+    "adapt_count": 15
   },
   "NR7_BREAKOUT_5M": {
     "sl_mult": 1.0,
@@ -103,11 +103,11 @@
     "tp_mult": 1.0,
     "conf_floor": 0.6,
     "enabled": true,
-    "trades_seen": 5,
-    "wins": 2,
+    "trades_seen": 10,
+    "wins": 4,
     "win_rate": 0.4,
-    "last_adapted": null,
-    "adapt_count": 0
+    "last_adapted": "2026-04-29T20:47:30.150656+00:00",
+    "adapt_count": 1
   },
   "BB_SCALP_5M": {
     "sl_mult": 1.0,
@@ -125,9 +125,9 @@
     "tp_mult": 1.0,
     "conf_floor": 0.6,
     "enabled": true,
-    "trades_seen": 0,
+    "trades_seen": 1,
     "wins": 0,
-    "win_rate": null,
+    "win_rate": 0.0,
     "last_adapted": null,
     "adapt_count": 0
   },
@@ -136,9 +136,9 @@
     "tp_mult": 1.0,
     "conf_floor": 0.6,
     "enabled": true,
-    "trades_seen": 2,
+    "trades_seen": 3,
     "wins": 2,
-    "win_rate": 1.0,
+    "win_rate": 0.667,
     "last_adapted": null,
     "adapt_count": 0
   },

@@ -1,43 +1,43 @@
 {
   "Descending Triangle": {
-    "wins": 1,
-    "trades": 2,
+    "wins": 3,
+    "trades": 6,
     "win_rate": 0.5
   },
   "Triple Top": {
-    "wins": 1,
-    "trades": 2,
-    "win_rate": 0.5
+    "wins": 3,
+    "trades": 7,
+    "win_rate": 0.4286
   },
   "Double Top": {
-    "wins": 1,
-    "trades": 2,
-    "win_rate": 0.5
+    "wins": 3,
+    "trades": 5,
+    "win_rate": 0.6
   },
   "Inside Bar": {
-    "wins": 0,
-    "trades": 1,
-    "win_rate": 0.0
+    "wins": 1,
+    "trades": 2,
+    "win_rate": 0.5
   },
   "Ascending Triangle": {
-    "wins": 1,
-    "trades": 2,
-    "win_rate": 0.5
+    "wins": 2,
+    "trades": 6,
+    "win_rate": 0.3333
   },
   "Triple Bottom": {
-    "wins": 1,
-    "trades": 2,
-    "win_rate": 0.5
+    "wins": 3,
+    "trades": 7,
+    "win_rate": 0.4286
   },
   "Double Bottom": {
-    "wins": 1,
-    "trades": 2,
-    "win_rate": 0.5
+    "wins": 3,
+    "trades": 7,
+    "win_rate": 0.4286
   },
   "Inv. Head & Shoulders": {
     "wins": 1,
-    "trades": 1,
-    "win_rate": 1.0
+    "trades": 2,
+    "win_rate": 0.5
   },
   "Falling Wedge": {
     "wins": 1,
@@ -45,8 +45,23 @@
     "win_rate": 1.0
   },
   "Fair Value Gap (Bull)": {
+    "wins": 1,
+    "trades": 4,
+    "win_rate": 0.25
+  },
+  "Rising Wedge": {
+    "wins": 0,
+    "trades": 2,
+    "win_rate": 0.0
+  },
+  "Inside Bar (NR4)": {
     "wins": 0,
     "trades": 1,
+    "win_rate": 0.0
+  },
+  "Fair Value Gap (Bear)": {
+    "wins": 0,
+    "trades": 2,
     "win_rate": 0.0
   }
 }
