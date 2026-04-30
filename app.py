@@ -477,15 +477,15 @@ _CURATED = [
     {"label": "GER40",   "cands": ["#GER40_M26","#GER40_M27","#GER40","GER40","DAX40","GER30"],        "yf": "^GDAXI"},
     {"label": "UK100",   "cands": ["#UK100_M26","#UK100_M27","#UK100","UK100","FTSE100"],              "yf": "^FTSE"},
     # Crypto
-    {"label": "BTC/USD", "cands": ["BTCUSD","BTCUSDT","BTC/USD","BTCUSD.","#BTCUSD"],                  "yf": "BTC-USD"},
-    {"label": "ETH/USD", "cands": ["ETHUSD","ETHUSDT","ETH/USD","ETHUSD.","#ETHUSD"],                  "yf": "ETH-USD"},
-    {"label": "SOL/USD", "cands": ["SOLUSD","SOLUSDT","SOL/USD","SOLUSD."],                            "yf": "SOL-USD"},
+    {"label": "BTC/USD", "cands": ["BITCOIN","BTCUSD","BTCUSDT","BTC/USD","BTCUSD.","#BTCUSD"],        "yf": "BTC-USD"},
+    {"label": "ETH/USD", "cands": ["ETHEREUM","ETHUSD","ETHUSDT","ETH/USD","ETHUSD.","#ETHUSD"],       "yf": "ETH-USD"},
+    {"label": "SOL/USD", "cands": ["SOLANA","SOLUSD","SOLUSDT","SOL/USD","SOLUSD."],                   "yf": "SOL-USD"},
     {"label": "BNB/USD", "cands": ["BNBUSD","BNBUSDT","BNB/USD","BNBUSD."],                            "yf": "BNB-USD"},
     # Commodities
     {"label": "XAU/USD", "cands": ["XAUUSD","GOLD","XAU/USD","XAUUSD."],                               "yf": "GC=F"},
     {"label": "XAG/USD", "cands": ["XAGUSD","SILVER","XAG/USD","XAGUSD."],                             "yf": "SI=F"},
-    {"label": "US Oil",  "cands": ["XTIUSD","USOIL","WTI","OIL","XOILUSD","CL"],                      "yf": "CL=F"},
-    {"label": "Nat Gas", "cands": ["XNGUSD","NGAS","NATGAS","GASUSD","NG","NATURALGAS"],               "yf": "NG=F"},
+    {"label": "US Oil",  "cands": ["XTIUSD","USOIL","WTI","#USOil_M26","#USOil_K26","OIL","XOILUSD","CL"], "yf": "CL=F"},
+    {"label": "Nat Gas", "cands": ["NAT.GAS","#NGas_M26","#NGas_K26","XNGUSD","NGAS","NATGAS","GASUSD","NG","NATURALGAS"], "yf": "NG=F"},
 ]
 
 

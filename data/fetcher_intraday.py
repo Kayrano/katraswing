@@ -303,12 +303,16 @@ _MT5_TO_YF: dict[str, str] = {
     # US30 / Dow — broker variants
     "US30":  "YM=F",  "DJ30": "YM=F",  "DOWJONES": "YM=F",
     # Crypto (broker CFD names → yfinance)
-    "BTCUSD": "BTC-USD", "BTCUSDT": "BTC-USD",
-    "ETHUSD": "ETH-USD", "ETHUSDT": "ETH-USD",
-    "SOLUSD": "SOL-USD", "SOLUSDT": "SOL-USD",
+    "BTCUSD": "BTC-USD", "BTCUSDT": "BTC-USD", "BITCOIN": "BTC-USD",
+    "ETHUSD": "ETH-USD", "ETHUSDT": "ETH-USD", "ETHEREUM": "ETH-USD",
+    "SOLUSD": "SOL-USD", "SOLUSDT": "SOL-USD", "SOLANA": "SOL-USD",
     "BNBUSD": "BNB-USD", "BNBUSDT": "BNB-USD",
     # Natural gas
     "XNGUSD": "NG=F",  "NGAS": "NG=F",  "NATGAS": "NG=F",  "GASUSD": "NG=F",
+    "NAT.GAS": "NG=F", "#NGas_M26": "NG=F", "#NGas_K26": "NG=F", "#NGas_J26": "NG=F",
+    # WTI / Brent oil futures contract variants
+    "#USOil_M26": "CL=F", "#USOil_K26": "CL=F",
+    "#UKOil_M26": "BZ=F", "#UKOil_K26": "BZ=F", "#UKOil_N26": "BZ=F",
     # Other common broker aliases
     "USOIL": "CL=F",  "WTI": "CL=F",  "OIL": "CL=F",
     "NAS100": "NQ=F", "US100": "NQ=F", "USTEC": "NQ=F",
