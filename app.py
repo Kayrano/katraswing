@@ -480,7 +480,6 @@ _CURATED = [
     {"label": "BTC/USD", "cands": ["BITCOIN","BTCUSD","BTCUSDT","BTC/USD","BTCUSD.","#BTCUSD"],        "yf": "BTC-USD"},
     {"label": "ETH/USD", "cands": ["ETHEREUM","ETHUSD","ETHUSDT","ETH/USD","ETHUSD.","#ETHUSD"],       "yf": "ETH-USD"},
     {"label": "SOL/USD", "cands": ["SOLANA","SOLUSD","SOLUSDT","SOL/USD","SOLUSD."],                   "yf": "SOL-USD"},
-    {"label": "BNB/USD", "cands": ["BNBUSD","BNBUSDT","BNB/USD","BNBUSD."],                            "yf": "BNB-USD"},
     # Commodities
     {"label": "XAU/USD", "cands": ["XAUUSD","GOLD","XAU/USD","XAUUSD."],                               "yf": "GC=F"},
     {"label": "XAG/USD", "cands": ["XAGUSD","SILVER","XAG/USD","XAGUSD."],                             "yf": "SI=F"},
