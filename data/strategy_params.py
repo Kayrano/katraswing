@@ -44,6 +44,11 @@ _DEFAULT_ENTRY = {
     "tp_mult":      1.0,
     "conf_floor":   0.60,
     "enabled":      True,
+    # paper_only=True means the strategy is suspended pending walk-forward
+    # validation — the weekly learning_loop run promotes it to live (sets
+    # paper_only=False, enabled=True) once n>=20, wr>=0.50, pf>=1.3 over
+    # the trailing 30d.
+    "paper_only":   False,
     "trades_seen":  0,
     "wins":         0,
     "win_rate":     None,
@@ -91,10 +96,12 @@ _PARAMS: dict[str, dict] = {}
 
 def _default_entry(strategy: str = "") -> dict:
     entry = {k: v for k, v in _DEFAULT_ENTRY.items()}
-    # Pattern-triggered strategies (R2.3) ship disabled — user must review
-    # walk-forward backtest results and explicitly flip enabled=True.
+    # Pattern-triggered strategies (R2.3) ship disabled & paper-only — the
+    # weekly learning_loop run promotes them to live once they pass the
+    # n>=20, wr>=0.50, pf>=1.3 gate.
     if strategy in _DEFAULT_DISABLED:
         entry["enabled"] = False
+        entry["paper_only"] = True
     return entry
 
 

@@ -8,29 +8,32 @@
     "wins": 2,
     "win_rate": 0.333,
     "last_adapted": null,
-    "adapt_count": 0
+    "adapt_count": 0,
+    "paper_only": false
   },
   "ORB_5M": {
     "sl_mult": 1.0,
     "tp_mult": 1.0,
     "conf_floor": 0.6,
     "enabled": true,
-    "trades_seen": 0,
-    "wins": 0,
-    "win_rate": null,
+    "trades_seen": 4,
+    "wins": 4,
+    "win_rate": 1.0,
     "last_adapted": null,
-    "adapt_count": 0
+    "adapt_count": 0,
+    "paper_only": false
   },
   "TREND_MOM_5M": {
     "sl_mult": 1.5,
     "tp_mult": 0.75,
     "conf_floor": 0.8,
-    "enabled": true,
+    "enabled": false,
     "trades_seen": 11,
     "wins": 3,
     "win_rate": 0.273,
-    "last_adapted": "2026-04-29T06:47:43.532874+00:00",
-    "adapt_count": 10
+    "last_adapted": "2026-05-01T12:16:15.139978+00:00",
+    "adapt_count": 11,
+    "paper_only": false
   },
   "EMA_PB_15M": {
     "sl_mult": 1.0,
@@ -41,7 +44,8 @@
     "wins": 0,
     "win_rate": null,
     "last_adapted": null,
-    "adapt_count": 0
+    "adapt_count": 0,
+    "paper_only": false
   },
   "SQUEEZE_15M": {
     "sl_mult": 1.0,
@@ -52,7 +56,8 @@
     "wins": 0,
     "win_rate": null,
     "last_adapted": null,
-    "adapt_count": 0
+    "adapt_count": 0,
+    "paper_only": false
   },
   "ABSORB_15M": {
     "sl_mult": 1.0,
@@ -63,18 +68,20 @@
     "wins": 0,
     "win_rate": null,
     "last_adapted": null,
-    "adapt_count": 0
+    "adapt_count": 0,
+    "paper_only": false
   },
   "PDH_PDL_SWEEP_5M": {
     "sl_mult": 1.0,
     "tp_mult": 1.0,
     "conf_floor": 0.6,
     "enabled": true,
-    "trades_seen": 3,
+    "trades_seen": 4,
     "wins": 1,
-    "win_rate": 0.333,
+    "win_rate": 0.25,
     "last_adapted": null,
-    "adapt_count": 0
+    "adapt_count": 0,
+    "paper_only": false
   },
   "CAMARILLA_5M": {
     "sl_mult": 1.5,
@@ -85,7 +92,8 @@
     "wins": 9,
     "win_rate": 0.45,
     "last_adapted": "2026-04-29T20:00:17.882505+00:00",
-    "adapt_count": 15
+    "adapt_count": 15,
+    "paper_only": false
   },
   "NR7_BREAKOUT_5M": {
     "sl_mult": 1.0,
@@ -96,51 +104,56 @@
     "wins": 3,
     "win_rate": 0.429,
     "last_adapted": null,
-    "adapt_count": 0
+    "adapt_count": 0,
+    "paper_only": false
   },
   "MSS_FOREX_15M": {
     "sl_mult": 1.0,
     "tp_mult": 1.0,
     "conf_floor": 0.6,
     "enabled": true,
-    "trades_seen": 10,
-    "wins": 4,
-    "win_rate": 0.4,
-    "last_adapted": "2026-04-29T20:47:30.150656+00:00",
-    "adapt_count": 1
+    "trades_seen": 12,
+    "wins": 5,
+    "win_rate": 0.417,
+    "last_adapted": "2026-05-01T14:46:43.744723+00:00",
+    "adapt_count": 3,
+    "paper_only": false
   },
   "BB_SCALP_5M": {
     "sl_mult": 1.0,
     "tp_mult": 1.0,
     "conf_floor": 0.6,
     "enabled": true,
-    "trades_seen": 0,
-    "wins": 0,
-    "win_rate": null,
+    "trades_seen": 3,
+    "wins": 1,
+    "win_rate": 0.333,
     "last_adapted": null,
-    "adapt_count": 0
+    "adapt_count": 0,
+    "paper_only": false
   },
   "STOCH_CROSS_5M": {
     "sl_mult": 1.0,
     "tp_mult": 1.0,
     "conf_floor": 0.6,
     "enabled": true,
-    "trades_seen": 1,
+    "trades_seen": 3,
     "wins": 0,
     "win_rate": 0.0,
     "last_adapted": null,
-    "adapt_count": 0
+    "adapt_count": 0,
+    "paper_only": false
   },
   "EMA_MICRO_CROSS_5M": {
-    "sl_mult": 1.0,
-    "tp_mult": 1.0,
-    "conf_floor": 0.6,
-    "enabled": true,
-    "trades_seen": 3,
-    "wins": 2,
-    "win_rate": 0.667,
-    "last_adapted": null,
-    "adapt_count": 0
+    "sl_mult": 1.5,
+    "tp_mult": 0.75,
+    "conf_floor": 0.8,
+    "enabled": false,
+    "trades_seen": 13,
+    "wins": 5,
+    "win_rate": 0.385,
+    "last_adapted": "2026-05-01T14:52:15.866925+00:00",
+    "adapt_count": 12,
+    "paper_only": false
   },
   "DOUBLE_BOT_BREAKOUT_5M": {
     "sl_mult": 1.0,
@@ -151,7 +164,8 @@
     "wins": 0,
     "win_rate": null,
     "last_adapted": null,
-    "adapt_count": 0
+    "adapt_count": 0,
+    "paper_only": false
   },
   "HS_BREAKDOWN_5M": {
     "sl_mult": 1.0,
@@ -162,7 +176,8 @@
     "wins": 0,
     "win_rate": null,
     "last_adapted": null,
-    "adapt_count": 0
+    "adapt_count": 0,
+    "paper_only": false
   },
   "FLAG_BREAKOUT_5M": {
     "sl_mult": 1.0,
@@ -173,6 +188,7 @@
     "wins": 0,
     "win_rate": null,
     "last_adapted": null,
-    "adapt_count": 0
+    "adapt_count": 0,
+    "paper_only": false
   }
 }

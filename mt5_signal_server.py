@@ -218,10 +218,21 @@ def run_server(args: argparse.Namespace):
             _SIGNAL_CACHE[ticker] = (now_window, sr)
         return sr
 
+    # Multi-cadence learning scheduler — checked once per poll iteration.
+    # Cheap when nothing is due (one JSON read + three timestamp compares);
+    # spawns daemon threads for daily/weekly. See agents/learning_loop.py.
+    from agents.learning_loop import tick as _learning_tick, set_watchlist as _set_watchlist
+    _set_watchlist(list(args.tickers))
+
     try:
         while True:
             poll_start = time.time()
             today = date.today()
+
+            try:
+                _learning_tick()
+            except Exception as exc:
+                log.error("learning_loop tick failed: %s", exc)
 
             # Clear stale sent signals from prior sessions
             stale = {k for k in sent_signals if not k.endswith(str(today))}

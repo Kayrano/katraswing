@@ -42,38 +42,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Backtest cache ────────────────────────────────────────────────────────────
-_BT_CACHE: dict = {"rates": {}, "ts": {}, "running": set()}
-_BT_LOCK = threading.Lock()
-# Cap concurrent backtests so a cold-start scan with 20 stale tickers doesn't
-# spawn 20 threads each fetching 59 days of bars (the previous behaviour).
-_BT_SEMA = threading.BoundedSemaphore(2)
-# Backtest results don't meaningfully change within a day. 24h TTL prevents
-# the same backtest from running multiple times per session.
-_BT_TTL_SEC = 86400
+# Backtest cache primitives now live in agents.runtime so the CLI server
+# (mt5_signal_server.py) can share the same semaphore + cache without
+# importing Streamlit.
+from agents.runtime import refresh_backtest_rates as _refresh_backtest_rates
 
 _ET  = ZoneInfo("America/New_York")
 _JST = ZoneInfo("Asia/Tokyo")
-
-
-def _bt_background(ticker: str) -> None:
-    # Throttle: at most 2 backtests run concurrently. Surplus threads block
-    # here until a slot is free, then proceed. Combined with the 24h TTL this
-    # eliminates the cold-start thread storm the user observed.
-    with _BT_SEMA:
-        try:
-            from agents.intraday_backtester import run_intraday_backtest
-            summary = run_intraday_backtest(ticker, timeframe="5m")
-            rates = {r.strategy: r.win_rate for r in summary.results if r.total_trades >= 5}
-            with _BT_LOCK:
-                _BT_CACHE["rates"][ticker] = rates if rates else {}
-                _BT_CACHE["ts"][ticker]    = time.time()
-        except Exception:
-            with _BT_LOCK:
-                _BT_CACHE["rates"][ticker] = None
-                _BT_CACHE["ts"][ticker]    = time.time()
-        finally:
-            with _BT_LOCK:
-                _BT_CACHE["running"].discard(ticker)
 
 
 # ── MT5 shared state (persists across reruns via session_state) ───────────────
@@ -396,23 +371,6 @@ def _scan_window_key(now_ts: float | None = None) -> int:
     """Return the start of the current 5-minute wall-clock bucket. Two calls
     within the same 5-min window get the same key → memo hit."""
     return int((now_ts or time.time()) // 300) * 300
-
-
-def _refresh_backtest_rates(ticker: str):
-    # Read cache state under lock
-    with _BT_LOCK:
-        last_ts = _BT_CACHE["ts"].get(ticker, 0)
-        stale   = time.time() - last_ts > _BT_TTL_SEC
-        running = ticker in _BT_CACHE["running"]
-        cached  = _BT_CACHE["rates"].get(ticker)
-    # If stale and no thread is already working on this ticker, queue one.
-    # The semaphore inside _bt_background caps total concurrent work.
-    if stale and not running:
-        t = threading.Thread(target=_bt_background, args=(ticker,), daemon=True)
-        with _BT_LOCK:
-            _BT_CACHE["running"].add(ticker)
-        t.start()
-    return cached
 
 
 @st.cache_data(ttl=900, show_spinner=False)

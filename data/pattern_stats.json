@@ -1,18 +1,18 @@
 {
   "Descending Triangle": {
-    "wins": 3,
-    "trades": 6,
-    "win_rate": 0.5
+    "wins": 4,
+    "trades": 10,
+    "win_rate": 0.4
   },
   "Triple Top": {
-    "wins": 3,
-    "trades": 7,
-    "win_rate": 0.4286
+    "wins": 5,
+    "trades": 16,
+    "win_rate": 0.3125
   },
   "Double Top": {
-    "wins": 3,
-    "trades": 5,
-    "win_rate": 0.6
+    "wins": 5,
+    "trades": 13,
+    "win_rate": 0.3846
   },
   "Inside Bar": {
     "wins": 1,
@@ -20,46 +20,71 @@
     "win_rate": 0.5
   },
   "Ascending Triangle": {
-    "wins": 2,
-    "trades": 6,
-    "win_rate": 0.3333
-  },
-  "Triple Bottom": {
-    "wins": 3,
-    "trades": 7,
-    "win_rate": 0.4286
-  },
-  "Double Bottom": {
-    "wins": 3,
-    "trades": 7,
-    "win_rate": 0.4286
-  },
-  "Inv. Head & Shoulders": {
-    "wins": 1,
-    "trades": 2,
+    "wins": 6,
+    "trades": 12,
     "win_rate": 0.5
   },
+  "Triple Bottom": {
+    "wins": 10,
+    "trades": 20,
+    "win_rate": 0.5
+  },
+  "Double Bottom": {
+    "wins": 10,
+    "trades": 19,
+    "win_rate": 0.5263
+  },
+  "Inv. Head & Shoulders": {
+    "wins": 2,
+    "trades": 3,
+    "win_rate": 0.6667
+  },
   "Falling Wedge": {
+    "wins": 4,
+    "trades": 7,
+    "win_rate": 0.5714
+  },
+  "Fair Value Gap (Bull)": {
+    "wins": 7,
+    "trades": 13,
+    "win_rate": 0.5385
+  },
+  "Rising Wedge": {
+    "wins": 0,
+    "trades": 4,
+    "win_rate": 0.0
+  },
+  "Inside Bar (NR4)": {
+    "wins": 1,
+    "trades": 5,
+    "win_rate": 0.2
+  },
+  "Fair Value Gap (Bear)": {
+    "wins": 1,
+    "trades": 8,
+    "win_rate": 0.125
+  },
+  "Evening Star": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
+  },
+  "Bearish Engulfing": {
+    "wins": 2,
+    "trades": 4,
+    "win_rate": 0.5
+  },
+  "Head & Shoulders": {
+    "wins": 2,
+    "trades": 4,
+    "win_rate": 0.5
+  },
+  "Rectangle": {
     "wins": 1,
     "trades": 1,
     "win_rate": 1.0
   },
-  "Fair Value Gap (Bull)": {
-    "wins": 1,
-    "trades": 4,
-    "win_rate": 0.25
-  },
-  "Rising Wedge": {
-    "wins": 0,
-    "trades": 2,
-    "win_rate": 0.0
-  },
-  "Inside Bar (NR4)": {
-    "wins": 0,
-    "trades": 1,
-    "win_rate": 0.0
-  },
-  "Fair Value Gap (Bear)": {
+  "Bullish Engulfing": {
     "wins": 0,
     "trades": 2,
     "win_rate": 0.0
