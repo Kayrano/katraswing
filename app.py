@@ -131,6 +131,30 @@ def _mt5_loop_inner(stop_event, config):
         _MT5["sent"]     = {k for k in _MT5["sent"]     if k.endswith(str(today))}
         _MT5["rejected"] = {k for k in _MT5["rejected"] if k.endswith(str(today))}
 
+        # Cold-start race fix: the instruments list was passed in at thread
+        # start, when MT5 was not yet connected. Every entry has mt5_symbol=""
+        # → every signal would be perpetually held. Now that we're connected,
+        # late-resolve the broker mapping in-place so this and future scans
+        # find a real symbol. Cheap when nothing needs resolving.
+        if _MT5["connected"] and any(
+            not (i.get("mt5_symbol") or "").strip() for i in instruments
+        ):
+            try:
+                from utils.mt5_bridge import get_tradeable_symbols
+                fresh = _resolve_instruments(get_tradeable_symbols())
+                fresh_lookup = {f["label"]: f.get("mt5_symbol", "") for f in fresh}
+                patched = 0
+                for inst in instruments:
+                    if not (inst.get("mt5_symbol") or "").strip():
+                        new_sym = fresh_lookup.get(inst["label"], "")
+                        if new_sym:
+                            inst["mt5_symbol"] = new_sym
+                            patched += 1
+                if patched:
+                    _log(f"📡 Late-resolved {patched} broker symbol(s)")
+            except Exception as _rsx:
+                log.warning("ctx=late_resolve_bg: %s", _rsx)
+
         # Refresh optimal stops once per hour
         if time.time() - _opt_stops_ts > 3600:
             try:
