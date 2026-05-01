@@ -75,8 +75,11 @@ _TREND_STRATEGIES = {"ORB_5M", "TREND_MOM_5M", "EMA_PB_15M", "SQUEEZE_15M",
                      "FLAG_BREAKOUT_5M"}
 # ABSORB is order-flow based — regime-independent, never penalised
 
-# Minimum final confidence to issue a signal (raised from 0.35 → 0.60)
-_SIGNAL_FLOOR = 0.60
+# Minimum final confidence to issue a signal.
+# Raised 0.60 → 0.70 after analysing 74 closed trades: the [0.60, 0.70) bucket
+# delivered 21% WR / -$39 P&L while [0.70, 0.80) delivered 46% / +$8.
+# The 0.60 trades were systematic money-losers; cutting them is a clean win.
+_SIGNAL_FLOOR = 0.70
 
 # Baseline win rate used for backtest calibration adjustment
 _BACKTEST_BASELINE_WR = 0.62

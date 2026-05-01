@@ -57,8 +57,11 @@ _TP_MULT_MIN,  _TP_MULT_MAX  = 0.75, 1.50
 _CONF_FLOOR_MIN, _CONF_FLOOR_MAX = 0.60, 0.80
 _MIN_TRADES_TO_ADAPT  = 10   # need at least this many closed trades (avoid over-fit on tiny samples)
 _RECENT_WINDOW        = 20   # use last N trades for win-rate calculation
-_DISABLE_THRESHOLD    = 0.35 # disable if win_rate < this with ≥15 trades
-_DISABLE_MIN_TRADES   = 15
+_DISABLE_THRESHOLD    = 0.35 # disable if win_rate < this with ≥_DISABLE_MIN_TRADES
+# Lowered 15 → 10 after observing TREND_MOM_5M sit at 27% WR over 11 trades
+# without crossing the disable gate. 10 is still enough samples to dampen
+# noise but lets clear losers self-disable one trade-cycle sooner.
+_DISABLE_MIN_TRADES   = 10
 _REENABLE_THRESHOLD   = 0.50 # re-enable if win_rate recovers to this
 
 # Hierarchical (symbol, strategy) partitioning. Per-symbol params are only
