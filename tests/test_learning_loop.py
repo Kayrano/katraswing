@@ -211,6 +211,109 @@ class TestTickIntegration:
         assert rows[0]["kind"] == "hourly"
         assert rows[0]["errors"] == []
 
+    def test_concurrent_tick_no_double_fire(self, monkeypatch, stub_hourly_dependencies):
+        """Two threads invoking tick() in the same hour bucket must result in
+        exactly one hourly fan-out. The per-kind threading.Lock guards this."""
+        # Use a barrier so both threads start their tick() simultaneously,
+        # maximizing race likelihood. Without the lock the test would race
+        # and (often) fire twice.
+        now = datetime(2026, 5, 4, 14, 3, tzinfo=timezone.utc)
+        monkeypatch.setattr(learning_loop, "_now", _frozen_clock(now))
+
+        n_threads = 8
+        barrier = threading.Barrier(n_threads)
+        results: list[dict] = []
+        results_lock = threading.Lock()
+
+        def racer():
+            barrier.wait()
+            r = learning_loop.tick()
+            with results_lock:
+                results.append(r)
+
+        threads = [threading.Thread(target=racer) for _ in range(n_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Exactly one thread saw "hourly" in its fired list; the rest saw
+        # an empty list because the lock was already held / the cadence
+        # check found state already updated.
+        fired_count = sum(1 for r in results if "hourly" in r["fired"])
+        assert fired_count == 1, f"expected one fire, got {fired_count}"
+        # And the heavy fan-out runs exactly once
+        assert stub_hourly_dependencies["mt5"] == 1
+
+
+# ── run_daily report-only contract ─────────────────────────────────────────
+
+class TestDailyReadOnly:
+    """Verify run_daily writes a markdown report but never mutates
+    strategy_params.json. Daily is supposed to be pure evidence-gathering;
+    weekly is the only path that's allowed to flip enabled/paper_only."""
+
+    def test_daily_writes_report_and_does_not_mutate_params(self, monkeypatch, tmp_path):
+        from unittest.mock import MagicMock
+
+        params_file = tmp_path / "strategy_params.json"
+        params_file.write_text(json.dumps({
+            "VWAP_RSI_5M": {
+                "sl_mult": 1.0, "tp_mult": 1.0, "conf_floor": 0.6,
+                "enabled": True, "paper_only": False,
+                "trades_seen": 6, "wins": 2, "win_rate": 0.333,
+                "last_adapted": None, "adapt_count": 0,
+            },
+            "TREND_MOM_5M": {
+                "sl_mult": 1.5, "tp_mult": 0.75, "conf_floor": 0.8,
+                "enabled": False, "paper_only": False,
+                "trades_seen": 11, "wins": 3, "win_rate": 0.273,
+                "last_adapted": "2026-04-29T00:00:00+00:00", "adapt_count": 10,
+            },
+        }), encoding="utf-8")
+
+        trade_log = tmp_path / "data" / "trade_log.json"
+        trade_log.parent.mkdir(parents=True, exist_ok=True)
+        trade_log.write_text("[]", encoding="utf-8")
+
+        # Patch every external dependency that run_daily touches so the
+        # test stays offline + deterministic.
+        monkeypatch.setattr("data.trade_outcomes._LOG_PATH", trade_log)
+        monkeypatch.setattr("data.trade_outcomes._LOAD_CACHE", None)
+        monkeypatch.setattr("data.strategy_params._PARAMS_FILE", params_file)
+        monkeypatch.setattr("data.strategy_params._PARAMS", {})
+        monkeypatch.setattr(
+            "data.fetcher_intraday.fetch_intraday_data", lambda *a, **kw: None,
+        )
+        # Stub the backtester so we don't run a real one
+        fake_summary = MagicMock(results=[])
+        monkeypatch.setattr(
+            "agents.intraday_backtester.run_intraday_backtest",
+            lambda *a, **kw: fake_summary,
+        )
+        # Watchlist so the regime + backtest loop has something to iterate over
+        learning_loop.set_watchlist(["EURUSD=X"])
+
+        # Snapshot the params file hash before
+        import hashlib
+        before = hashlib.sha256(params_file.read_bytes()).hexdigest()
+
+        now = datetime(2026, 5, 4, 23, 5, tzinfo=timezone.utc)
+        monkeypatch.setattr(learning_loop, "_now", _frozen_clock(now))
+        report_path = learning_loop.run_daily(now)
+
+        # The report file exists and contains the expected sections
+        assert report_path.exists()
+        body = report_path.read_text(encoding="utf-8")
+        assert "Daily Review" in body
+        assert "## Regime" in body
+        assert "## Strategy Health (30d)" in body
+        assert "## Walk-forward proposals" in body
+
+        # And the params file is byte-for-byte unchanged — daily is read-only
+        after = hashlib.sha256(params_file.read_bytes()).hexdigest()
+        assert before == after, "run_daily must not mutate strategy_params.json"
+
 
 # ── run_weekly prune + promote ─────────────────────────────────────────────
 
