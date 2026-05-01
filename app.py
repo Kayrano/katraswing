@@ -837,6 +837,21 @@ if needs_run:
     if auto_trade and _MT5["connected"]:
         today = date.today()
         from utils.mt5_bridge import send_from_signal_result as _send
+
+        # Cold-start race fix: instruments built at the top of the script may
+        # carry mt5_symbol="" if MT5 wasn't connected at page-render time.
+        # Now that we know it IS connected, lazily re-resolve so we don't
+        # drop a signal just because the broker map wasn't ready.
+        if any(not (i.get("mt5_symbol") or "").strip() for i in instruments):
+            try:
+                fresh = _resolve_instruments(_get_broker_symbols(_connected=True))
+                fresh_lookup = {f["label"]: f.get("mt5_symbol", "") for f in fresh}
+                for inst in instruments:
+                    if not (inst.get("mt5_symbol") or "").strip():
+                        inst["mt5_symbol"] = fresh_lookup.get(inst["label"], "")
+            except Exception as _rsx:
+                _log(f"⚠ Late-resolve broker symbols failed: {_rsx}")
+
         for inst in instruments:
             t  = inst["ticker"]
             sr = results.get(t)
