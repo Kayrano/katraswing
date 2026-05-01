@@ -76,9 +76,9 @@
     "tp_mult": 1.0,
     "conf_floor": 0.6,
     "enabled": true,
-    "trades_seen": 4,
+    "trades_seen": 5,
     "wins": 1,
-    "win_rate": 0.25,
+    "win_rate": 0.2,
     "last_adapted": null,
     "adapt_count": 0,
     "paper_only": false

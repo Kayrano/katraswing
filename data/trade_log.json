@@ -3413,9 +3413,11 @@
       }
     ],
     "sent_at": "2026-05-01T10:13:43",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-05-01T14:21:25",
+    "profit": -4.54,
+    "outcome": "LOSS",
+    "close_price": 2292.76,
+    "close_reason": "SL"
   },
   {
     "ticket": 217843477,

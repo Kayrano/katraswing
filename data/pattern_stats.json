@@ -1,18 +1,18 @@
 {
   "Descending Triangle": {
     "wins": 4,
-    "trades": 10,
-    "win_rate": 0.4
+    "trades": 11,
+    "win_rate": 0.3636
   },
   "Triple Top": {
     "wins": 5,
-    "trades": 16,
-    "win_rate": 0.3125
+    "trades": 17,
+    "win_rate": 0.2941
   },
   "Double Top": {
     "wins": 5,
-    "trades": 13,
-    "win_rate": 0.3846
+    "trades": 14,
+    "win_rate": 0.3571
   },
   "Inside Bar": {
     "wins": 1,
@@ -61,8 +61,8 @@
   },
   "Fair Value Gap (Bear)": {
     "wins": 1,
-    "trades": 8,
-    "win_rate": 0.125
+    "trades": 9,
+    "win_rate": 0.1111
   },
   "Evening Star": {
     "wins": 0,

@@ -280,16 +280,18 @@ class TestWeeklyMutations:
             "LOSER_X (n=20, WR=25%, PF<1) must be disabled"
 
     def test_weekly_promotes_paper_strategy(self, monkeypatch, tmp_path):
-        """22 trades, 55% WR, PF>1.3 on a paper_only strategy → promotes."""
+        """22 trades, 64% WR, PF=1.75 on a paper_only strategy → promotes.
+        Need to clear both n>=20 and wr>=0.50 and pf>=1.30 — the avg_profit
+        is symmetric so wins:losses ratio drives PF."""
         trade_log = self._seed_trade_log(
-            tmp_path, strategy="PAPER_GOOD", n=22, wins=12, avg_profit=10.0,
+            tmp_path, strategy="PAPER_GOOD", n=22, wins=14, avg_profit=10.0,
         )
         params_file = tmp_path / "strategy_params.json"
         params_file.write_text(json.dumps({
             "PAPER_GOOD": {
                 "sl_mult": 1.0, "tp_mult": 1.0, "conf_floor": 0.6,
                 "enabled": False, "paper_only": True,
-                "trades_seen": 22, "wins": 12, "win_rate": 0.545,
+                "trades_seen": 22, "wins": 14, "win_rate": 0.636,
                 "last_adapted": None, "adapt_count": 0,
             },
         }), encoding="utf-8")

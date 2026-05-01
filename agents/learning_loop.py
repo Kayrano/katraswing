@@ -616,10 +616,9 @@ def run_weekly(now: datetime) -> Path:
       5. Force calibrator refit so it sees the new active mix.
       6. Rotate learning_log.jsonl.
     """
-    from data.strategy_params import (
-        load_params, save_params, get_all_params,
-        _PARAMS_FILE, _PARAMS,
-    )
+    import data.strategy_params as _sp     # access _PARAMS through the module so
+                                             # load_params()'s rebind is visible
+    from data.strategy_params import load_params, save_params
     from data.trade_outcomes import _load as _load_trades
     from agents.regime_classifier import classify as _regime_classify
     from data.fetcher_intraday import fetch_intraday_data
@@ -629,7 +628,7 @@ def run_weekly(now: datetime) -> Path:
     report_path = _REPORTS_DIR / f"weekly_{iso_year}-W{iso_week:02d}.md"
 
     trades = _load_trades()
-    load_params()        # ensure _PARAMS is hydrated
+    load_params()        # rebinds _sp._PARAMS to the file contents
 
     pruned: list[dict] = []
     promoted: list[dict] = []
@@ -642,7 +641,7 @@ def run_weekly(now: datetime) -> Path:
         if row["n"] < _PRUNE_MIN_TRADES:
             continue
         if row["wr"] < _PRUNE_WR_MAX or row["pf"] < _PRUNE_PF_MAX:
-            params = _PARAMS.get(row["strategy"]) or {}
+            params = _sp._PARAMS.get(row["strategy"]) or {}
             if params.get("enabled", True):
                 params["enabled"] = False
                 params["last_adapted"] = now.isoformat()
@@ -654,7 +653,7 @@ def run_weekly(now: datetime) -> Path:
                             row["strategy"], row["n"], row["wr"], row["pf"])
 
     # ── Promote step (paper_only strategies) ──────────────────────────
-    for strat, params in list(_PARAMS.items()):
+    for strat, params in list(_sp._PARAMS.items()):
         if ":" in strat:
             continue   # composite per-symbol key — never auto-promote
         if not params.get("paper_only", False):
