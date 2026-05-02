@@ -52,6 +52,11 @@ class IntradaySignal:
     atr:         float  # ATR used for SL/TP calculation
     rr_ratio:    float  # always 2.0
     reason:      str    # human-readable explanation
+    # paper_only=True signals still flow through the engine and contribute to
+    # calibration data via the trade_log shadow path, but the order-send
+    # surfaces (app.py auto-trade, mt5_signal_server.py) skip the MT5
+    # round-trip. Stamped by data.strategy_params.apply_params.
+    paper_only:  bool = False
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
@@ -139,7 +144,11 @@ def vwap_rsi_5m(df: pd.DataFrame) -> IntradaySignal:
     if any(np.isnan(v) for v in [cur_rsi, cur_ema20, cur_atr, cur_vwap]) or cur_atr == 0:
         return _flat(NAME, TF, "NaN indicator — warmup incomplete")
 
-    band    = 0.5 * cur_atr   # widened from 0.15 — price doesn't need to sit exactly on VWAP
+    # Forensic May 2026: 6 live trades, 33% WR, avg loss $17.57 vs avg win $9.25.
+    # The 0.5×ATR band let price drift far from VWAP, so trades were no longer
+    # "fading into fair value" — they were chasing extended moves. Reverted to
+    # the 0.15×ATR band that matches the docstring (line 110/111).
+    band    = 0.15 * cur_atr
     in_band = abs(cur_close - cur_vwap) <= band
 
     rvol_note = f"RVOL {cur_rvol:.1f}x"
@@ -901,10 +910,13 @@ def nr7_breakout_5m(df: pd.DataFrame) -> IntradaySignal:
         return _flat(NAME, TF, "Not enough bars for NR7 lookback")
 
     nr7_range = float(highs[nr7_idx] - lows[nr7_idx])
-    window_ranges = [float(highs[i] - lows[i]) for i in range(nr7_idx - 6, nr7_idx + 1)]
-    if nr7_range > min(window_ranges):
+    # Compare against the *prior 6 bars only* (exclusive of the setup bar) so a
+    # flat day where every bar has the same range doesn't trivially pass — the
+    # setup bar's range must be STRICTLY narrower than every one of the prior 6.
+    prior_ranges = [float(highs[i] - lows[i]) for i in range(nr7_idx - 6, nr7_idx)]
+    if nr7_range >= min(prior_ranges):
         return _flat(NAME, TF,
-            f"No NR7: prev bar range {nr7_range:.4f} > min {min(window_ranges):.4f}")
+            f"No NR7: setup range {nr7_range:.4f} >= min(prior 6) {min(prior_ranges):.4f}")
 
     nr7_high  = float(highs[nr7_idx])
     nr7_low   = float(lows[nr7_idx])
@@ -1207,6 +1219,12 @@ def mss_forex_15m(df: pd.DataFrame) -> IntradaySignal:
 
     if len(df) < 100:
         return _flat(NAME, TF, "Insufficient bars (need 100)")
+
+    # resample("1D") needs a DatetimeIndex; fail gracefully if the caller
+    # handed us a positional/integer index (some test fixtures, some
+    # malformed yfinance returns).
+    if not isinstance(df.index, pd.DatetimeIndex):
+        return _flat(NAME, TF, "Index is not DatetimeIndex — cannot resample to 1D")
 
     # ── Daily swing structure ─────────────────────────────────────────────────
     daily = (

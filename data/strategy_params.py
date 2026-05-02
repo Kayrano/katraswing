@@ -49,6 +49,11 @@ _DEFAULT_ENTRY = {
     # paper_only=False, enabled=True) once n>=20, wr>=0.50, pf>=1.3 over
     # the trailing 30d.
     "paper_only":   False,
+    # disabled_directions: a list of {"LONG", "SHORT"} that are blocked while
+    # other directions stay live. Lets us paper one side of a strategy that's
+    # asymmetric in live perf (e.g. CAMARILLA SHORT 60% WR vs LONG 33% WR).
+    # Stored as a list (not set) so it survives JSON round-trip.
+    "disabled_directions": [],
     "trades_seen":  0,
     "wins":         0,
     "win_rate":     None,
@@ -209,10 +214,26 @@ def apply_params(signal, symbol: str | None = None) -> object:
         return _flat(signal.strategy, signal.timeframe,
                      f"{signal.strategy} disabled by adaptive learning (win_rate={params.get('win_rate', 'N/A')})")
 
+    # Per-direction kill: e.g. CAMARILLA_5M live for SHORTs only because
+    # historical LONG WR is too low. The strategy still computes and emits a
+    # signal; we flatten it post-hoc so live-WR calibration only tracks the
+    # surviving direction.
+    disabled_dirs = set(params.get("disabled_directions", []) or [])
+    if signal.signal in disabled_dirs:
+        return _flat(signal.strategy, signal.timeframe,
+                     f"{signal.strategy} {signal.signal} suspended (per-direction paper)")
+
     conf_floor = params.get("conf_floor", 0.60)
     if signal.confidence < conf_floor:
         return _flat(signal.strategy, signal.timeframe,
                      f"conf {signal.confidence:.2f} < adaptive floor {conf_floor:.2f}")
+
+    # paper_only: signal flows through (so calibration tracks it) but the
+    # order-send surfaces should skip it. Stamp the IntradaySignal so app.py
+    # and mt5_signal_server.py can detect and log instead of sending.
+    if params.get("paper_only", False):
+        signal = replace(signal, paper_only=True,
+                         reason=signal.reason + " [paper_only]")
 
     sl_mult = params.get("sl_mult", 1.0)
     tp_mult = params.get("tp_mult", 1.0)

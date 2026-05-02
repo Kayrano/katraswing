@@ -318,6 +318,14 @@ def run_server(args: argparse.Namespace):
                     log.info(f"  [dedup] Already entered {sr.direction} {display} today. Skipping.")
                     continue
 
+                # Paper-mode strategies/symbols: signal still passes calibration
+                # but the broker round-trip is skipped. trade_log records a
+                # paper row so the weekly auto-promotion harness can mature it.
+                if getattr(sr, "paper_only", False):
+                    log.info(f"  [paper] {sr.paper_reason or 'strategy'} — order not sent")
+                    sent_signals.add(key)
+                    continue
+
                 if args.dry_run:
                     log.info("  [dry-run] Would send to MT5.")
                     sent_signals.add(key)

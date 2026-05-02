@@ -226,6 +226,13 @@ def _mt5_loop_inner(stop_event, config):
             strategy_name = sr.chart_signals[0].strategy if sr.chart_signals else "UNKNOWN"
             _log(f"  {ticker} → {strategy_name} {sr.direction} {sr.confidence:.0%} | SL {sr.sl} TP {sr.tp}")
 
+            # Paper-mode strategies/symbols: signal flows to calibration but
+            # the order-send is skipped. The trade_log's paper rows still feed
+            # the weekly auto-promotion harness.
+            if auto_trade and getattr(sr, "paper_only", False):
+                _log(f"  📝 {ticker} paper-mode ({sr.paper_reason or 'strategy'}) — not sent")
+                continue
+
             # Skip auto-send if no broker mapping yet (early connect race)
             if auto_trade and not (mt5_symbol or "").strip():
                 _log(f"  ⏳ {ticker} signal held — waiting for broker symbol mapping")
@@ -885,6 +892,9 @@ if needs_run:
                 continue
             if not (inst.get("mt5_symbol") or "").strip():
                 _log(f"⏳ {t} held — no broker symbol yet")
+                continue
+            if getattr(sr, "paper_only", False):
+                _log(f"📝 {t} paper-mode ({sr.paper_reason or 'strategy'}) — not sent")
                 continue
             key = f"{t}:{sr.direction}:{today}"
             if key in _MT5["sent"] or key in _MT5["rejected"]:

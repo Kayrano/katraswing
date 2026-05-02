@@ -123,6 +123,11 @@ class SignalResult:
     daily_trend_vetoed: bool = False
     sl_tp_source: str = "ATR"       # ATR | BLENDED — whether learned stops were applied
     risk_level: str = "MEDIUM"      # LOW | MEDIUM | HIGH — scales lot size in send_from_signal_result
+    # paper_only signals are emitted (calibration tracks them) but the order-
+    # send paths in app.py / mt5_signal_server.py skip the MT5 round-trip.
+    # Stamped from the picked strategy's IntradaySignal.paper_only flag.
+    paper_only: bool = False
+    paper_reason: str = ""           # "strategy" | "symbol" | "" — origin of the paper flag
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -157,6 +162,15 @@ def run_signal(
     try:
         from data.fetcher_intraday import fetch_intraday_data
         from utils.position_sizing import calculate as calc_position
+        from data.symbol_policy import get_disposition as _sym_disposition
+
+        # Symbol-level kill list: DROP exits early before any data fetch /
+        # strategy compute work. PAPER continues normally and is stamped on
+        # the result so order-send paths can skip cleanly.
+        disposition = _sym_disposition(mt5_symbol or ticker)
+        if disposition == "DROP":
+            return SignalResult(ticker=ticker, display_name=label,
+                                error=f"Symbol dropped by policy ({ticker})")
 
         df = fetch_intraday_data(ticker, interval="5m", days=59, mt5_symbol=mt5_symbol)
         if df is None or df.empty:
@@ -184,12 +198,15 @@ def run_signal(
             all_signals.append(sig)
 
         # Absorption confluence boost (direction-agnostic order-flow confirmation)
+        # Round 4 (2026-05-02): cut +0.10 → +0.05 as part of the boost-stack
+        # cap. The 0.80–0.90 confidence bucket loses more money than 0.70–0.80
+        # in the live data; absorption was the single biggest stack push.
         try:
             abs_s = ta.absorption(df["High"], df["Low"], df["Close"], df["Volume"])
             if len(abs_s) >= 3 and bool(abs_s.iloc[-3:].any()):
                 for sig in all_signals:
                     if sig.signal in ("LONG", "SHORT"):
-                        sig.confidence = min(1.0, sig.confidence + 0.10)
+                        sig.confidence = min(1.0, sig.confidence + 0.05)
                         sig.reason += " [+absorption]"
         except Exception:
             pass
@@ -337,14 +354,16 @@ def run_signal(
                         sl_tp_source = "BLENDED"
                     break
 
-        # ── Backtest-informed calibration ─────────────────────────────────────
+        # ── Backtest-informed calibration (Round 4: ±0.10 → ±0.05) ───────────
         bt_adjustment = 0.0
         if backtest_win_rates and best.strategy in backtest_win_rates:
             recent_wr = backtest_win_rates[best.strategy]
             raw_adj = (recent_wr - _BACKTEST_BASELINE_WR) * 0.5
-            bt_adjustment = max(-0.10, min(0.10, raw_adj))
+            bt_adjustment = max(-0.05, min(0.05, raw_adj))
 
-        # ── Live trade outcome calibration ────────────────────────────────────
+        # ── Live trade outcome calibration (Round 4: ±0.15 → ±0.08) ─────────
+        # 86 closed trades is too few to earn ±0.15. Halve it until we have
+        # 200+ samples per (strategy, symbol, direction) bucket.
         live_adjustment = 0.0
         live_wr_key = ""
         if live_win_rates:
@@ -357,20 +376,17 @@ def run_signal(
                 if key in live_win_rates:
                     live_wr = live_win_rates[key]
                     raw_adj = (live_wr - _BACKTEST_BASELINE_WR) * 0.8
-                    live_adjustment = max(-0.15, min(0.15, raw_adj))
+                    live_adjustment = max(-0.08, min(0.08, raw_adj))
                     live_wr_key = key
                     break
 
-        # ── News boost ±0.10 ─────────────────────────────────────────────────
+        # ── News boost (Round 4: removed; routed to event-window veto in B2)
+        # The Finnhub sentiment ±0.10 boost was likely noise at our sample
+        # size. We keep the field on SignalResult for backward compatibility
+        # and for upcoming B2 work to populate the event veto.
         news_boost = 0.0
-        if news_sentiment != "NEUTRAL":
-            aligns = (
-                (direction == "LONG"  and news_sentiment == "BULLISH") or
-                (direction == "SHORT" and news_sentiment == "BEARISH")
-            )
-            news_boost = 0.10 if aligns else -0.10
 
-        # ── Pattern boost ±0.05 ──────────────────────────────────────────────
+        # ── Pattern boost ±0.05 (kept; smallest, posterior-driven) ───────────
         pattern_boost = 0.0
         if patterns.dominant_bias != "NEUTRAL":
             p_aligns = (
@@ -379,9 +395,25 @@ def run_signal(
             )
             pattern_boost = 0.05 if p_aligns else -0.05
 
+        # ── Round 4: hard total-boost cap of +0.20 ───────────────────────────
+        # Theoretical max stack pre-Round-4 was +0.59. Live data shows the
+        # 0.80–0.90 confidence bucket loses MORE money than 0.70–0.80 — i.e.
+        # the stack pushes marginal trades into a worse-performing bucket.
+        # Cap *positive* contribution; negative penalties pass through unclamped
+        # so a misaligned stack can still demote a signal below the floor.
+        positive_boosts = sum(
+            max(b, 0.0)
+            for b in (consensus_boost, bt_adjustment, live_adjustment,
+                      news_boost, pattern_boost)
+        )
+        negative_boosts = sum(
+            min(b, 0.0)
+            for b in (consensus_boost, bt_adjustment, live_adjustment,
+                      news_boost, pattern_boost)
+        )
+        capped_positive = min(positive_boosts, 0.20)
         final_conf = max(0.0, min(1.0,
-            base_conf + consensus_boost + bt_adjustment + live_adjustment
-            + news_boost + pattern_boost
+            base_conf + capped_positive + negative_boosts
         ))
 
         # ── Multi-timeframe trend gate (Daily × 2 + H4 × 1) ──────────────────
@@ -417,22 +449,17 @@ def run_signal(
         else:
             mtf_bias = "NEUTRAL"
 
-        # Both timeframes oppose → hard veto
+        # Both timeframes oppose → hard veto.
+        # Round 4: dropped the soft graded ±0.09 adjustment that previously
+        # ran in the else branch — it double-counted with consensus_boost
+        # (consensus already encodes intra-strategy direction agreement) and
+        # contributed to the 0.80–0.90 over-confidence anomaly.
         if mtf_score <= -2 and direction == "LONG":
             direction = "NO TRADE"
             daily_trend_vetoed = True
         elif mtf_score >= 2 and direction == "SHORT":
             direction = "NO TRADE"
             daily_trend_vetoed = True
-        else:
-            # Graded confidence adjustment: ±0.03 per MTF point, same direction as signal
-            if direction == "LONG":
-                mtf_adj = mtf_score * 0.03        #  +0.09 strong bull, −0.09 strong bear
-            elif direction == "SHORT":
-                mtf_adj = -mtf_score * 0.03
-            else:
-                mtf_adj = 0.0
-            final_conf = min(1.0, max(0.0, final_conf + mtf_adj))
 
         # ── Isotonic confidence calibration ──────────────────────────────────
         # Maps the blended raw confidence onto an empirically-grounded
@@ -510,6 +537,13 @@ def run_signal(
             risk_level=risk_level,
             raw_confidence=round(raw_confidence, 3),
             calibration_applied=calibration_applied,
+            paper_only=(
+                getattr(best, "paper_only", False) or disposition == "PAPER"
+            ),
+            paper_reason=(
+                "symbol" if disposition == "PAPER"
+                else ("strategy" if getattr(best, "paper_only", False) else "")
+            ),
         )
 
     except Exception as exc:

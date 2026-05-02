@@ -161,6 +161,59 @@ def _classify_close_reason(trade: dict, close_price: float, broker_comment: str)
     return "UNKNOWN"
 
 
+def backfill_close_reasons() -> dict[str, int]:
+    """Walk the existing trade_log and classify any rows that lack a
+    close_reason. Pure local computation — does not call MT5.
+
+    Each row inferred this way is tagged `close_reason_source="BACKFILL"` so
+    later analysis can weight classifier-confidence on stale-data fills
+    differently from rows tagged at close time.
+
+    Returns a dict with counts per resulting close_reason category, plus
+    `seen` (total rows considered) and `updated` (rows newly classified).
+    """
+    trades = _load()
+    counts: dict[str, int] = {"seen": 0, "updated": 0}
+    if not trades:
+        return counts
+
+    for t in trades:
+        if t.get("outcome") not in ("WIN", "LOSS"):
+            continue
+        counts["seen"] += 1
+        # Skip rows that already carry a non-UNKNOWN close_reason from the
+        # at-close classifier — we only want to upgrade UNKNOWNs and the
+        # missing-field case.
+        existing = (t.get("close_reason") or "").upper()
+        if existing and existing != "UNKNOWN":
+            continue
+
+        close_price = float(t.get("close_price") or 0)
+        # No broker_comment field on historical rows — pass empty so the
+        # classifier falls through to the price-proximity heuristic.
+        reason = _classify_close_reason(t, close_price, "")
+
+        # Last-resort fallback for rows with no close_price recorded:
+        # use the sign of profit to distinguish TP-like vs SL-like exits.
+        if reason == "UNKNOWN":
+            p = t.get("profit")
+            if isinstance(p, (int, float)) and p:
+                reason = "TP_LIKELY" if p > 0 else "SL_LIKELY"
+
+        t["close_reason"] = reason
+        t["close_reason_source"] = "BACKFILL"
+        counts["updated"] += 1
+        counts[reason] = counts.get(reason, 0) + 1
+
+    if counts["updated"]:
+        _save(trades)
+        # Bust the load cache so subsequent reads see the patched rows.
+        global _LOAD_CACHE
+        _LOAD_CACHE = None
+        logger.info("backfill_close_reasons: updated %d/%d rows", counts["updated"], counts["seen"])
+    return counts
+
+
 def update_outcomes_from_mt5(magic: int = 234100) -> int:
     """
     Pull MT5 history deals and fill in profit/outcome for any open records.
