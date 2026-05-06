@@ -172,6 +172,21 @@ def run_signal(
             return SignalResult(ticker=ticker, display_name=label,
                                 error=f"Symbol dropped by policy ({ticker})")
 
+        # ── Round 4 B2: event-window veto ───────────────────────────────────
+        # Block fresh entries 15m before and 15m after a HIGH-impact release
+        # affecting this ticker's currencies. Replaces the ±0.10 sentiment
+        # boost that was killed in A4 — research shows event vetoes pay
+        # better than sentiment boosts at this sample size.
+        try:
+            from data.economic_calendar import is_event_window
+            in_window, reason = is_event_window(mt5_symbol or ticker)
+            if in_window:
+                return SignalResult(ticker=ticker, display_name=label,
+                                    error=reason)
+        except Exception as _ec:
+            import logging as _logging
+            _logging.getLogger(__name__).debug("event_window check skipped: %s", _ec)
+
         df = fetch_intraday_data(ticker, interval="5m", days=59, mt5_symbol=mt5_symbol)
         if df is None or df.empty:
             return SignalResult(ticker=ticker, display_name=label,
@@ -460,6 +475,20 @@ def run_signal(
         elif mtf_score >= 2 and direction == "SHORT":
             direction = "NO TRADE"
             daily_trend_vetoed = True
+
+        # ── Round 4 B3: suppress boost contributions on vetoed signals ──────
+        # When the MTF gate has vetoed the trade, the confidence number is
+        # never used to gate or size — but it still ends up in trade_log via
+        # downstream consumers (UI display, calibration). Reset to base so
+        # vetoed rows don't poison live-WR calibration with phantom-boosted
+        # confidences for trades that never actually fired.
+        if daily_trend_vetoed:
+            final_conf       = base_conf
+            consensus_boost  = 0.0
+            bt_adjustment    = 0.0
+            live_adjustment  = 0.0
+            news_boost       = 0.0
+            pattern_boost    = 0.0
 
         # ── Isotonic confidence calibration ──────────────────────────────────
         # Maps the blended raw confidence onto an empirically-grounded

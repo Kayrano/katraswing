@@ -227,3 +227,36 @@ def has_high_impact_event(
         reason = f"{e.title} just released ({e.currency}, HIGH impact)"
 
     return True, reason
+
+
+def is_event_window(
+    ticker: str,
+    pre_minutes:  int = 15,
+    post_minutes: int = 15,
+) -> tuple[bool, str]:
+    """Round 4 B2: tight event-window veto for new-entry decisions.
+
+    Returns (in_window, reason). True when a HIGH-impact release is within
+    `pre_minutes` ahead OR was within `post_minutes` behind. Use this from
+    `signal_engine.run_signal` to block fresh entries on an instrument while
+    a market-moving release is pending or just digesting.
+
+    This is *not* the same as `has_high_impact_event` (which uses a 60-minute
+    look-ahead and is appropriate for the more cautious trade-manager hold
+    guard). Entry vetoes need a tighter window to avoid starving the
+    strategy of trades.
+    """
+    events = fetch_upcoming_events(
+        ticker, lookahead_min=pre_minutes, lookback_min=post_minutes,
+    )
+    high = [e for e in events if e.impact == "HIGH"]
+    if not high:
+        return False, ""
+
+    e   = high[0]
+    now = datetime.now(tz=timezone.utc)
+    if e.is_upcoming:
+        delta = int((e.event_time - now).total_seconds() / 60)
+        return True, f"event-veto: {e.title} in {delta} min ({e.currency})"
+    delta = int((now - e.event_time).total_seconds() / 60)
+    return True, f"event-veto: {e.title} {delta} min ago ({e.currency})"

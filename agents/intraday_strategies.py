@@ -31,6 +31,8 @@ sorted by confidence descending.
 
 from __future__ import annotations
 
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
@@ -71,9 +73,24 @@ def _make_signal(
     sl_atr_mult: float,
     tp_atr_mult: float,
     reason: str,
+    df: Optional[pd.DataFrame] = None,
+    use_structural: bool = False,
 ) -> IntradaySignal:
-    """Build a complete IntradaySignal with SL/TP derived from ATR."""
-    if direction == "LONG":
+    """Build a complete IntradaySignal with SL/TP.
+
+    When `use_structural=True` and a `df` is supplied, defer to
+    `utils.stops.compute_structural_stop` for swing-pivot anchored stops
+    (Round 4 B1 — fixes the realised avg_win/avg_loss = 0.745 problem).
+    Otherwise fall back to the legacy ATR-multiplier stops so callers that
+    don't pass df still work.
+    """
+    if use_structural and df is not None:
+        from utils.stops import compute_structural_stop
+        result = compute_structural_stop(df, direction, entry, atr)
+        stop_loss   = result.sl
+        take_profit = result.tp
+        reason = f"{reason} | SL={result.sl_source}"
+    elif direction == "LONG":
         stop_loss   = entry - sl_atr_mult * atr
         take_profit = entry + tp_atr_mult * atr
     elif direction == "SHORT":
@@ -162,6 +179,7 @@ def vwap_rsi_5m(df: pd.DataFrame) -> IntradaySignal:
             NAME, TF, "LONG", conf, cur_close, cur_atr,
             sl_atr_mult=1.0, tp_atr_mult=2.0,
             reason=f"RSI(2)={cur_rsi:.1f}<30 | VWAP band {cur_vwap:.2f}±{band:.2f} | EMA20↑ | {rvol_note}",
+            df=df, use_structural=True,
         )
 
     # Short: RSI(2) > 70 (relaxed from 80) + near VWAP + below EMA20
@@ -173,6 +191,7 @@ def vwap_rsi_5m(df: pd.DataFrame) -> IntradaySignal:
             NAME, TF, "SHORT", conf, cur_close, cur_atr,
             sl_atr_mult=1.0, tp_atr_mult=2.0,
             reason=f"RSI(2)={cur_rsi:.1f}>70 | VWAP band {cur_vwap:.2f}±{band:.2f} | EMA20↓ | {rvol_note}",
+            df=df, use_structural=True,
         )
 
     side = "above" if cur_close > cur_ema20 else "below"

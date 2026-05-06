@@ -97,6 +97,7 @@ def _backtest_strategy(
     strategy_fn,
     timeframe: str,
     long_only: bool = False,
+    ticker: str = "",
 ) -> StrategyBacktestResult:
     """
     Walk-forward simulation for one strategy on the full intraday DataFrame.
@@ -136,32 +137,37 @@ def _backtest_strategy(
             outcome = None
             exit_price = cur_close
 
+            # Round 4 B4: per-bar contextual slippage (asset class + session
+            # boundary widening). Used for *exit* fills here.
+            from utils.slippage import slippage_at_bar
+            slip_exit = slippage_at_bar(ticker, df.iloc[i]) if ticker else SLIPPAGE
+
             if direction == "LONG":
                 if cur_low <= stop_loss:
                     outcome    = "SL"
-                    exit_price = stop_loss * (1 - SLIPPAGE)
+                    exit_price = stop_loss * (1 - slip_exit)
                 elif cur_high >= take_profit:
                     outcome    = "TP"
-                    exit_price = take_profit * (1 - SLIPPAGE)
+                    exit_price = take_profit * (1 - slip_exit)
                 elif bars_held >= time_stop:
                     outcome    = "TIME"
-                    exit_price = cur_close * (1 - SLIPPAGE)
+                    exit_price = cur_close * (1 - slip_exit)
                 elif is_last_bar_of_session:
                     outcome    = "SESSION_END"
-                    exit_price = cur_close * (1 - SLIPPAGE)
+                    exit_price = cur_close * (1 - slip_exit)
             else:  # SHORT
                 if cur_high >= stop_loss:
                     outcome    = "SL"
-                    exit_price = stop_loss * (1 + SLIPPAGE)
+                    exit_price = stop_loss * (1 + slip_exit)
                 elif cur_low <= take_profit:
                     outcome    = "TP"
-                    exit_price = take_profit * (1 + SLIPPAGE)
+                    exit_price = take_profit * (1 + slip_exit)
                 elif bars_held >= time_stop:
                     outcome    = "TIME"
-                    exit_price = cur_close * (1 + SLIPPAGE)
+                    exit_price = cur_close * (1 + slip_exit)
                 elif is_last_bar_of_session:
                     outcome    = "SESSION_END"
-                    exit_price = cur_close * (1 + SLIPPAGE)
+                    exit_price = cur_close * (1 + slip_exit)
 
             if outcome:
                 if direction == "LONG":
@@ -199,11 +205,15 @@ def _backtest_strategy(
 
         in_trade    = True
         entry_bar   = i
+        # Round 4 B4: contextual slippage on entry too (session boundary +
+        # asset class). Falls back to legacy flat SLIPPAGE if no ticker.
+        from utils.slippage import slippage_at_bar
+        slip_entry = slippage_at_bar(ticker, df.iloc[i]) if ticker else SLIPPAGE
         # LONG: pay slightly more (slippage cost); SHORT: receive slightly less
         if sig.signal == "LONG":
-            entry_price = sig.entry * (1 + SLIPPAGE)
+            entry_price = sig.entry * (1 + slip_entry)
         else:
-            entry_price = sig.entry * (1 - SLIPPAGE)
+            entry_price = sig.entry * (1 - slip_entry)
         stop_loss   = sig.stop_loss
         take_profit = sig.take_profit
         direction   = sig.signal
@@ -214,11 +224,13 @@ def _backtest_strategy(
     # main loop only fires when there is a NEXT bar to compare dates against).
     if in_trade:
         last_close = float(df["Close"].iloc[-1])
+        from utils.slippage import slippage_at_bar
+        slip_close = slippage_at_bar(ticker, df.iloc[-1]) if ticker else SLIPPAGE
         if direction == "LONG":
-            exit_price = last_close * (1 - SLIPPAGE)
+            exit_price = last_close * (1 - slip_close)
             pnl_pct = (exit_price - entry_price) / entry_price * 100
         else:
-            exit_price = last_close * (1 + SLIPPAGE)
+            exit_price = last_close * (1 + slip_close)
             pnl_pct = (entry_price - exit_price) / entry_price * 100
         trades.append(BacktestTrade(
             strategy=name, direction=direction,
@@ -294,7 +306,7 @@ def run_intraday_backtest(
     results: list[StrategyBacktestResult] = []
     for fn in strategy_fns:
         try:
-            r = _backtest_strategy(df, fn, timeframe, long_only=long_only)
+            r = _backtest_strategy(df, fn, timeframe, long_only=long_only, ticker=ticker)
         except Exception as exc:
             name = fn.__name__.upper()
             r = StrategyBacktestResult(
