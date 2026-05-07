@@ -31,12 +31,20 @@ _ALL_STRATEGIES = [
     # are new entry strategies on real money; the user must walk-forward
     # backtest each before flipping enabled=True.
     "DOUBLE_BOT_BREAKOUT_5M", "HS_BREAKDOWN_5M", "FLAG_BREAKOUT_5M",
+    # Round 4 C1/C2: H1 swing rail. paper_only=True until auto-promotion.
+    "MSS_H1", "ORB_H1", "EMA_PB_H1", "LONDON_BREAKOUT_H1",
 ]
 
 # Strategies that ship disabled-by-default. The user must explicitly enable
 # them after reviewing backtest results.
 _DEFAULT_DISABLED = {
     "DOUBLE_BOT_BREAKOUT_5M", "HS_BREAKDOWN_5M", "FLAG_BREAKOUT_5M",
+}
+
+# Strategies that ship paper_only=True (live signal routing but no order send).
+# Auto-promoted by learning_loop.run_weekly() once walk-forward gate passes.
+_DEFAULT_PAPER_ONLY = {
+    "MSS_H1", "ORB_H1", "EMA_PB_H1", "LONDON_BREAKOUT_H1",
 }
 
 _DEFAULT_ENTRY = {
@@ -101,11 +109,12 @@ _PARAMS: dict[str, dict] = {}
 
 def _default_entry(strategy: str = "") -> dict:
     entry = {k: v for k, v in _DEFAULT_ENTRY.items()}
-    # Pattern-triggered strategies (R2.3) ship disabled & paper-only — the
-    # weekly learning_loop run promotes them to live once they pass the
-    # n>=20, wr>=0.50, pf>=1.3 gate.
     if strategy in _DEFAULT_DISABLED:
         entry["enabled"] = False
+        entry["paper_only"] = True
+    # H1 strategies ship paper_only=True (enabled=True so signals are generated
+    # and calibration accumulates) until auto-promotion in run_weekly.
+    if strategy in _DEFAULT_PAPER_ONLY:
         entry["paper_only"] = True
     return entry
 
@@ -139,6 +148,12 @@ def load_params() -> dict:
                 if (_PARAMS[strat].get("trades_seen", 0) == 0
                         and _PARAMS[strat].get("adapt_count", 0) == 0):
                     _PARAMS[strat]["enabled"] = False
+            # H1 strategies default to paper_only until auto-promoted.
+            # We only enforce this on fresh entries (no trades yet).
+            if strat in _DEFAULT_PAPER_ONLY:
+                if (_PARAMS[strat].get("trades_seen", 0) == 0
+                        and _PARAMS[strat].get("adapt_count", 0) == 0):
+                    _PARAMS[strat]["paper_only"] = True
 
     return _PARAMS
 

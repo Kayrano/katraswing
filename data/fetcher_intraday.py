@@ -89,7 +89,7 @@ SESSION_CONFIG: dict[str, dict] = {
     },
 }
 
-VALID_INTERVALS = ("5m", "15m")
+VALID_INTERVALS = ("5m", "15m", "1h")
 
 # EMA lengths used for daily trend direction
 _DAILY_EMA_FAST = 20

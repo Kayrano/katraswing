@@ -80,11 +80,20 @@ PER_TICKER_TIMEOUT = 60
 _SIGNAL_CACHE: dict[str, tuple[int, object]] = {}
 _SIGNAL_CACHE_LOCK = Lock()
 
+# H1 bar-window cache: same idea but for the 1-hour bar window.
+_H1_SIGNAL_CACHE: dict[str, tuple[int, object]] = {}
+_H1_SIGNAL_CACHE_LOCK = Lock()
+
 
 def _bar_window_key(now_ts: float | None = None) -> int:
     """Floor-divide the current epoch by 300s. Two calls within the same 5-min
     window return the same key — we use this to memoise run_signal."""
     return int((now_ts or time.time()) // 300) * 300
+
+
+def _h1_bar_window_key(now_ts: float | None = None) -> int:
+    """Floor-divide the current epoch by 3600s (1-hour bar window)."""
+    return int((now_ts or time.time()) // 3600) * 3600
 
 
 def _banner():
@@ -148,6 +157,7 @@ def run_server(args: argparse.Namespace):
         is_available,
     )
     from agents.signal_engine import run_signal
+    from agents.swing_engine import run_h1_signal
 
     # Emergency close-all and exit
     if args.close_all:
@@ -216,6 +226,25 @@ def run_server(args: argparse.Namespace):
         )
         with _SIGNAL_CACHE_LOCK:
             _SIGNAL_CACHE[ticker] = (now_window, sr)
+        return sr
+
+    def _scan_h1_with_cache(ticker: str):
+        """Fetch run_h1_signal for one ticker, cached per 1-hour bar window."""
+        now_window = _h1_bar_window_key()
+        with _H1_SIGNAL_CACHE_LOCK:
+            cached = _H1_SIGNAL_CACHE.get(ticker)
+        if cached and cached[0] == now_window:
+            return cached[1]
+        display = DEFAULT_DISPLAY_NAMES.get(ticker, ticker)
+        sr = run_h1_signal(
+            ticker=ticker,
+            finnhub_api_key=args.finnhub_key,
+            account_size=args.account_size,
+            risk_pct=args.risk_pct,
+            display_name=display,
+        )
+        with _H1_SIGNAL_CACHE_LOCK:
+            _H1_SIGNAL_CACHE[ticker] = (now_window, sr)
         return sr
 
     # Multi-cadence learning scheduler — checked once per poll iteration.
@@ -355,6 +384,66 @@ def run_server(args: argparse.Namespace):
                             metrics.record_rejection(int(m.group(1)))
                         else:
                             metrics.record_rejection(0)   # unknown / pre-flight
+
+            # ── Phase 3: H1 swing engine scan (parallel, then sequential send) ──
+            # All H1 strategies start paper_only=True so no live orders are sent
+            # until auto-promotion. The scan still runs so calibration data
+            # accumulates from the first poll.
+            h1_workers = min(MAX_SCAN_WORKERS, len(args.tickers)) or 1
+            h1_results: dict[str, object] = {}
+            with ThreadPoolExecutor(max_workers=h1_workers) as ex:
+                h1_futures = {ex.submit(_scan_h1_with_cache, t): t for t in args.tickers}
+                try:
+                    for fut in as_completed(h1_futures, timeout=90):
+                        ticker = h1_futures[fut]
+                        try:
+                            h1_results[ticker] = fut.result(timeout=PER_TICKER_TIMEOUT)
+                        except Exception as exc:
+                            log.error(f"H1 signal error for {ticker}: {exc}")
+                            h1_results[ticker] = None
+                except _FT:
+                    log.warning("H1 scan timeout — some tickers skipped")
+                    for f, t in h1_futures.items():
+                        if t not in h1_results:
+                            h1_results[t] = None
+
+            for ticker in args.tickers:
+                sr = h1_results.get(ticker)
+                if sr is None or sr.error:
+                    if sr and sr.error:
+                        log.debug(f"H1 {ticker}: {sr.error}")
+                    continue
+                if sr.direction not in ("LONG", "SHORT"):
+                    continue
+
+                display = DEFAULT_DISPLAY_NAMES.get(ticker, ticker)
+                log.info(
+                    f"★ H1 SIGNAL: {display} {sr.direction} | "
+                    f"conf={sr.confidence:.1%} | strategy={sr.chart_signals[0].strategy if sr.chart_signals else '?'}"
+                )
+                key = _signal_key(f"H1:{ticker}", sr.direction, today)
+                if key in sent_signals:
+                    log.info(f"  [dedup] Already entered H1 {sr.direction} {display} today.")
+                    continue
+                # H1 strategies are paper_only at launch — no broker round-trip.
+                if getattr(sr, "paper_only", True):
+                    log.info(f"  [H1 paper] signal recorded for calibration")
+                    sent_signals.add(key)
+                    continue
+                # If a strategy has been auto-promoted to live, process normally.
+                if args.dry_run:
+                    log.info("  [H1 dry-run] Would send to MT5.")
+                    sent_signals.add(key)
+                    continue
+                if not ensure_connected(args.mt5_path):
+                    log.error("  MT5 reconnect failed. Skipping H1 order.")
+                    continue
+                result = send_from_signal_result(sr)
+                if result.success:
+                    log.info(f"  ✓ H1 Order #{result.ticket} placed")
+                    sent_signals.add(key)
+                else:
+                    log.warning(f"  ✗ H1 Order failed: {result.error}")
 
             # Show open positions
             if not args.dry_run and is_connected():
