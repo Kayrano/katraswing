@@ -374,7 +374,7 @@ def run_h1_signal(
             raw_confidence=round(raw_confidence, 3),
             calibration_applied=calibration_applied,
             paper_only=(
-                getattr(best, "paper_only", True) or disposition == "PAPER"
+                getattr(best, "paper_only", False) or disposition == "PAPER"
             ),
             paper_reason=(
                 "symbol"   if disposition == "PAPER"

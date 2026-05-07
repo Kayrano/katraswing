@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -119,7 +119,7 @@ def record_trade(
         "sl":         sl,
         "tp":         tp,
         "patterns":   pattern_records,
-        "sent_at":    datetime.utcnow().isoformat(timespec="seconds"),
+        "sent_at":    datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds"),
         "closed_at":  None,
         "profit":     None,
         "outcome":    None,   # "WIN" | "LOSS" | "BREAKEVEN"
@@ -234,8 +234,8 @@ def update_outcomes_from_mt5(magic: int = 234100) -> int:
 
     # Fetch all exit deals with our magic number (entry=1 → OUT / closing deal)
     from datetime import timedelta
-    since = datetime.utcnow() - timedelta(days=90)
-    raw_deals = mt5.history_deals_get(since, datetime.utcnow())
+    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=90)
+    raw_deals = mt5.history_deals_get(since, datetime.now(timezone.utc).replace(tzinfo=None))
     if raw_deals is None:
         return 0
 
@@ -497,8 +497,8 @@ def import_all_mt5_history(days: int = 90) -> int:
     from collections import defaultdict
     from datetime import timedelta
 
-    since    = datetime.utcnow() - timedelta(days=days)
-    raw      = mt5.history_deals_get(since, datetime.utcnow())
+    since    = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+    raw      = mt5.history_deals_get(since, datetime.now(timezone.utc).replace(tzinfo=None))
     if raw is None:
         return 0
 

@@ -17,7 +17,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -89,7 +89,7 @@ def _save_learned_min(symbol: str, min_pts: float) -> None:
         if min_pts > existing:
             data[symbol] = {
                 "min_pts": round(min_pts, 8),
-                "updated": datetime.utcnow().isoformat(timespec="seconds"),
+                "updated": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds"),
             }
             _STOP_LEARNING_PATH.write_text(
                 json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
