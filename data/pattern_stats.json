@@ -1,38 +1,38 @@
 {
   "Descending Triangle": {
-    "wins": 4,
-    "trades": 11,
-    "win_rate": 0.3636
-  },
-  "Triple Top": {
-    "wins": 5,
-    "trades": 17,
-    "win_rate": 0.2941
-  },
-  "Double Top": {
     "wins": 5,
     "trades": 14,
     "win_rate": 0.3571
   },
+  "Triple Top": {
+    "wins": 6,
+    "trades": 20,
+    "win_rate": 0.3
+  },
+  "Double Top": {
+    "wins": 6,
+    "trades": 17,
+    "win_rate": 0.3529
+  },
   "Inside Bar": {
-    "wins": 1,
-    "trades": 2,
+    "wins": 3,
+    "trades": 6,
     "win_rate": 0.5
   },
   "Ascending Triangle": {
-    "wins": 6,
-    "trades": 12,
+    "wins": 9,
+    "trades": 18,
     "win_rate": 0.5
   },
   "Triple Bottom": {
-    "wins": 10,
-    "trades": 20,
-    "win_rate": 0.5
+    "wins": 13,
+    "trades": 25,
+    "win_rate": 0.52
   },
   "Double Bottom": {
-    "wins": 10,
-    "trades": 19,
-    "win_rate": 0.5263
+    "wins": 13,
+    "trades": 25,
+    "win_rate": 0.52
   },
   "Inv. Head & Shoulders": {
     "wins": 2,
@@ -45,9 +45,9 @@
     "win_rate": 0.5714
   },
   "Fair Value Gap (Bull)": {
-    "wins": 7,
-    "trades": 13,
-    "win_rate": 0.5385
+    "wins": 10,
+    "trades": 18,
+    "win_rate": 0.5556
   },
   "Rising Wedge": {
     "wins": 0,
@@ -61,8 +61,8 @@
   },
   "Fair Value Gap (Bear)": {
     "wins": 1,
-    "trades": 9,
-    "win_rate": 0.1111
+    "trades": 12,
+    "win_rate": 0.0833
   },
   "Evening Star": {
     "wins": 0,
@@ -70,23 +70,33 @@
     "win_rate": 0.0
   },
   "Bearish Engulfing": {
-    "wins": 2,
-    "trades": 4,
-    "win_rate": 0.5
+    "wins": 3,
+    "trades": 5,
+    "win_rate": 0.6
   },
   "Head & Shoulders": {
     "wins": 2,
-    "trades": 4,
-    "win_rate": 0.5
+    "trades": 6,
+    "win_rate": 0.3333
   },
   "Rectangle": {
     "wins": 1,
-    "trades": 1,
-    "win_rate": 1.0
+    "trades": 2,
+    "win_rate": 0.5
   },
   "Bullish Engulfing": {
     "wins": 0,
     "trades": 2,
+    "win_rate": 0.0
+  },
+  "Morning Star": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
+  },
+  "Shooting Star": {
+    "wins": 0,
+    "trades": 1,
     "win_rate": 0.0
   }
 }
