@@ -229,6 +229,7 @@ def run_signal(
         # ── Improvement 3: ADX regime routing ────────────────────────────────
         adx_val = 0.0
         adx_regime = "NEUTRAL"
+        composite_score_val: float | None = None
         if len(df) > 50:
             try:
                 adx_series = ta.adx(df["High"], df["Low"], df["Close"], length=14)
@@ -238,15 +239,30 @@ def run_signal(
             except Exception:
                 adx_val = 0.0
 
-        # Discrete regime label kept for UI/logging only — penalty math below
-        # uses a continuous trend_weight derived from the same ADX value.
-        if adx_val > _ADX_TRENDING:
-            adx_regime = "TRENDING"
-        elif 0 < adx_val < _ADX_RANGING:
-            adx_regime = "RANGING"
+        # Round 5: composite regime (Hurst + Choppiness + ADX-pct) enriches the
+        # discrete label and provides a soft [-1,+1] score for the penalty blend.
+        try:
+            from agents.regime_classifier import classify as _classify_regime
+            _regime = _classify_regime(df, ticker=sym_for_params)
+            adx_regime = _regime.label          # overrides ADX-only label
+            composite_score_val = _regime.composite_score
+        except Exception:
+            # Discrete regime label kept for UI/logging only — penalty math below
+            # uses a continuous trend_weight derived from the same ADX value.
+            if adx_val > _ADX_TRENDING:
+                adx_regime = "TRENDING"
+            elif 0 < adx_val < _ADX_RANGING:
+                adx_regime = "RANGING"
 
         if adx_val > 0:
             tw = _trend_weight(adx_val)
+            # Blend composite_score into tw: decisive scores (|score|>0.3) push
+            # tw by ±0.10 so the borderline ADX 20-25 zone is correctly routed.
+            if composite_score_val is not None:
+                if composite_score_val > 0.3:
+                    tw = min(1.0, tw + 0.10)
+                elif composite_score_val < -0.3:
+                    tw = max(0.0, tw - 0.10)
             for sig in all_signals:
                 if sig.signal not in ("LONG", "SHORT"):
                     continue

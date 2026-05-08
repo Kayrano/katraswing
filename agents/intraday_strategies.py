@@ -226,6 +226,14 @@ def orb_5m(df: pd.DataFrame) -> IntradaySignal:
     if "session_bar_number" not in df.columns or "session_date" not in df.columns:
         return _flat(NAME, TF, "Session metadata missing")
 
+    # Session gate: ORB edge is documented for US equity open (09:30–11:59 ET).
+    # Reject signals outside that window so FTSE / NG / commodity bars during
+    # their own openers don't produce random ORB setups.
+    if isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None:
+        et_hour = int(df.index[-1].tz_convert("America/New_York").hour)
+        if et_hour not in range(9, 12):
+            return _flat(NAME, TF, f"Outside US equity open window (ET {et_hour:02d}:xx)")
+
     cur_bar_num = int(df["session_bar_number"].iloc[-1])
     if cur_bar_num < 4:
         return _flat(NAME, TF, f"Opening range not yet complete (bar {cur_bar_num}; need ≥4)")
@@ -263,11 +271,12 @@ def orb_5m(df: pd.DataFrame) -> IntradaySignal:
     if cur_close > orb_high and rvol_ok and vwap_dir > 0:
         penetration = (cur_close - orb_high) / orb_range
         conf = min(0.85, 0.60 + penetration * 0.25)
-        tp_dist = orb_range * 1.5
-        # Use ORB-based TP override (return custom signal)
-        stop_loss   = round(orb_low - 0.1 * cur_atr, 4)
-        take_profit = round(cur_close + tp_dist, 4)
-        rr = (take_profit - cur_close) / max(cur_close - stop_loss, 1e-6)
+        stop_loss = round(orb_low - 0.1 * cur_atr, 4)
+        risk_pts  = cur_close - stop_loss
+        # TP anchored to actual risk so R:R >= 1.5 regardless of ATR size.
+        # Take the larger of ORB-projection and risk-anchored target.
+        take_profit = round(cur_close + max(orb_range * 1.5, risk_pts * 1.5), 4)
+        rr = (take_profit - cur_close) / max(risk_pts, 1e-6)
         return IntradaySignal(
             strategy=NAME, timeframe=TF, signal="LONG", confidence=round(conf, 3),
             entry=round(cur_close, 4), stop_loss=stop_loss, take_profit=take_profit,
@@ -280,10 +289,10 @@ def orb_5m(df: pd.DataFrame) -> IntradaySignal:
     if cur_close < orb_low and rvol_ok and vwap_dir < 0:
         penetration = (orb_low - cur_close) / orb_range
         conf = min(0.85, 0.60 + penetration * 0.25)
-        tp_dist = orb_range * 1.5
-        stop_loss   = round(orb_high + 0.1 * cur_atr, 4)
-        take_profit = round(cur_close - tp_dist, 4)
-        rr = (cur_close - take_profit) / max(stop_loss - cur_close, 1e-6)
+        stop_loss = round(orb_high + 0.1 * cur_atr, 4)
+        risk_pts  = stop_loss - cur_close
+        take_profit = round(cur_close - max(orb_range * 1.5, risk_pts * 1.5), 4)
+        rr = (cur_close - take_profit) / max(risk_pts, 1e-6)
         return IntradaySignal(
             strategy=NAME, timeframe=TF, signal="SHORT", confidence=round(conf, 3),
             entry=round(cur_close, 4), stop_loss=stop_loss, take_profit=take_profit,

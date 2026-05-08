@@ -118,6 +118,7 @@ def run_h1_signal(
         # ── ADX regime routing ───────────────────────────────────────────
         adx_val   = 0.0
         adx_regime = "NEUTRAL"
+        composite_score_val: float | None = None
         if len(df) > 50:
             try:
                 adx_s = ta.adx(df["High"], df["Low"], df["Close"], length=14)
@@ -127,13 +128,25 @@ def run_h1_signal(
             except Exception:
                 adx_val = 0.0
 
-        if adx_val > 25.0:
-            adx_regime = "TRENDING"
-        elif 0 < adx_val < 20.0:
-            adx_regime = "RANGING"
+        # Round 5: composite regime enriches label + soft penalty blend.
+        try:
+            from agents.regime_classifier import classify as _classify_regime
+            _regime = _classify_regime(df, ticker=sym_for_params)
+            adx_regime = _regime.label
+            composite_score_val = _regime.composite_score
+        except Exception:
+            if adx_val > 25.0:
+                adx_regime = "TRENDING"
+            elif 0 < adx_val < 20.0:
+                adx_regime = "RANGING"
 
         if adx_val > 0:
             tw = _trend_weight_h1(adx_val)
+            if composite_score_val is not None:
+                if composite_score_val > 0.3:
+                    tw = min(1.0, tw + 0.10)
+                elif composite_score_val < -0.3:
+                    tw = max(0.0, tw - 0.10)
             for sig in all_signals:
                 if sig.signal not in ("LONG", "SHORT"):
                     continue
