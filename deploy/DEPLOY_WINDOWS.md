@@ -73,23 +73,7 @@ This takes about 3–5 minutes. When it finishes you'll see a green success mess
 
 ---
 
-## Step 5 — Edit the secrets file
-
-```powershell
-notepad C:\katraswing\.streamlit\secrets.toml
-```
-
-Fill in your Finnhub API key (free at https://finnhub.io/register):
-
-```toml
-FINNHUB_KEY = "your_key_here"
-```
-
-Save and close.
-
----
-
-## Step 6 — Install and start the services
+## Step 5 — Install and start the services
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File "C:\katraswing\deploy\install_services.ps1"
@@ -103,7 +87,7 @@ Both services will install and start. You'll see:
 
 ---
 
-## Step 7 — Keep MT5 running when you disconnect
+## Step 6 — Keep MT5 running when you disconnect
 
 > Critical: MT5 must stay running even after you close RDP.
 
@@ -124,7 +108,7 @@ To make MT5 auto-start on every reboot:
 
 ---
 
-## Step 8 — Access the dashboard
+## Step 7 — Access the dashboard
 
 Open in your browser:
 

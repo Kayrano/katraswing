@@ -69,26 +69,7 @@ New-Item -ItemType Directory -Force -Path "$INSTALL_DIR\data\reports" | Out-Null
 New-Item -ItemType Directory -Force -Path "$INSTALL_DIR\logs"          | Out-Null
 Write-OK "Directories created"
 
-# ── 6. Create secrets template ───────────────────────────────────────────────
-Write-Step "Creating .streamlit/secrets.toml template"
-$secretsDir  = "$INSTALL_DIR\.streamlit"
-$secretsFile = "$secretsDir\secrets.toml"
-if (-not (Test-Path $secretsFile)) {
-    New-Item -ItemType Directory -Force -Path $secretsDir | Out-Null
-    @"
-# ──────────────────────────────────────────────────────────────────────────────
-# Fill in your real values then save. This file is NOT committed to git.
-# ──────────────────────────────────────────────────────────────────────────────
-
-# Finnhub free key — get one at https://finnhub.io/register
-FINNHUB_KEY = "your_finnhub_key_here"
-"@ | Out-File -FilePath $secretsFile -Encoding utf8
-    Write-Warn "Created secrets template at $secretsFile — EDIT THIS FILE before starting"
-} else {
-    Write-OK "Secrets file already exists"
-}
-
-# ── 7. Download NSSM (service manager) ───────────────────────────────────────
+# ── 6. Download NSSM (service manager) ───────────────────────────────────────
 Write-Step "Downloading NSSM (Windows service manager)"
 $nssmZip = "$env:TEMP\nssm.zip"
 $nssmDir = "C:\nssm"
@@ -119,15 +100,12 @@ Write-Host @"
   1. Install MetaTrader 5 terminal:
      Download from https://www.metatrader5.com/en/download
      Log in with your broker credentials.
-     Enable: Tools → Options → Expert Advisors → Allow DLL imports
+     Enable: Tools -> Options -> Expert Advisors -> Allow DLL imports
 
-  2. Edit the secrets file:
-     notepad $secretsFile
-
-  3. Install and start the Windows services:
+  2. Install and start the Windows services:
      powershell -ExecutionPolicy Bypass $INSTALL_DIR\deploy\install_services.ps1
 
-  4. Access the dashboard:
+  3. Access the dashboard:
      http://<your-vps-ip>:8501
 =============================================================================
 "@ -ForegroundColor Green

@@ -8,9 +8,10 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$INSTALL_DIR  = "C:\katraswing"
-$PYTHON       = (Get-Command python).Source
-$LOG_DIR      = "$INSTALL_DIR\logs"
+$INSTALL_DIR   = "C:\katraswing"
+$PYTHON        = (Get-Command python).Source
+$LOG_DIR       = "$INSTALL_DIR\logs"
+$FINNHUB_KEY   = "d7j16r1r01qn2qavovt0d7j16r1r01qn2qavovtg"
 
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Write-OK($msg)   { Write-Host "    OK: $msg" -ForegroundColor Green }
@@ -28,7 +29,7 @@ function Install-NSSMService {
     param(
         [string]$Name,
         [string]$Exe,
-        [string]$Args,
+        [string]$AppArgs,
         [string]$WorkDir,
         [string]$StdoutLog,
         [string]$StderrLog
@@ -42,10 +43,10 @@ function Install-NSSMService {
         Start-Sleep -Seconds 2
     }
 
-    nssm install $Name $Exe $Args
-    nssm set $Name AppDirectory   $WorkDir
-    nssm set $Name AppStdout      $StdoutLog
-    nssm set $Name AppStderr      $StderrLog
+    nssm install $Name $Exe "$AppArgs"
+    nssm set $Name AppDirectory $WorkDir
+    nssm set $Name AppStdout    $StdoutLog
+    nssm set $Name AppStderr    $StderrLog
     nssm set $Name AppRotateFiles 1
     nssm set $Name AppRotateOnline 1
     nssm set $Name AppRotateBytes 10485760     # rotate at 10 MB
@@ -60,7 +61,7 @@ Write-Step "Installing katraswing-signals service"
 Install-NSSMService `
     -Name       "katraswing-signals" `
     -Exe        $PYTHON `
-    -Args       "mt5_signal_server.py --interval 60 --risk-pct 1.0" `
+    -AppArgs    "mt5_signal_server.py --interval 60 --risk-pct 1.0 --finnhub-key $FINNHUB_KEY" `
     -WorkDir    $INSTALL_DIR `
     -StdoutLog  "$LOG_DIR\signals_stdout.log" `
     -StderrLog  "$LOG_DIR\signals_stderr.log"
@@ -71,7 +72,7 @@ Write-Step "Installing katraswing-streamlit service"
 Install-NSSMService `
     -Name       "katraswing-streamlit" `
     -Exe        $PYTHON `
-    -Args       "-m streamlit run app.py --server.port 8501 --server.address 0.0.0.0 --browser.gatherUsageStats false --server.headless true" `
+    -AppArgs    "-m streamlit run app.py --server.port 8501 --server.address 0.0.0.0 --browser.gatherUsageStats false --server.headless true" `
     -WorkDir    $INSTALL_DIR `
     -StdoutLog  "$LOG_DIR\streamlit_stdout.log" `
     -StderrLog  "$LOG_DIR\streamlit_stderr.log"
