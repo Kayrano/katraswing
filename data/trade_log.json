@@ -4297,9 +4297,11 @@
       }
     ],
     "sent_at": "2026-05-08T08:31:09",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-05-08T12:17:35",
+    "profit": 0.4,
+    "outcome": "WIN",
+    "close_price": 156.641,
+    "close_reason": "TRADE_MANAGER"
   },
   {
     "ticket": 222536542,
@@ -4343,8 +4345,10 @@
       }
     ],
     "sent_at": "2026-05-08T08:46:33",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null
+    "closed_at": "2026-05-08T12:12:30",
+    "profit": 0.36,
+    "outcome": "WIN",
+    "close_price": 79927.92,
+    "close_reason": "TRADE_MANAGER"
   }
 ]

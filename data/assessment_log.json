@@ -10106,5 +10106,61 @@
     "reason": "Cooldown active — recently acted on this position",
     "acted_on": false,
     "dry_run": false
+  },
+  {
+    "ticket": 222526820,
+    "symbol": "USDJPY",
+    "direction": "SHORT",
+    "assessed_at": "2026-05-08T20:02:56+00:00",
+    "health_score": 0.35,
+    "action": "CLOSE",
+    "new_sl": null,
+    "new_tp": null,
+    "urgency": "MEDIUM",
+    "reason": "Time stop: MSS_FOREX_15M open 11.5h (max 8h), profit -0.31",
+    "acted_on": false,
+    "dry_run": false
+  },
+  {
+    "ticket": 222526820,
+    "symbol": "USDJPY",
+    "direction": "SHORT",
+    "assessed_at": "2026-05-08T20:02:56+00:00",
+    "health_score": 0.35,
+    "action": "CLOSE",
+    "new_sl": null,
+    "new_tp": null,
+    "urgency": "MEDIUM",
+    "reason": "Time stop: MSS_FOREX_15M open 11.5h (max 8h), profit -0.31",
+    "acted_on": false,
+    "dry_run": false
+  },
+  {
+    "ticket": 222526820,
+    "symbol": "USDJPY",
+    "direction": "SHORT",
+    "assessed_at": "2026-05-08T20:08:03+00:00",
+    "health_score": 0.35,
+    "action": "CLOSE",
+    "new_sl": null,
+    "new_tp": null,
+    "urgency": "MEDIUM",
+    "reason": "Time stop: MSS_FOREX_15M open 11.6h (max 8h), profit -0.30",
+    "acted_on": false,
+    "dry_run": false
+  },
+  {
+    "ticket": 222526820,
+    "symbol": "USDJPY",
+    "direction": "SHORT",
+    "assessed_at": "2026-05-08T20:08:03+00:00",
+    "health_score": 0.35,
+    "action": "CLOSE",
+    "new_sl": null,
+    "new_tp": null,
+    "urgency": "MEDIUM",
+    "reason": "Time stop: MSS_FOREX_15M open 11.6h (max 8h), profit -0.30",
+    "acted_on": true,
+    "dry_run": false
   }
 ]
