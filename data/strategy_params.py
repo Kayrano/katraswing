@@ -401,22 +401,6 @@ def adapt_strategy(strategy: str, all_trades: list[dict], symbol: str | None = N
         params["conf_floor"] = round(max(_CONF_FLOOR_MIN, params["conf_floor"] - 0.01), 3)
         changed = True
 
-    # ── SL multiplier ─────────────────────────────────────────────────────
-    if win_rate < 0.40 and params["sl_mult"] < _SL_MULT_MAX:
-        params["sl_mult"] = round(min(_SL_MULT_MAX, params["sl_mult"] + 0.05), 3)
-        changed = True
-    elif win_rate > 0.65 and params["sl_mult"] > 1.0:
-        params["sl_mult"] = round(max(1.0, params["sl_mult"] - 0.05), 3)
-        changed = True
-
-    # ── TP multiplier ─────────────────────────────────────────────────────
-    if win_rate < 0.40 and params["tp_mult"] > _TP_MULT_MIN:
-        params["tp_mult"] = round(max(_TP_MULT_MIN, params["tp_mult"] - 0.05), 3)
-        changed = True
-    elif win_rate > 0.65 and params["tp_mult"] < _TP_MULT_MAX:
-        params["tp_mult"] = round(min(_TP_MULT_MAX, params["tp_mult"] + 0.05), 3)
-        changed = True
-
     # ── Disable / re-enable ───────────────────────────────────────────────
     if params.get("enabled", True):
         if len(recent) >= _DISABLE_MIN_TRADES and win_rate < _DISABLE_THRESHOLD:

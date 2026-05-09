@@ -701,6 +701,14 @@ def run_weekly(now: datetime) -> Path:
         max(label_counts, key=label_counts.get) if weekly_regime else "UNKNOWN"
     )
 
+    # ── ML predictor retrain ──────────────────────────────────────────
+    try:
+        from models.ml_predictor import retrain_from_log
+        ml_retrained = retrain_from_log()
+        logger.info("ctx=weekly.ml_predictor: retrained=%s", ml_retrained)
+    except Exception as exc:
+        logger.warning("ctx=weekly.ml_predictor: %s", exc)
+
     # ── Calibration snapshot before forced refit ──────────────────────
     calibration_info = {"sample_count": 0, "fitted": False}
     try:

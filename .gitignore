@@ -22,6 +22,7 @@ env/
 data/watchlist.json
 data/alerts.json
 data/alpaca_creds.json
+data/ml_predictor.pkl
 
 # OS
 .DS_Store

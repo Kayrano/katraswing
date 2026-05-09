@@ -538,6 +538,32 @@ def run_signal(
         if not daily_trend_vetoed and raw_confidence < _SIGNAL_FLOOR:
             direction = "NO TRADE"
 
+        # ── ML win-probability gate ───────────────────────────────────────────
+        # When the ML predictor has been trained (≥40 closed trades), suppress
+        # signals whose predicted win probability falls below the overall
+        # historical win rate (~0.38). The gate is skipped when the model is
+        # not yet fitted (early data collection phase).
+        if direction not in ("NO TRADE", "FLAT") and best is not None:
+            try:
+                from models.ml_predictor import get_predictor
+                _pred = get_predictor()
+                if _pred.is_fitted:
+                    _ml_prob = _pred.predict_proba(
+                        strategy=best.strategy,
+                        direction=direction,
+                        entry=best.entry,
+                        sl=best.stop_loss,
+                        tp=best.take_profit,
+                        confidence=raw_confidence,
+                    )
+                    if _ml_prob is not None and _ml_prob < 0.38:
+                        direction = "NO TRADE"
+            except Exception as _ml_exc:
+                import logging as _logging
+                _logging.getLogger(__name__).debug(
+                    "ml_gate skipped: %s", _ml_exc,
+                )
+
         # final_conf stays = raw_confidence here. The calibrated value is
         # surfaced via the .calibration_applied flag and is reserved for
         # future UI display ("expected WR") — gating + risk-sizing should
