@@ -64,6 +64,12 @@ def extract_features(
     tp: float,
     confidence: float,
     sent_at: str | datetime | None = None,
+    adx_value: float | None = None,
+    atr_value: float | None = None,
+    spread_pips: float | None = None,
+    h1_trend: str | None = None,
+    session: str | None = None,
+    day_of_week: int | None = None,
 ) -> dict:
     """Return a flat feature dict for one signal."""
     if isinstance(sent_at, str):
@@ -75,13 +81,21 @@ def extract_features(
         sent_at = datetime.now(tz=timezone.utc)
 
     hour = sent_at.hour
-    dow = sent_at.weekday()
-    sess = _session(hour)
+    dow = day_of_week if day_of_week is not None else sent_at.weekday()
+    sess = session if session is not None else _session(hour)
 
     sl_dist = abs(entry - sl)
     tp_dist = abs(tp - entry)
     sl_dist_pct = sl_dist / entry if entry else 0.0
     designed_rr = tp_dist / sl_dist if sl_dist > 0 else 1.0
+
+    # Trend alignment: 1 = aligned, 0 = neutral, -1 = counter-trend
+    if h1_trend == "BULLISH":
+        trend_align = 1 if direction == "LONG" else -1
+    elif h1_trend == "BEARISH":
+        trend_align = -1 if direction == "LONG" else 1
+    else:
+        trend_align = 0
 
     feats: dict = {
         "is_long": 1 if direction == "LONG" else 0,
@@ -93,6 +107,11 @@ def extract_features(
         "sl_dist_pct": sl_dist_pct,
         "designed_rr": min(designed_rr, 10.0),
         "confidence": confidence,
+        # Enriched features — filled with neutral defaults when not yet logged
+        "adx_value": adx_value if adx_value is not None else 25.0,
+        "atr_value": atr_value if atr_value is not None else sl_dist_pct,
+        "spread_pips": spread_pips if spread_pips is not None else 1.0,
+        "trend_align": trend_align,
     }
     for s in _KNOWN_STRATEGIES:
         feats[f"strat_{s}"] = int(strategy == s)
@@ -155,6 +174,12 @@ class WinRatePredictor:
                 tp=t["tp"],
                 confidence=t.get("confidence", 0.7),
                 sent_at=t.get("sent_at"),
+                adx_value=t.get("adx_value"),
+                atr_value=t.get("atr_value"),
+                spread_pips=t.get("spread_pips"),
+                h1_trend=t.get("h1_trend"),
+                session=t.get("session"),
+                day_of_week=t.get("day_of_week"),
             )
             for t in closed
         ]
@@ -190,11 +215,19 @@ class WinRatePredictor:
         tp: float,
         confidence: float,
         sent_at: str | datetime | None = None,
+        adx_value: float | None = None,
+        atr_value: float | None = None,
+        spread_pips: float | None = None,
+        h1_trend: str | None = None,
     ) -> float | None:
         """Return predicted win probability, or None if model not fitted."""
         if not self.is_fitted:
             return None
-        feats = extract_features(strategy, direction, entry, sl, tp, confidence, sent_at)
+        feats = extract_features(
+            strategy, direction, entry, sl, tp, confidence, sent_at,
+            adx_value=adx_value, atr_value=atr_value,
+            spread_pips=spread_pips, h1_trend=h1_trend,
+        )
         x = _feats_to_array(feats, self.feature_names).reshape(1, -1)
         try:
             return float(self.model.predict_proba(x)[0, 1])

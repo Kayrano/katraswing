@@ -555,6 +555,9 @@ def run_signal(
                         sl=best.stop_loss,
                         tp=best.take_profit,
                         confidence=raw_confidence,
+                        adx_value=adx_val,
+                        atr_value=best.atr,
+                        h1_trend=daily_trend_direction,
                     )
                     if _ml_prob is not None and _ml_prob < 0.38:
                         direction = "NO TRADE"

@@ -252,7 +252,10 @@ def _mt5_loop_inner(stop_event, config):
                             _pats = sr.patterns.patterns if sr.patterns else None
                             record_trade(res.ticket, ticker, strategy_name, sr.direction,
                                          sr.confidence, sr.entry, sr.sl, sr.tp,
-                                         patterns=_pats)
+                                         patterns=_pats,
+                                         adx_value=getattr(sr, "adx_value", None),
+                                         atr_value=getattr(sr, "atr", None),
+                                         h1_trend=getattr(sr, "daily_trend_direction", None))
                         except Exception as _rte:
                             _log(f"⚠ record_trade #{res.ticket}: {_rte}")
                     else:
@@ -912,7 +915,10 @@ if needs_run:
                         _pats = sr.patterns.patterns if sr.patterns else None
                         record_trade(res.ticket, t, strat, sr.direction,
                                      sr.confidence, sr.entry, sr.sl, sr.tp,
-                                     patterns=_pats)
+                                     patterns=_pats,
+                                     adx_value=getattr(sr, "adx_value", None),
+                                     atr_value=getattr(sr, "atr", None),
+                                     h1_trend=getattr(sr, "daily_trend_direction", None))
                     except Exception as _rte:
                         _log(f"⚠ record_trade #{res.ticket}: {_rte}")
                 else:
@@ -1060,7 +1066,10 @@ with tab_signals:
                                     _pats = sr.patterns.patterns if sr.patterns else None
                                     record_trade(res.ticket, inst["ticker"], strat_name, sr.direction,
                                                  sr.confidence, sr.entry, sr.sl, sr.tp,
-                                                 patterns=_pats)
+                                                 patterns=_pats,
+                                                 adx_value=getattr(sr, "adx_value", None),
+                                                 atr_value=getattr(sr, "atr", None),
+                                                 h1_trend=getattr(sr, "daily_trend_direction", None))
                                 except Exception as _rte:
                                     _log(f"⚠ record_trade #{res.ticket}: {_rte}")
                                 st.rerun()

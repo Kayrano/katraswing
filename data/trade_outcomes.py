@@ -84,13 +84,26 @@ def record_trade(
     sl: float,
     tp: float,
     patterns: Optional[list] = None,
+    *,
+    adx_value: Optional[float] = None,
+    atr_value: Optional[float] = None,
+    spread_pips: Optional[float] = None,
+    h1_trend: Optional[str] = None,
 ) -> None:
     """Record a newly sent trade. Called immediately after order_send succeeds.
 
     `patterns` is the list[PatternMatch] that fired at entry — recorded so the
     pattern win-rate learner (models.pattern_stats) can attribute each closed
     trade's outcome back to the patterns that triggered it.
+
+    Optional keyword-only args capture market context at signal time so the
+    ML predictor can use richer features:
+      adx_value   — ADX reading at entry (regime strength)
+      atr_value   — raw ATR in price units (volatility proxy)
+      spread_pips — bid-ask spread from MT5 tick (fill-cost indicator)
+      h1_trend    — H1 daily-structure direction: "UP" | "DOWN" | "NEUTRAL"
     """
+    now_utc = datetime.now(timezone.utc)
     trades = _load()
     # Avoid duplicates (e.g. rerun after reconnect)
     if any(t["ticket"] == ticket for t in trades):
@@ -109,6 +122,15 @@ def record_trade(
             except Exception:
                 continue
 
+    def _session(h: int) -> str:
+        if 7 <= h < 12:
+            return "london"
+        if 12 <= h < 17:
+            return "ny"
+        if 0 <= h < 4:
+            return "asia"
+        return "other"
+
     trades.append({
         "ticket":     ticket,
         "ticker":     ticker,
@@ -119,10 +141,17 @@ def record_trade(
         "sl":         sl,
         "tp":         tp,
         "patterns":   pattern_records,
-        "sent_at":    datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds"),
+        "sent_at":    now_utc.replace(tzinfo=None).isoformat(timespec="seconds"),
         "closed_at":  None,
         "profit":     None,
         "outcome":    None,   # "WIN" | "LOSS" | "BREAKEVEN"
+        # ── Market context at signal time (ML features) ──────────────────
+        "adx_value":   round(adx_value, 2) if adx_value is not None else None,
+        "atr_value":   round(atr_value, 6) if atr_value is not None else None,
+        "spread_pips": round(spread_pips, 2) if spread_pips is not None else None,
+        "h1_trend":    h1_trend,
+        "session":     _session(now_utc.hour),
+        "day_of_week": now_utc.weekday(),
     })
     _save(trades)
     logger.info(f"Recorded trade #{ticket} {direction} {ticker} via {strategy}")

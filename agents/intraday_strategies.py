@@ -780,6 +780,14 @@ def camarilla_pivot_5m(df: pd.DataFrame) -> IntradaySignal:
     NAME = "CAMARILLA_5M"
     TF   = "5m"
 
+    # Session gate: Asian session + early London (00:00–12:00 UTC).
+    # Camarilla is a mean-reversion play; NY open momentum (12–17 UTC)
+    # routinely breaks through R4/S4 instead of reversing at them.
+    if isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None:
+        _utc_h = int(df.index[-1].tz_convert("UTC").hour)
+        if not (_utc_h < 12 or _utc_h >= 20):
+            return _flat(NAME, TF, f"Outside Camarilla window (UTC {_utc_h:02d}:xx; need 00–11 or 20–23)")
+
     if len(df) < 50:
         return _flat(NAME, TF, "Insufficient bars (need 50)")
     if "session_date" not in df.columns:
@@ -1244,6 +1252,14 @@ def mss_forex_15m(df: pd.DataFrame) -> IntradaySignal:
     # FOREX-only guard
     if "market" in df.columns and df["market"].iloc[-1] != "FOREX":
         return _flat(NAME, TF, "Non-FOREX ticker — MSS strategy skipped")
+
+    # Session gate: London + NY only (07:00–17:00 UTC).
+    # MSS patterns require institutional order flow to be reliable;
+    # Asian session produces false structure breaks on low volume.
+    if isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None:
+        _utc_h = int(df.index[-1].tz_convert("UTC").hour)
+        if not (7 <= _utc_h < 17):
+            return _flat(NAME, TF, f"Outside London/NY window (UTC {_utc_h:02d}:xx; need 07–16)")
 
     if len(df) < 100:
         return _flat(NAME, TF, "Insufficient bars (need 100)")

@@ -215,11 +215,19 @@ def _compute_health_score(
             mom_component -= 0.25
     mom_component = max(0.0, min(1.0, mom_component))
 
-    # ── R:R remaining, normalised (15%) ──────────────────────────────────────
-    original_tp_dist = abs(position.tp - position.open_price) if position.tp else (atr * 2)
-    dist_to_tp       = abs(position.tp - current_price) if position.tp else 0.0
-    if original_tp_dist > 0:
-        rr_component = max(0.0, min(1.0, dist_to_tp / original_tp_dist))
+    # ── Trade progress toward TP (15%) ───────────────────────────────────────
+    # Score = how far price has moved toward TP relative to the full TP target.
+    # Near TP  = high score (trade is working).
+    # At entry = 0.5 (neutral).
+    # Near SL  = low score (trade is going wrong).
+    open_price = position.open_price
+    tp_price   = position.tp
+    if tp_price and abs(tp_price - open_price) > 0:
+        if direction == "LONG":
+            progress = (current_price - open_price) / (tp_price - open_price)
+        else:
+            progress = (open_price - current_price) / (open_price - tp_price)
+        rr_component = max(0.0, min(1.0, 0.5 + progress * 0.5))
     else:
         rr_component = 0.5
 
