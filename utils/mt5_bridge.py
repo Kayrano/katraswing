@@ -82,7 +82,7 @@ _resolved_cache: dict[str, str] = {}
 DEFAULT_LOTS: dict[str, float] = {
     "GOLD":    0.01,   # 1 oz gold — high notional; start small
     "GOLDgr":  1.0,    # gram gold — much smaller notional
-    "SILVER":  0.1,
+    "SILVER":  0.1,    # SI=F / Silver
     "OIL":     0.1,
     "EURUSD":  0.1,
     "GBPUSD":  0.1,

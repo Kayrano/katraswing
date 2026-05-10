@@ -49,15 +49,32 @@ log = logging.getLogger(__name__)
 # 6 instruments × ~5–10s/scan = well under the 60s poll interval.
 # Override at runtime with --tickers <space-separated list>.
 DEFAULT_TICKERS = [
-    "EURUSD=X", "GBPUSD=X", "USDJPY=X",
-    "ES=F", "GC=F",
+    # LIVE — ordered by historical win rate (policy: symbol_policy.py)
+    "YM=F",     # Dow Jones   100% WR (3T)  — LIVE
+    "SI=F",     # Silver       71% WR (7T)  — LIVE
+    "USDJPY=X", # USD/JPY      44% WR (9T)  — LIVE
+    "ES=F",     # S&P 500     100% WR (2T)  — LIVE
+    "GC=F",     # Gold                       — LIVE (default)
+    # PAPER — signals logged and learned but no live orders sent
+    "EURUSD=X", # EUR/USD      25% WR (8T)  — PAPER (warming up)
+    "GBPUSD=X", # GBP/USD      38% WR (8T)  — PAPER (warming up)
+    "AUDUSD=X", # AUD/USD      17% WR (6T)  — PAPER (warming up)
+    "USDCAD=X", # USD/CAD                   — PAPER (small sample)
+    "GBPJPY=X", # GBP/JPY                   — PAPER (small sample)
+    "EURJPY=X", # EUR/JPY                   — PAPER (small sample)
 ]
 DEFAULT_DISPLAY_NAMES = {
-    "EURUSD=X": "EUR/USD",
-    "GBPUSD=X": "GBP/USD",
+    "YM=F":     "Dow Jones",
+    "SI=F":     "Silver",
     "USDJPY=X": "USD/JPY",
     "ES=F":     "ES Mini",
     "GC=F":     "Gold",
+    "EURUSD=X": "EUR/USD",
+    "GBPUSD=X": "GBP/USD",
+    "AUDUSD=X": "AUD/USD",
+    "USDCAD=X": "USD/CAD",
+    "GBPJPY=X": "GBP/JPY",
+    "EURJPY=X": "EUR/JPY",
 }
 DEFAULT_INTERVAL_SEC = 60       # poll every 60 seconds
 DEFAULT_MIN_CONF     = 0.60     # minimum confidence to enter
