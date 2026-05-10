@@ -32,39 +32,133 @@ except ImportError:
     mt5 = None
     MT5_AVAILABLE = False
 
-# ── Symbol mapping: yfinance ticker → your MT5 broker symbol ─────────────────
-# Edit these to match your broker's exact symbol names.
+# ── Symbol mapping: yfinance ticker → MT5 broker symbol ──────────────────────
+# Primary static map. For rolling futures (ES, NQ etc.) we also do prefix-based
+# auto-resolution at runtime so the symbol survives quarterly contract rolls.
 SYMBOL_MAP: dict[str, str] = {
-    # Futures / Commodities
-    "GC=F":     "XAUUSD",       # Gold spot — most brokers use XAUUSD; verify in Market Watch
-    "ES=F":     "#US500_M26",   # S&P 500 E-mini (CME)   — verify name with your broker
-    "NQ=F":     "#US100_M26",   # Nasdaq 100 E-mini (CME) — verify name with your broker
-    "NKD=F":    "JP225",        # Nikkei 225 Futures
+    # Metals / Commodities
+    "GC=F":     "GOLD",         # Gold ounce vs USD  (broker: GOLD / GOLDgr for gram)
+    "SI=F":     "SILVER",       # Silver
+    "CL=F":     "OIL",          # WTI crude
+    # US Indices — static entry is the first candidate; auto-resolve tries all prefixes
+    "ES=F":     "#US500_M26",
+    "NQ=F":     "#US100_M26",
+    "YM=F":     "#US30_M26",
+    "NKD=F":    "JP225",
     # Stocks (CFD)
     "AAPL":     "#AAPL",
     "MSFT":     "#MSFT",
     "AMZN":     "#AMZN",
-    # Forex
+    # Forex — strip the =X suffix; standard at almost every broker
     "EURUSD=X": "EURUSD",
     "GBPUSD=X": "GBPUSD",
     "USDJPY=X": "USDJPY",
+    "AUDUSD=X": "AUDUSD",
+    "USDCAD=X": "USDCAD",
+    "USDCHF=X": "USDCHF",
+    "NZDUSD=X": "NZDUSD",
+    "EURGBP=X": "EURGBP",
+    "EURJPY=X": "EURJPY",
+    "GBPJPY=X": "GBPJPY",
 }
 
-# Default lot sizes by MT5 symbol (adjust for your account/risk tolerance)
+# For futures with rolling quarterly expiry the static SYMBOL_MAP entry may be
+# stale (e.g. #US500_M26 expires Jun 2026 → becomes #US500_U26).
+# _FUTURES_PREFIXES lists broker-prefix candidates to try in order when the
+# static name is rejected by mt5.symbol_select(). First hit wins and is cached.
+_FUTURES_PREFIXES: dict[str, list[str]] = {
+    "ES=F":  ["#US500", "US500", "SP500", "SPX500", "US500.", "SP500."],
+    "NQ=F":  ["#US100", "US100", "NAS100", "USTEC", "NAS100.", "US100."],
+    "YM=F":  ["#US30",  "US30",  "DJ30",  "DOWJONES"],
+    "GC=F":  ["GOLD",   "XAUUSD", "XAU",  "GOLDm", "GOLD."],
+    "SI=F":  ["SILVER", "XAGUSD", "XAG"],
+    "CL=F":  ["OIL",    "USOIL",  "WTI",  "XTIUSD"],
+}
+
+# Cache resolved symbols for the lifetime of the process (avoids repeated MT5 queries)
+_resolved_cache: dict[str, str] = {}
+
+# Default lot sizes (fallback when live account data unavailable)
 DEFAULT_LOTS: dict[str, float] = {
-    "XAUUSD":     0.01,         # Gold: 0.01 lot = 1 oz — start small, high notional value
-    "#US100_M26": 0.20,
-    "#US500_M26": 0.20,
-    "JP225":      0.10,
-    "#AAPL":      1.0,
-    "#MSFT":      1.0,
-    "#AMZN":      1.0,
-    "EURUSD":     0.1,
-    "GBPUSD":     0.1,
-    "USDJPY":     0.1,
+    "GOLD":    0.01,   # 1 oz gold — high notional; start small
+    "GOLDgr":  1.0,    # gram gold — much smaller notional
+    "SILVER":  0.1,
+    "OIL":     0.1,
+    "EURUSD":  0.1,
+    "GBPUSD":  0.1,
+    "USDJPY":  0.1,
+    "AUDUSD":  0.1,
+    "USDCAD":  0.1,
+    "USDCHF":  0.1,
+    "NZDUSD":  0.1,
+    "EURGBP":  0.1,
+    "EURJPY":  0.1,
+    "GBPJPY":  0.1,
+    "#AAPL":   1.0,
+    "#MSFT":   1.0,
+    "#AMZN":   1.0,
 }
 
 MAGIC_NUMBER = 234100   # unique ID for Katraswing orders
+
+
+def resolve_mt5_symbol(yf_ticker: str) -> str:
+    """
+    Translate a yfinance ticker to the broker's MT5 symbol name.
+
+    Resolution order:
+      1. Process cache (avoids repeated MT5 queries within a session)
+      2. SYMBOL_MAP exact match — verify it exists in MT5 via symbol_select
+      3. _FUTURES_PREFIXES fallback — scan broker symbols for matching prefix
+         (handles quarterly rolls like #US500_M26 -> #US500_U26 automatically)
+      4. Strip =X suffix (covers unlisted forex pairs like CADJPY=X -> CADJPY)
+      5. Return the ticker unchanged as last resort
+
+    Returns the resolved MT5 symbol name.
+    """
+    key = yf_ticker.upper()
+
+    if key in _resolved_cache:
+        return _resolved_cache[key]
+
+    # Step 2: static map
+    candidate = SYMBOL_MAP.get(key, "")
+    if candidate and MT5_AVAILABLE and is_connected():
+        if mt5.symbol_select(candidate, True):
+            _resolved_cache[key] = candidate
+            return candidate
+        # Static name rejected — fall through to prefix search
+
+    # Step 3: prefix-based auto-resolution for rolling futures
+    prefixes = _FUTURES_PREFIXES.get(key, [])
+    if prefixes and MT5_AVAILABLE and is_connected():
+        all_symbols = mt5.symbols_get()
+        if all_symbols:
+            for prefix in prefixes:
+                prefix_l = prefix.lower()
+                matches = [
+                    s for s in all_symbols
+                    if s.name.lower().startswith(prefix_l)
+                    and s.trade_mode != 0  # not disabled
+                ]
+                if matches:
+                    # Pick the closest expiry: shortest name usually = front month
+                    best = min(matches, key=lambda s: len(s.name))
+                    resolved = best.name
+                    logger.info(f"Auto-resolved {yf_ticker!r} -> {resolved!r} (prefix={prefix!r})")
+                    _resolved_cache[key] = resolved
+                    return resolved
+
+    # Step 4: strip =X suffix for unlisted forex
+    if key.endswith("=X"):
+        stripped = key[:-2]
+        _resolved_cache[key] = stripped
+        return stripped
+
+    # Step 5: pass through unchanged
+    result = candidate or yf_ticker
+    _resolved_cache[key] = result
+    return result
 
 # Persisted per-symbol stop minimums learned from live broker feedback
 _STOP_LEARNING_PATH = Path(__file__).parent.parent / "data" / "stop_minimums.json"
@@ -562,11 +656,11 @@ def send_signal(
         return MT5OrderResult(False, 0, ticker, direction, 0.0, entry, sl, tp,
                               "MT5 not connected")
 
-    symbol = SYMBOL_MAP.get(ticker.upper(), ticker)
+    symbol = resolve_mt5_symbol(ticker)
 
     if not mt5.symbol_select(symbol, True):
         return MT5OrderResult(False, 0, symbol, direction, 0.0, entry, sl, tp,
-                              f"Symbol '{symbol}' not found in broker — update SYMBOL_MAP")
+                              f"Symbol '{symbol}' not found in broker — update SYMBOL_MAP or _FUTURES_PREFIXES")
 
     # ── 1. Duplicate guard ────────────────────────────────────────────────────
     existing = mt5.positions_get(symbol=symbol)
@@ -756,18 +850,16 @@ def send_from_signal_result(
     _RISK_MULTIPLIER = {"LOW": 1.5, "MEDIUM": 1.0, "HIGH": 0.5}
     effective_risk_pct = risk_pct * _RISK_MULTIPLIER.get(getattr(sr, "risk_level", "MEDIUM"), 1.0)
 
-    # Use mt5_symbol when broker-resolved; refuse to send if it's a yfinance ticker
-    # (=X / =F / ^ / -USD), since the broker won't know that symbol name.
+    # Resolve yfinance ticker → broker MT5 symbol using full auto-resolution logic
     ticker = getattr(sr, "mt5_symbol", "") or ""
     if not ticker or any(c in ticker for c in ("=", "^")) or ticker.endswith("-USD"):
-        # Fall back to SYMBOL_MAP lookup on sr.ticker
-        mapped = SYMBOL_MAP.get((sr.ticker or "").upper())
-        if not mapped:
+        ticker = resolve_mt5_symbol(sr.ticker or "")
+        # If still looks like a yfinance ticker (unresolved), bail out gracefully
+        if any(c in ticker for c in ("=", "^")) or ticker.endswith("-USD"):
             return MT5OrderResult(
                 False, 0, sr.ticker, sr.direction, 0.0, sr.entry, sr.sl, sr.tp,
-                f"No broker symbol mapped for '{sr.ticker}' — waiting for MT5 connect"
+                f"No broker symbol resolved for '{sr.ticker}' — MT5 not connected or symbol missing"
             )
-        ticker = mapped
 
     # Sanitised comment — broker rejects '%' and other punctuation; cap 24 chars.
     strat = (sr.chart_signals[0].strategy if sr.chart_signals else "")
