@@ -50,15 +50,14 @@ log = logging.getLogger(__name__)
 # Override at runtime with --tickers <space-separated list>.
 DEFAULT_TICKERS = [
     "EURUSD=X", "GBPUSD=X", "USDJPY=X",
-    "NQ=F", "ES=F", "XAUUSD=X",
+    "ES=F", "GC=F",
 ]
 DEFAULT_DISPLAY_NAMES = {
     "EURUSD=X": "EUR/USD",
     "GBPUSD=X": "GBP/USD",
     "USDJPY=X": "USD/JPY",
-    "NQ=F":     "NQ Mini",
     "ES=F":     "ES Mini",
-    "XAUUSD=X": "Gram Gold",
+    "GC=F":     "Gold",
 }
 DEFAULT_INTERVAL_SEC = 60       # poll every 60 seconds
 DEFAULT_MIN_CONF     = 0.60     # minimum confidence to enter
