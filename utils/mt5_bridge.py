@@ -35,14 +35,15 @@ except ImportError:
 # ── Symbol mapping: yfinance ticker → your MT5 broker symbol ─────────────────
 # Edit these to match your broker's exact symbol names.
 SYMBOL_MAP: dict[str, str] = {
-    # Futures
-    "NQ=F":     "#US100_M26",   # Nasdaq 100 E-mini (CME) — verify name with FxPro
-    "ES=F":     "#US500_M26",   # S&P 500 E-mini (CME)   — verify name with FxPro
-    "NKD=F":    "JP225",        # Nikkei 225 Futures      — verify name with FxPro
+    # Futures / Commodities
+    "GC=F":     "XAUUSD",       # Gold spot — most brokers use XAUUSD; verify in Market Watch
+    "ES=F":     "#US500_M26",   # S&P 500 E-mini (CME)   — verify name with your broker
+    "NQ=F":     "#US100_M26",   # Nasdaq 100 E-mini (CME) — verify name with your broker
+    "NKD=F":    "JP225",        # Nikkei 225 Futures
     # Stocks (CFD)
-    "AAPL":     "#AAPL",        # Apple Inc.
-    "MSFT":     "#MSFT",        # Microsoft Corp.
-    "AMZN":     "#AMZN",        # Amazon.com Inc.
+    "AAPL":     "#AAPL",
+    "MSFT":     "#MSFT",
+    "AMZN":     "#AMZN",
     # Forex
     "EURUSD=X": "EURUSD",
     "GBPUSD=X": "GBPUSD",
@@ -51,6 +52,7 @@ SYMBOL_MAP: dict[str, str] = {
 
 # Default lot sizes by MT5 symbol (adjust for your account/risk tolerance)
 DEFAULT_LOTS: dict[str, float] = {
+    "XAUUSD":     0.01,         # Gold: 0.01 lot = 1 oz — start small, high notional value
     "#US100_M26": 0.20,
     "#US500_M26": 0.20,
     "JP225":      0.10,
