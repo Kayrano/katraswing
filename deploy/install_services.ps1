@@ -37,7 +37,9 @@ function Install-NSSMService {
     $existing = Get-Service -Name $Name -ErrorAction SilentlyContinue
     if ($existing) {
         Write-Host "    Removing existing service: $Name"
+        $ErrorActionPreference = "SilentlyContinue"
         nssm stop $Name 2>$null
+        $ErrorActionPreference = "Stop"
         nssm remove $Name confirm 2>$null
         Start-Sleep -Seconds 2
     }
