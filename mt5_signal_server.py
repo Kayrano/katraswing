@@ -76,7 +76,7 @@ DEFAULT_DISPLAY_NAMES = {
     "GBPJPY=X": "GBP/JPY",
     "EURJPY=X": "EUR/JPY",
 }
-DEFAULT_INTERVAL_SEC = 60       # poll every 60 seconds
+DEFAULT_INTERVAL_SEC = 30       # poll every 30 seconds — doubled scan frequency
 DEFAULT_MIN_CONF     = 0.60     # minimum confidence to enter
 FINNHUB_API_KEY      = ""       # optional — set here or via --finnhub-key
 

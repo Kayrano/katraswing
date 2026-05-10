@@ -152,12 +152,13 @@ def _is_due(kind: str, now: datetime, state: dict) -> bool:
         return last.date() < now.date()
 
     if kind == "weekly":
-        if now.weekday() != 6 or now.hour < 23:    # 6 = Sunday
+        # Accelerated to daily: prune/promote/ML-retrain every night at 23:00 UTC
+        # so the system converges in weeks rather than months.
+        if now.hour < 23:
             return False
         if last is None:
             return True
-        return last.isocalendar().week < now.isocalendar().week or \
-               last.year < now.year
+        return last.date() < now.date()
 
     return False
 
@@ -589,16 +590,15 @@ def _atomic_write_text(path: Path, content: str) -> None:
 
 # Prune: disable strategies failing trailing-30d health (per the user's
 # 2026-05-01 decision: changes apply live from day 1).
-_PRUNE_MIN_TRADES = 15
+_PRUNE_MIN_TRADES = 8    # was 15 — identify bad strategies faster
 _PRUNE_WR_MAX     = 0.35
 _PRUNE_PF_MAX     = 1.0
 
 # Promote: paper-only strategies graduate to live when their 30d evidence
-# clears the bar. Identical thresholds in spirit to MIN_WIN_RATE in the
-# backtester but with PF + size guards on top.
-_PROMOTE_MIN_TRADES = 20
+# clears the bar.
+_PROMOTE_MIN_TRADES = 10   # was 20 — promote faster with less data
 _PROMOTE_WR_MIN     = 0.50
-_PROMOTE_PF_MIN     = 1.30
+_PROMOTE_PF_MIN     = 1.10  # was 1.30 — lower profit-factor bar
 
 
 def run_weekly(now: datetime) -> Path:

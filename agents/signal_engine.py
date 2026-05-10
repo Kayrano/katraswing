@@ -559,7 +559,7 @@ def run_signal(
                         atr_value=best.atr,
                         h1_trend=daily_trend_direction,
                     )
-                    if _ml_prob is not None and _ml_prob < 0.38:
+                    if _ml_prob is not None and _ml_prob < 0.33:  # was 0.38; model immature (<200 samples)
                         direction = "NO TRADE"
             except Exception as _ml_exc:
                 import logging as _logging

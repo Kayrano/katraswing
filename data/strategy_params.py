@@ -85,7 +85,7 @@ _REENABLE_THRESHOLD   = 0.50 # re-enable if win_rate recovers to this
 # Hierarchical (symbol, strategy) partitioning. Per-symbol params are only
 # trusted once we have ≥ this many closed trades on that pair — otherwise
 # we fall back to strategy-level params shared across all symbols.
-_PER_SYMBOL_MIN_TRADES = 30
+_PER_SYMBOL_MIN_TRADES = 15  # was 30 — per-symbol adaptation kicks in faster
 
 
 def _normalize_symbol(symbol: str | None) -> str:

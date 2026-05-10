@@ -22,7 +22,7 @@ Start-Sleep -Seconds 2
 Write-Step "Starting signal server"
 Start-Process powershell -ArgumentList @(
     "-NoExit", "-Command",
-    "cd $INSTALL_DIR; python mt5_signal_server.py --interval 60 --risk-pct 1.0 --finnhub-key $FINNHUB_KEY"
+    "cd $INSTALL_DIR; python mt5_signal_server.py --interval 30 --risk-pct 1.0 --finnhub-key $FINNHUB_KEY"
 ) -WindowStyle Minimized
 Start-Sleep -Seconds 3
 Write-OK "Signal server launched"
@@ -77,7 +77,7 @@ while ($true) {
         # Relaunch signal server
         Start-Process powershell -ArgumentList @(
             "-NoExit", "-Command",
-            "cd $INSTALL_DIR; python mt5_signal_server.py --interval 60 --risk-pct 1.0 --finnhub-key $FINNHUB_KEY"
+            "cd $INSTALL_DIR; python mt5_signal_server.py --interval 30 --risk-pct 1.0 --finnhub-key $FINNHUB_KEY"
         ) -WindowStyle Minimized
 
         $newHash = git rev-parse --short HEAD
