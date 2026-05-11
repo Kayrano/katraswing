@@ -79,6 +79,12 @@ def recompute_from_trades(trades: list[dict]) -> dict[str, dict]:
     Idempotent — running it twice on the same data produces the same output.
     Excludes BREAKEVEN trades (no signal) and trades without recorded patterns
     (older trades from before patterns were captured at entry).
+
+    Two key formats are stored:
+      - ``"PatternName"`` — direction-agnostic aggregate (backward compat)
+      - ``"PatternName:LONG"`` / ``"PatternName:SHORT"`` — directional bucket
+    The directional key is used when it has ≥5 samples; otherwise falls back to
+    the aggregate. This avoids premature specialisation on tiny samples.
     """
     counts: dict[str, dict[str, int]] = defaultdict(lambda: {"wins": 0, "trades": 0})
     for t in trades:
@@ -94,9 +100,16 @@ def recompute_from_trades(trades: list[dict]) -> dict[str, dict]:
             bias = p.get("bias", "")
             if not name or not _aligned(bias, direction):
                 continue
+            # Direction-agnostic aggregate
             counts[name]["trades"] += 1
             if outcome == "WIN":
                 counts[name]["wins"] += 1
+            # Directional bucket
+            if direction in ("LONG", "SHORT"):
+                dir_key = f"{name}:{direction}"
+                counts[dir_key]["trades"] += 1
+                if outcome == "WIN":
+                    counts[dir_key]["wins"] += 1
 
     stats: dict[str, dict] = {}
     for name, c in counts.items():
@@ -131,6 +144,23 @@ def get_stats(pattern_name: str) -> tuple[int, int]:
     return int(s.get("wins", 0)), int(s.get("trades", 0))
 
 
+def get_stats_directional(pattern_name: str, direction: str) -> tuple[int, int]:
+    """Return (wins, trades) for a specific (pattern, direction) pair.
+
+    Falls back to direction-agnostic stats when the directional bucket has
+    fewer than 5 samples to avoid premature specialisation.
+    """
+    dir_key = f"{pattern_name}:{direction}"
+    with _lock:
+        stats = _load_stats()
+        dir_s = stats.get(dir_key, {})
+        n_dir = int(dir_s.get("trades", 0))
+        if n_dir >= 5:
+            return int(dir_s.get("wins", 0)), n_dir
+        s = stats.get(pattern_name, {})
+    return int(s.get("wins", 0)), int(s.get("trades", 0))
+
+
 def posterior_win_rate(wins: int, trades: int) -> float:
     """Beta(1,1) prior + binomial likelihood → posterior mean.
 
@@ -145,14 +175,21 @@ def effective_win_rate(
     pattern_name: str,
     textbook_wr: float,
     ramp: int = DEFAULT_RAMP,
+    direction: str = "",
 ) -> float:
     """Blend learned win rate with the textbook value.
 
     n=0   → returns textbook_wr (pure prior)
     n=ramp → returns learned posterior mean alone
     in between: linear interpolation
+
+    When ``direction`` is provided and the directional bucket has ≥5 samples,
+    uses the direction-specific win rate instead of the aggregate.
     """
-    wins, n = get_stats(pattern_name)
+    if direction in ("LONG", "SHORT"):
+        wins, n = get_stats_directional(pattern_name, direction)
+    else:
+        wins, n = get_stats(pattern_name)
     if n <= 0:
         return float(textbook_wr)
     learned = posterior_win_rate(wins, n)
@@ -162,18 +199,21 @@ def effective_win_rate(
     return float(learned * w + textbook_wr * (1.0 - w))
 
 
-def apply_to_report(report) -> None:
+def apply_to_report(report, direction: str = "") -> None:
     """In-place update of every PatternMatch.win_rate in a PatternReport with
     the effective (learned-or-textbook-blended) value. Called from
     signal_engine.run_signal so downstream consumers (UI, logging, future
     scoring tweaks) automatically see the calibrated rate.
+
+    Pass ``direction`` ("LONG" or "SHORT") to use direction-specific stats
+    when available (≥5 samples in the directional bucket).
     """
     if not report or not getattr(report, "patterns", None):
         return
     for m in report.patterns:
         try:
             m.win_rate = round(
-                effective_win_rate(m.name, m.win_rate),
+                effective_win_rate(m.name, m.win_rate, direction=direction),
                 3,
             )
         except Exception:

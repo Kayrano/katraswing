@@ -58,6 +58,34 @@ def _trend_weight(adx_val: float) -> float:
         return 0.5
     return 1.0 / (1.0 + math.exp(-(adx_val - _ADX_CENTER) / _ADX_SLOPE))
 
+# Session-aware confidence nudge: forex reacts to London/NY volume; metals
+# trade around-the-clock and get no adjustment.
+_SESSION_FOREX = {
+    "EURUSD=X", "GBPUSD=X", "AUDUSD=X", "USDJPY=X",
+    "USDCAD=X", "GBPJPY=X", "EURJPY=X", "NZDUSD=X", "USDCHF=X",
+}
+_SESSION_INDICES = {"YM=F", "ES=F", "NQ=F"}
+
+
+def _session_boost(ticker: str, hour_utc: int) -> float:
+    """Small confidence nudge based on current UTC trading session.
+
+    London 07-12 UTC: +0.03 for forex (peak volume, tight spreads).
+    NY     13-18 UTC: +0.02 for equity indices.
+    Asian  01-06 UTC: -0.02 for forex only (thin FX liquidity).
+    Metals/unrecognised: 0.0 (24-hour market, no session bias).
+    """
+    if ticker in _SESSION_FOREX:
+        if 7 <= hour_utc < 12:
+            return  0.03
+        if 1 <= hour_utc < 6:
+            return -0.02
+    if ticker in _SESSION_INDICES:
+        if 13 <= hour_utc < 18:
+            return  0.02
+    return 0.0
+
+
 # Mean-reversion strategies (penalised in trending markets)
 # PDH_PDL_SWEEP fades institutional sweeps — breaks down when trend is strongly directional
 # CAMARILLA_5M trades S3/R3 bounces — same fade-the-edge profile, prone to fail when ADX is high
@@ -78,8 +106,11 @@ _TREND_STRATEGIES = {"ORB_5M", "TREND_MOM_5M", "EMA_PB_15M", "SQUEEZE_15M",
 # Minimum final confidence to issue a signal.
 # Raised 0.60 → 0.70 after analysing 74 closed trades: the [0.60, 0.70) bucket
 # delivered 21% WR / -$39 P&L while [0.70, 0.80) delivered 46% / +$8.
-# The 0.60 trades were systematic money-losers; cutting them is a clean win.
-_SIGNAL_FLOOR = 0.70
+# Lowered 0.70 → 0.65 for VPS trial: those 74 trades used the old boost stack
+# (pre-Round-4 news boost, no +0.20 cap, no regime routing). The composition
+# of signals in [0.65, 0.70) today is meaningfully different. Monitor: if
+# 20+ new trades in this range show WR < 0.40, revert to 0.70.
+_SIGNAL_FLOOR = 0.65
 
 # Baseline win rate used for backtest calibration adjustment
 _BACKTEST_BASELINE_WR = 0.62
@@ -128,6 +159,7 @@ class SignalResult:
     # Stamped from the picked strategy's IntradaySignal.paper_only flag.
     paper_only: bool = False
     paper_reason: str = ""           # "strategy" | "symbol" | "" — origin of the paper flag
+    session_boost: float = 0.0       # UTC-session nudge applied to this signal
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -203,6 +235,20 @@ def run_signal(
         # params kick in once a pair has accumulated enough trades.
         sym_for_params = ticker.replace("=X", "").replace("=F", "").upper()
         from data.strategy_params import apply_params as _apply_adaptive
+
+        # MTF pre-filter: if BOTH daily AND H4 are fully aligned against a
+        # direction, convert those strategy outputs to FLAT before the regime
+        # routing step.  The authoritative MTF gate at the end of the pipeline
+        # is unchanged — this is purely a CPU/noise optimisation.
+        _pre_daily = (daily_trend or {}).get("trend_direction", "NEUTRAL")
+        _pre_h4    = (h4_trend    or {}).get("trend_direction", "NEUTRAL")
+        _mtf_pre   = (
+            (2 if _pre_daily == "BULLISH" else -2 if _pre_daily == "BEARISH" else 0)
+            + (1 if _pre_h4 == "BULLISH" else -1 if _pre_h4 == "BEARISH" else 0)
+        )
+        _pre_veto_long  = _mtf_pre <= -2
+        _pre_veto_short = _mtf_pre >= 2
+
         all_signals: list[IntradaySignal] = []
         for fn in _STRATEGIES_5M:
             try:
@@ -210,6 +256,11 @@ def run_signal(
                 sig = _apply_adaptive(sig, symbol=sym_for_params)   # apply learned SL/TP/conf adjustments
             except Exception as exc:
                 sig = _flat(fn.__name__.upper(), "5m", str(exc))
+            # MTF pre-veto: convert to FLAT if direction is already blocked
+            if sig.signal == "LONG" and _pre_veto_long:
+                sig = _flat(sig.strategy, sig.timeframe, "MTF pre-veto: LONG blocked by daily+H4 BEARISH")
+            elif sig.signal == "SHORT" and _pre_veto_short:
+                sig = _flat(sig.strategy, sig.timeframe, "MTF pre-veto: SHORT blocked by daily+H4 BULLISH")
             all_signals.append(sig)
 
         # Absorption confluence boost (direction-agnostic order-flow confirmation)
@@ -305,16 +356,20 @@ def run_signal(
 
             # Determine what the best signal's direction is vs consensus
             best_dir = active[0].signal if active else "FLAT"
+            # Scale cap: 3+ strategies in agreement earn up to ±0.08 vs the
+            # default ±0.05 for 2-strategy agreement. Distinguishes genuine
+            # multi-strategy confluence from a 2/2 coin-flip.
+            _consensus_cap = 0.08 if dominant >= 3 else 0.05
             if best_dir == "LONG":
                 strategy_agreement = f"{long_count}/{total} LONG"
                 if long_count >= short_count:
-                    consensus_boost = (consensus_ratio - 0.5) * 0.10  # max +0.05
+                    consensus_boost = min(_consensus_cap, (consensus_ratio - 0.5) * 0.16)
                 else:
                     consensus_boost = -0.08  # consensus opposes best signal
             elif best_dir == "SHORT":
                 strategy_agreement = f"{short_count}/{total} SHORT"
                 if short_count >= long_count:
-                    consensus_boost = (consensus_ratio - 0.5) * 0.10
+                    consensus_boost = min(_consensus_cap, (consensus_ratio - 0.5) * 0.16)
                 else:
                     consensus_boost = -0.08
         elif len(active) == 1:
@@ -322,16 +377,8 @@ def run_signal(
 
         # --- Pattern detection ---
         patterns = _safe_detect_patterns(df)
-
-        # Replace each pattern's hardcoded textbook win_rate with the learned
-        # posterior (Beta(1,1) prior, ramps to learned-only at n≥30 trades).
-        # No-op if the user has fewer closed trades than the ramp threshold.
-        try:
-            from models.pattern_stats import apply_to_report as _apply_pattern_wrs
-            _apply_pattern_wrs(patterns)
-        except Exception as _pe:
-            import logging as _logging
-            _logging.getLogger(__name__).debug("pattern_stats apply skipped: %s", _pe)
+        # Win rates are applied after direction is known (below) so direction-
+        # specific stats can be used. Kept here only for the early-return path.
 
         # --- Indicators ---
         indicators = _safe_indicators(df)
@@ -358,6 +405,14 @@ def run_signal(
         base_conf = best.confidence
         direction = best.signal
         sym_clean = ticker.replace("=X", "").upper()
+
+        # Apply direction-specific pattern win rates now that direction is known.
+        try:
+            from models.pattern_stats import apply_to_report as _apply_pattern_wrs
+            _apply_pattern_wrs(patterns, direction=direction)
+        except Exception as _pe:
+            import logging as _logging
+            _logging.getLogger(__name__).debug("pattern_stats apply skipped: %s", _pe)
 
         # ── SL/TP calibration from past trade outcomes ────────────────────────
         # Blends ATR-based stops (from strategy) with the median SL/TP % learned
@@ -432,15 +487,19 @@ def run_signal(
         # the stack pushes marginal trades into a worse-performing bucket.
         # Cap *positive* contribution; negative penalties pass through unclamped
         # so a misaligned stack can still demote a signal below the floor.
+        import datetime as _dt
+        _hour_utc = _dt.datetime.now(_dt.timezone.utc).hour
+        session_boost_val = _session_boost(ticker, _hour_utc)
+
         positive_boosts = sum(
             max(b, 0.0)
             for b in (consensus_boost, bt_adjustment, live_adjustment,
-                      news_boost, pattern_boost)
+                      news_boost, pattern_boost, session_boost_val)
         )
         negative_boosts = sum(
             min(b, 0.0)
             for b in (consensus_boost, bt_adjustment, live_adjustment,
-                      news_boost, pattern_boost)
+                      news_boost, pattern_boost, session_boost_val)
         )
         capped_positive = min(positive_boosts, 0.20)
         final_conf = max(0.0, min(1.0,
@@ -499,12 +558,13 @@ def run_signal(
         # vetoed rows don't poison live-WR calibration with phantom-boosted
         # confidences for trades that never actually fired.
         if daily_trend_vetoed:
-            final_conf       = base_conf
-            consensus_boost  = 0.0
-            bt_adjustment    = 0.0
-            live_adjustment  = 0.0
-            news_boost       = 0.0
-            pattern_boost    = 0.0
+            final_conf        = base_conf
+            consensus_boost   = 0.0
+            bt_adjustment     = 0.0
+            live_adjustment   = 0.0
+            news_boost        = 0.0
+            pattern_boost     = 0.0
+            session_boost_val = 0.0
 
         # ── Isotonic confidence calibration ──────────────────────────────────
         # Maps the blended raw confidence onto an empirically-grounded
@@ -618,6 +678,7 @@ def run_signal(
                 "symbol" if disposition == "PAPER"
                 else ("strategy" if getattr(best, "paper_only", False) else "")
             ),
+            session_boost=round(session_boost_val, 3),
         )
 
     except Exception as exc:

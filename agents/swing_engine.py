@@ -106,6 +106,17 @@ def run_h1_signal(
         # ── Run H1 strategies ────────────────────────────────────────────
         sym_for_params = ticker.replace("=X", "").replace("=F", "").upper()
         from data.strategy_params import apply_params as _apply_adaptive
+
+        # MTF pre-filter: skip H1 strategies whose direction is already vetoed
+        _pre_daily_h1 = (daily_trend or {}).get("trend_direction", "NEUTRAL")
+        _pre_h4_h1    = (h4_trend    or {}).get("trend_direction", "NEUTRAL")
+        _mtf_pre_h1   = (
+            (2 if _pre_daily_h1 == "BULLISH" else -2 if _pre_daily_h1 == "BEARISH" else 0)
+            + (1 if _pre_h4_h1 == "BULLISH" else -1 if _pre_h4_h1 == "BEARISH" else 0)
+        )
+        _pre_veto_long_h1  = _mtf_pre_h1 <= -2
+        _pre_veto_short_h1 = _mtf_pre_h1 >= 2
+
         all_signals: list[IntradaySignal] = []
         for fn in _STRATEGIES_H1:
             try:
@@ -113,6 +124,10 @@ def run_h1_signal(
                 sig = _apply_adaptive(sig, symbol=sym_for_params)
             except Exception as exc:
                 sig = _flat(fn.__name__.upper(), "1h", str(exc))
+            if sig.signal == "LONG" and _pre_veto_long_h1:
+                sig = _flat(sig.strategy, sig.timeframe, "MTF pre-veto: LONG blocked by daily+H4 BEARISH")
+            elif sig.signal == "SHORT" and _pre_veto_short_h1:
+                sig = _flat(sig.strategy, sig.timeframe, "MTF pre-veto: SHORT blocked by daily+H4 BULLISH")
             all_signals.append(sig)
 
         # ── ADX regime routing ───────────────────────────────────────────
@@ -182,12 +197,19 @@ def run_h1_signal(
             dominant = max(long_c, short_c)
             ratio    = dominant / total
             best_dir = active[0].signal
+            _consensus_cap_h1 = 0.08 if dominant >= 3 else 0.05
             if best_dir == "LONG":
                 strategy_agreement = f"{long_c}/{total} LONG"
-                consensus_boost = (ratio - 0.5) * 0.10 if long_c >= short_c else -0.08
+                consensus_boost = (
+                    min(_consensus_cap_h1, (ratio - 0.5) * 0.16)
+                    if long_c >= short_c else -0.08
+                )
             elif best_dir == "SHORT":
                 strategy_agreement = f"{short_c}/{total} SHORT"
-                consensus_boost = (ratio - 0.5) * 0.10 if short_c >= long_c else -0.08
+                consensus_boost = (
+                    min(_consensus_cap_h1, (ratio - 0.5) * 0.16)
+                    if short_c >= long_c else -0.08
+                )
         elif len(active) == 1:
             strategy_agreement = f"1/1 {active[0].signal}"
 
