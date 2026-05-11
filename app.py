@@ -476,6 +476,7 @@ _CURATED = [
     {"label": "XAU/USD", "cands": ["XAUUSD","GOLD","XAU/USD","XAUUSD."],                               "yf": "GC=F"},
     {"label": "XAG/USD", "cands": ["XAGUSD","SILVER","XAG/USD","XAGUSD."],                             "yf": "SI=F"},
     {"label": "US Oil",  "cands": ["XTIUSD","USOIL","WTI","#USOil_M26","#USOil_K26","OIL","XOILUSD","CL"], "yf": "CL=F"},
+    {"label": "Brent",   "cands": ["BRENT","XBRUSD","UKOUSD","UKOil","#UKOil_M26","#UKOil_K26","BRENTOIL"], "yf": "BZ=F"},
     {"label": "Nat Gas", "cands": ["NAT.GAS","#NGas_M26","#NGas_K26","XNGUSD","NGAS","NATGAS","GASUSD","NG","NATURALGAS"], "yf": "NG=F"},
 ]
 

@@ -40,6 +40,7 @@ SYMBOL_MAP: dict[str, str] = {
     "GC=F":     "GOLD",         # Gold ounce vs USD  (broker: GOLD / GOLDgr for gram)
     "SI=F":     "SILVER",       # Silver
     "CL=F":     "OIL",          # WTI crude
+    "BZ=F":     "BRENT",        # Brent crude
     # US Indices — static entry is the first candidate; auto-resolve tries all prefixes
     "ES=F":     "#US500_M26",
     "NQ=F":     "#US100_M26",
@@ -73,6 +74,7 @@ _FUTURES_PREFIXES: dict[str, list[str]] = {
     "GC=F":  ["GOLD",   "XAUUSD", "XAU",  "GOLDm", "GOLD."],
     "SI=F":  ["SILVER", "XAGUSD", "XAG"],
     "CL=F":  ["OIL",    "USOIL",  "WTI",  "XTIUSD"],
+    "BZ=F":  ["BRENT",  "XBRUSD", "UKOUSD", "UKOil", "BRENTOIL"],
 }
 
 # Cache resolved symbols for the lifetime of the process (avoids repeated MT5 queries)
@@ -84,6 +86,7 @@ DEFAULT_LOTS: dict[str, float] = {
     "GOLDgr":  1.0,    # gram gold — much smaller notional
     "SILVER":  0.1,    # SI=F / Silver
     "OIL":     0.1,
+    "BRENT":   0.1,
     "EURUSD":  0.1,
     "GBPUSD":  0.1,
     "USDJPY":  0.1,

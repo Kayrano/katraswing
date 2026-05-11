@@ -62,6 +62,8 @@ DEFAULT_TICKERS = [
     "USDCAD=X", # USD/CAD                   — PAPER (small sample)
     "GBPJPY=X", # GBP/JPY                   — PAPER (small sample)
     "EURJPY=X", # EUR/JPY                   — PAPER (small sample)
+    "CL=F",     # WTI Crude Oil             — PAPER (new, no history)
+    "BZ=F",     # Brent Crude Oil           — PAPER (new, no history)
 ]
 DEFAULT_DISPLAY_NAMES = {
     "YM=F":     "Dow Jones",
@@ -75,6 +77,8 @@ DEFAULT_DISPLAY_NAMES = {
     "USDCAD=X": "USD/CAD",
     "GBPJPY=X": "GBP/JPY",
     "EURJPY=X": "EUR/JPY",
+    "CL=F":     "WTI Oil",
+    "BZ=F":     "Brent Oil",
 }
 DEFAULT_INTERVAL_SEC = 30       # poll every 30 seconds — doubled scan frequency
 DEFAULT_MIN_CONF     = 0.60     # minimum confidence to enter

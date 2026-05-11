@@ -27,6 +27,7 @@ LIVE_SYMBOLS: set[str] = {
 PAPER_SYMBOLS: set[str] = {
     "EURUSD", "GBPUSD", "AUDUSD",      # 17–38% WR — marginal; let MSS/H1 warm up
     "USDCAD", "GBPJPY", "EURJPY",      # tiny samples — don't risk live until evidence
+    "CL", "BZ",                         # Oil (WTI + Brent) — new, no history yet
 }
 
 DROP_SYMBOLS: set[str] = {
