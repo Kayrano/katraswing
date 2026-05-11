@@ -5,6 +5,8 @@
 # - Starts a watcher that polls GitHub every 5 min and auto-updates on new commits
 # =============================================================================
 
+$ErrorActionPreference = "Continue"   # never let a single error kill the loop
+
 $INSTALL_DIR = "C:\katraswing"
 $FINNHUB_KEY = "d7j16r1r01qn2qavovt0d7j16r1r01qn2qavovtg"
 
@@ -83,26 +85,31 @@ while ($true) {
     if ($local -ne $remote) {
         Write-Host ""
         Write-Host "[$checkTime] New commits detected -- updating..." -ForegroundColor Yellow
+        try {
+            Write-Host "  [1/6] Stopping signal server..." -ForegroundColor DarkGray
+            Stop-SignalServer
 
-        # Stop signal server window + python process
-        Stop-SignalServer
+            Write-Host "  [2/6] Stopping Streamlit..." -ForegroundColor DarkGray
+            Stop-Service katraswing-streamlit -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
 
-        # Stop Streamlit
-        Stop-Service katraswing-streamlit -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
+            Write-Host "  [3/6] git pull..." -ForegroundColor DarkGray
+            git pull
 
-        # Pull + install
-        git pull
-        python -m pip install -r requirements.txt -q
+            Write-Host "  [4/6] pip install..." -ForegroundColor DarkGray
+            python -m pip install -r requirements.txt -q
 
-        # Restart Streamlit
-        Start-StreamlitService
+            Write-Host "  [5/6] Starting Streamlit..." -ForegroundColor DarkGray
+            Start-StreamlitService
 
-        # Relaunch signal server (new window, PID saved)
-        Start-SignalServer
+            Write-Host "  [6/6] Starting signal server..." -ForegroundColor DarkGray
+            Start-SignalServer
 
-        $newHash = git rev-parse --short HEAD
-        Write-Host "[$checkTime] Update complete -- now at commit $newHash" -ForegroundColor Green
+            $newHash = git rev-parse --short HEAD
+            Write-Host "[$checkTime] Update complete -- now at commit $newHash" -ForegroundColor Green
+        } catch {
+            Write-Host "[$checkTime] Update ERROR: $_" -ForegroundColor Red
+        }
     } else {
         Write-Host "[$checkTime] Up to date ($($local.Substring(0,7)))" -ForegroundColor DarkGray
     }
