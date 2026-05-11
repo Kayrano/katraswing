@@ -24,23 +24,18 @@ function Start-StreamlitService {
     Start-Sleep -Seconds 2
 }
 
-# Find the python process running mt5_signal_server.py, then kill both it
-# and its parent PowerShell window — no PID file needed.
+# Kill only the python signal server process — the PowerShell window auto-closes
+# when python exits (no -NoExit), so no parent-kill needed (and parent-kill was
+# killing the watcher script itself due to Windows process-tree reporting).
 function Stop-SignalServer {
-    $pythonProcs = Get-WmiObject Win32_Process -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -like "*mt5_signal_server*" }
-    foreach ($p in $pythonProcs) {
-        Stop-Process -Id ([int]$p.ParentProcessId) -Force -ErrorAction SilentlyContinue
-        Stop-Process -Id ([int]$p.ProcessId)       -Force -ErrorAction SilentlyContinue
-    }
-    # Fallback: kill any leftover python processes
     Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 }
 
 function Start-SignalServer {
+    # No -NoExit: window closes automatically when python exits/is killed
     Start-Process powershell -ArgumentList @(
-        "-NoExit", "-Command",
+        "-Command",
         "cd $INSTALL_DIR; python mt5_signal_server.py --interval 30 --risk-pct 1.0 --finnhub-key $FINNHUB_KEY"
     ) -WindowStyle Minimized
 }
