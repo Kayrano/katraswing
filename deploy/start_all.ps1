@@ -34,9 +34,10 @@ function Stop-SignalServer {
 
 function Start-SignalServer {
     # No -NoExit: window closes automatically when python exits/is killed
+    # Tee to a log file so history survives window restarts
     Start-Process powershell -ArgumentList @(
         "-Command",
-        "cd $INSTALL_DIR; python mt5_signal_server.py --interval 30 --risk-pct 1.0 --finnhub-key $FINNHUB_KEY"
+        "cd $INSTALL_DIR; python mt5_signal_server.py --interval 30 --risk-pct 1.0 --finnhub-key $FINNHUB_KEY 2>&1 | Tee-Object -FilePath '$INSTALL_DIR\logs\signal_server.log' -Append"
     ) -WindowStyle Minimized
 }
 
