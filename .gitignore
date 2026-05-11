@@ -18,11 +18,20 @@ env/
 # Streamlit
 .streamlit/secrets.toml
 
-# User data (regenerated at runtime)
+# User data (regenerated/mutated at runtime — never overwrite with git pull)
 data/watchlist.json
 data/alerts.json
 data/alpaca_creds.json
 data/ml_predictor.pkl
+data/strategy_params.json
+data/calibration.json
+data/trade_log.json
+data/pattern_stats.json
+data/assessment_log.json
+data/stop_minimums.json
+data/learning_state.json
+data/reports/
+logs/
 
 # OS
 .DS_Store
