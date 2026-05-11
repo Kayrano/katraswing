@@ -7,33 +7,29 @@
 
 $INSTALL_DIR = "C:\katraswing"
 $FINNHUB_KEY = "d7j16r1r01qn2qavovt0d7j16r1r01qn2qavovtg"
-$PID_FILE    = "$INSTALL_DIR\data\signal_server_win.pid"
 
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Write-OK($msg)   { Write-Host "    OK: $msg" -ForegroundColor Green }
 
-# Kill the signal server window by saved PID, then the python process underneath
+# Find the python process running mt5_signal_server.py, then kill both it
+# and its parent PowerShell window — no PID file needed.
 function Stop-SignalServer {
-    # Kill the PowerShell host window by PID
-    if (Test-Path $PID_FILE) {
-        $winPid = [int](Get-Content $PID_FILE -ErrorAction SilentlyContinue)
-        if ($winPid -gt 0) {
-            Stop-Process -Id $winPid -Force -ErrorAction SilentlyContinue
-        }
-        Remove-Item $PID_FILE -ErrorAction SilentlyContinue
+    $pythonProcs = Get-WmiObject Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -like "*mt5_signal_server*" }
+    foreach ($p in $pythonProcs) {
+        Stop-Process -Id ([int]$p.ParentProcessId) -Force -ErrorAction SilentlyContinue
+        Stop-Process -Id ([int]$p.ProcessId)       -Force -ErrorAction SilentlyContinue
     }
-    # Also kill any remaining python signal server processes
+    # Fallback: kill any leftover python processes
     Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 }
 
-# Launch signal server, save the PowerShell window PID so we can kill it cleanly later
 function Start-SignalServer {
-    $proc = Start-Process powershell -ArgumentList @(
+    Start-Process powershell -ArgumentList @(
         "-NoExit", "-Command",
         "cd $INSTALL_DIR; python mt5_signal_server.py --interval 30 --risk-pct 1.0 --finnhub-key $FINNHUB_KEY"
-    ) -WindowStyle Minimized -PassThru
-    $proc.Id | Set-Content $PID_FILE
+    ) -WindowStyle Minimized
 }
 
 Set-Location $INSTALL_DIR
