@@ -439,7 +439,7 @@ def run_server(args: argparse.Namespace):
                 )
                 key = _signal_key(f"H1:{ticker}", sr.direction, today)
                 if key in sent_signals:
-                    log.info(f"  [dedup] Already entered H1 {sr.direction} {display} today.")
+                    log.info(f"  [dedup] H1 {sr.direction} {display} already recorded today (paper — skipping).")
                     continue
                 # H1 strategies are paper_only at launch — no broker round-trip.
                 if getattr(sr, "paper_only", True):
