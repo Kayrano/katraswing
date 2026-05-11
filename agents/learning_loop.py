@@ -590,7 +590,7 @@ def _atomic_write_text(path: Path, content: str) -> None:
 
 # Prune: disable strategies failing trailing-30d health (per the user's
 # 2026-05-01 decision: changes apply live from day 1).
-_PRUNE_MIN_TRADES = 8    # was 15 — identify bad strategies faster
+_PRUNE_MIN_TRADES = 15   # need enough trades for statistical confidence
 _PRUNE_WR_MAX     = 0.35
 _PRUNE_PF_MAX     = 1.0
 
@@ -640,7 +640,7 @@ def run_weekly(now: datetime) -> Path:
     for row in scoreboard:
         if row["n"] < _PRUNE_MIN_TRADES:
             continue
-        if row["wr"] < _PRUNE_WR_MAX or row["pf"] < _PRUNE_PF_MAX:
+        if row["wr"] < _PRUNE_WR_MAX and row["pf"] < _PRUNE_PF_MAX:
             params = _sp._PARAMS.get(row["strategy"]) or {}
             if params.get("enabled", True):
                 params["enabled"] = False
