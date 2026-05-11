@@ -11,6 +11,17 @@ $FINNHUB_KEY = "d7j16r1r01qn2qavovt0d7j16r1r01qn2qavovtg"
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Write-OK($msg)   { Write-Host "    OK: $msg" -ForegroundColor Green }
 
+# Start-Service fails silently on a Paused service — resume it instead.
+function Start-StreamlitService {
+    $svc = Get-Service katraswing-streamlit -ErrorAction SilentlyContinue
+    if ($svc.Status -eq 'Paused') {
+        Resume-Service katraswing-streamlit -ErrorAction SilentlyContinue
+    } elseif ($svc.Status -ne 'Running') {
+        Start-Service katraswing-streamlit -ErrorAction SilentlyContinue
+    }
+    Start-Sleep -Seconds 2
+}
+
 # Find the python process running mt5_signal_server.py, then kill both it
 # and its parent PowerShell window — no PID file needed.
 function Stop-SignalServer {
@@ -46,8 +57,7 @@ Write-OK "Signal server launched"
 
 # Ensure Streamlit service is running
 Write-Step "Starting Streamlit service"
-Start-Service katraswing-streamlit -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 2
+Start-StreamlitService
 $stl = Get-Service katraswing-streamlit -ErrorAction SilentlyContinue
 Write-Host "  katraswing-streamlit : $($stl.Status)" -ForegroundColor $(if ($stl.Status -eq 'Running') {'Green'} else {'Red'})
 
@@ -86,8 +96,7 @@ while ($true) {
         python -m pip install -r requirements.txt -q
 
         # Restart Streamlit
-        Start-Service katraswing-streamlit -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
+        Start-StreamlitService
 
         # Relaunch signal server (new window, PID saved)
         Start-SignalServer
