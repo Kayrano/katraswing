@@ -118,6 +118,7 @@ def run_h1_signal(
         _pre_veto_short_h1 = _mtf_pre_h1 >= 2
 
         all_signals: list[IntradaySignal] = []
+        _pre_vetoed_any_h1 = False
         for fn in _STRATEGIES_H1:
             try:
                 sig = fn(df)
@@ -126,8 +127,10 @@ def run_h1_signal(
                 sig = _flat(fn.__name__.upper(), "1h", str(exc))
             if sig.signal == "LONG" and _pre_veto_long_h1:
                 sig = _flat(sig.strategy, sig.timeframe, "MTF pre-veto: LONG blocked by daily+H4 BEARISH")
+                _pre_vetoed_any_h1 = True
             elif sig.signal == "SHORT" and _pre_veto_short_h1:
                 sig = _flat(sig.strategy, sig.timeframe, "MTF pre-veto: SHORT blocked by daily+H4 BULLISH")
+                _pre_vetoed_any_h1 = True
             all_signals.append(sig)
 
         # ── ADX regime routing ───────────────────────────────────────────
@@ -239,6 +242,7 @@ def run_h1_signal(
                 daily_trend_direction=(
                     daily_trend.get("trend_direction", "NEUTRAL") if daily_trend else "NEUTRAL"
                 ),
+                daily_trend_vetoed=_pre_vetoed_any_h1,
             )
 
         best      = active[0]

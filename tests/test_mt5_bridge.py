@@ -507,7 +507,7 @@ class TestSendFromSignalResult:
         )
         result = bridge.send_from_signal_result(sr)
         assert result.success is False
-        assert "broker symbol" in result.error.lower()
+        assert "not found in broker" in result.error.lower()
 
     def test_comment_is_sanitized_and_capped(self, mt5_bridge):
         bridge, fake = mt5_bridge

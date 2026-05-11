@@ -121,16 +121,18 @@ class TestCadenceRules:
         state = {"last_daily_at": datetime(2026, 5, 4, 23, 5, tzinfo=timezone.utc)}
         assert learning_loop._is_due("daily", now, state) is False
 
-    def test_weekly_due_only_on_sunday_after_23h(self):
-        # Mon (day=0) 23:00 → not weekly
+    def test_weekly_due_every_night_after_23h(self):
+        # Weekly was accelerated to daily (fires every night, not just Sundays)
+        # Mon 23:05 → due (no prior run)
         mon = datetime(2026, 5, 4, 23, 5, tzinfo=timezone.utc)
-        assert learning_loop._is_due("weekly", mon, {}) is False
-        # Sun (day=6) 23:30 → due
-        sun = datetime(2026, 5, 3, 23, 30, tzinfo=timezone.utc)
-        assert learning_loop._is_due("weekly", sun, {}) is True
+        assert learning_loop._is_due("weekly", mon, {}) is True
+        # Before 23:00 → not due
+        early = datetime(2026, 5, 4, 22, 59, tzinfo=timezone.utc)
+        assert learning_loop._is_due("weekly", early, {}) is False
 
-    def test_weekly_idempotent_same_iso_week(self):
-        sun   = datetime(2026, 5, 3, 23, 30, tzinfo=timezone.utc)   # ISO W18
+    def test_weekly_idempotent_same_day(self):
+        # Already ran today → not due again
+        sun   = datetime(2026, 5, 3, 23, 30, tzinfo=timezone.utc)
         state = {"last_weekly_at": datetime(2026, 5, 3, 23, 5, tzinfo=timezone.utc)}
         assert learning_loop._is_due("weekly", sun, state) is False
 

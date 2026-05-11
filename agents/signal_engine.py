@@ -250,6 +250,7 @@ def run_signal(
         _pre_veto_short = _mtf_pre >= 2
 
         all_signals: list[IntradaySignal] = []
+        _pre_vetoed_any = False
         for fn in _STRATEGIES_5M:
             try:
                 sig = fn(df)
@@ -259,8 +260,10 @@ def run_signal(
             # MTF pre-veto: convert to FLAT if direction is already blocked
             if sig.signal == "LONG" and _pre_veto_long:
                 sig = _flat(sig.strategy, sig.timeframe, "MTF pre-veto: LONG blocked by daily+H4 BEARISH")
+                _pre_vetoed_any = True
             elif sig.signal == "SHORT" and _pre_veto_short:
                 sig = _flat(sig.strategy, sig.timeframe, "MTF pre-veto: SHORT blocked by daily+H4 BULLISH")
+                _pre_vetoed_any = True
             all_signals.append(sig)
 
         # Absorption confluence boost (direction-agnostic order-flow confirmation)
@@ -399,6 +402,7 @@ def run_signal(
                 indicators=indicators, df_5m=df,
                 adx_regime=adx_regime, adx_value=round(adx_val, 1),
                 daily_trend_direction=daily_trend.get("trend_direction", "NEUTRAL") if daily_trend else "NEUTRAL",
+                daily_trend_vetoed=_pre_vetoed_any,
             )
 
         best = active[0]
