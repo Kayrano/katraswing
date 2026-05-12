@@ -1605,6 +1605,135 @@ def flag_breakout_5m(df: pd.DataFrame) -> IntradaySignal:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
+# STRATEGY — Liquidity Sweep (Stop Hunt) Reversal  (5m)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def liq_sweep_5m(df: pd.DataFrame) -> IntradaySignal:
+    """
+    Detects institutional stop-hunt (liquidity sweep) reversals on 5m bars.
+
+    A liquidity sweep happens when price briefly spikes past a recent swing
+    high/low — triggering retail stop losses — then immediately reverses back
+    inside the prior range. The reversal candle is the entry.
+
+    Long:  current bar Low < swing_low AND Close > swing_low
+           AND wick below level >= 0.3×ATR  AND  body closes back >= 0.2×ATR
+    Short: current bar High > swing_high AND Close < swing_high
+           AND wick above level >= 0.3×ATR  AND  body closes back >= 0.2×ATR
+
+    Volume confirmation: RVOL >= 1.2 adds +0.05 confidence.
+    Larger sweep wick = higher base confidence (capped at 0.87).
+
+    SL:  structural stop (just beyond sweep extreme)
+    TP:  2× risk from entry  →  1:2 R:R
+
+    Regime: regime-independent (sweeps occur in both trending and ranging
+    markets). Not added to _MR_STRATEGIES or _TREND_STRATEGIES so no ADX
+    penalty is applied — same treatment as ABSORB.
+    """
+    TF   = "5m"
+    NAME = "LIQ_SWEEP_5M"
+
+    LOOKBACK      = 30   # bars to search for the swing level
+    SWING_MIN_AGE = 5    # swing must be at least this many bars old
+    MIN_WICK_ATR  = 0.3  # minimum sweep wick size relative to ATR
+    MIN_BACK_ATR  = 0.2  # close must be back inside by at least this much
+
+    min_bars = LOOKBACK + SWING_MIN_AGE + 10
+    if len(df) < min_bars:
+        return _flat(NAME, TF, f"Insufficient bars (need {min_bars})")
+
+    atr_s = ta.atr(df["High"], df["Low"], df["Close"], length=10)
+    if atr_s is None or atr_s.dropna().empty:
+        return _flat(NAME, TF, "ATR unavailable")
+    cur_atr = float(atr_s.dropna().iloc[-1])
+    if cur_atr == 0 or np.isnan(cur_atr):
+        return _flat(NAME, TF, "ATR zero or NaN")
+
+    cur_high  = float(df["High"].iloc[-1])
+    cur_low   = float(df["Low"].iloc[-1])
+    cur_close = float(df["Close"].iloc[-1])
+    cur_rvol  = _safe_rvol(df)
+
+    if any(np.isnan(v) for v in [cur_high, cur_low, cur_close]):
+        return _flat(NAME, TF, "NaN in OHLC")
+
+    # Swing reference window: exclude the last SWING_MIN_AGE bars so the
+    # "swing" level is at least a few bars old (not just the previous bar).
+    ref = df.iloc[-(LOOKBACK + SWING_MIN_AGE):-SWING_MIN_AGE]
+    if ref.empty:
+        return _flat(NAME, TF, "Reference window empty")
+
+    swing_high = float(ref["High"].max())
+    swing_low  = float(ref["Low"].min())
+
+    if np.isnan(swing_high) or np.isnan(swing_low):
+        return _flat(NAME, TF, "Swing high/low NaN")
+
+    # ── Bullish sweep: Low pierced below swing_low, Close reversed above ──
+    bull_wick  = swing_low - cur_low          # wick below the level (>=0 = swept)
+    bull_close = cur_close - swing_low        # how far close is back above level
+
+    bullish = (
+        cur_low   < swing_low
+        and cur_close > swing_low
+        and bull_wick  >= MIN_WICK_ATR * cur_atr
+        and bull_close >= MIN_BACK_ATR * cur_atr
+    )
+
+    # ── Bearish sweep: High pierced above swing_high, Close reversed below ──
+    bear_wick  = cur_high - swing_high        # wick above the level
+    bear_close = swing_high - cur_close       # how far close is back below level
+
+    bearish = (
+        cur_high  > swing_high
+        and cur_close < swing_high
+        and bear_wick  >= MIN_WICK_ATR * cur_atr
+        and bear_close >= MIN_BACK_ATR * cur_atr
+    )
+
+    # If both fire (extremely rare spike-through), take the larger sweep
+    if bullish and bearish:
+        bullish = bull_wick >= bear_wick
+        bearish = not bullish
+
+    vol_note = f"RVOL={cur_rvol:.1f}x"
+    vol_bonus = 0.05 if cur_rvol >= 1.2 else 0.0
+
+    if bullish:
+        wick_ratio = bull_wick / cur_atr
+        conf = min(0.72 + wick_ratio * 0.05 + vol_bonus, 0.87)
+        return _make_signal(
+            NAME, TF, "LONG", conf, cur_close, cur_atr,
+            sl_atr_mult=1.0, tp_atr_mult=2.0,
+            reason=(
+                f"Bullish sweep: Low={cur_low:.5g} below swing={swing_low:.5g} "
+                f"| wick={wick_ratio:.2f}xATR | {vol_note}"
+            ),
+            df=df, use_structural=True,
+        )
+
+    if bearish:
+        wick_ratio = bear_wick / cur_atr
+        conf = min(0.72 + wick_ratio * 0.05 + vol_bonus, 0.87)
+        return _make_signal(
+            NAME, TF, "SHORT", conf, cur_close, cur_atr,
+            sl_atr_mult=1.0, tp_atr_mult=2.0,
+            reason=(
+                f"Bearish sweep: High={cur_high:.5g} above swing={swing_high:.5g} "
+                f"| wick={wick_ratio:.2f}xATR | {vol_note}"
+            ),
+            df=df, use_structural=True,
+        )
+
+    return _flat(
+        NAME, TF,
+        f"No sweep: swing_high={swing_high:.5g} swing_low={swing_low:.5g} "
+        f"| bar H={cur_high:.5g} L={cur_low:.5g} C={cur_close:.5g}",
+    )
+
+
+# ════════════════════════════════════════════════════════════════════════════════
 # ORCHESTRATOR — run_intraday_signals
 # ════════════════════════════════════════════════════════════════════════════════
 
@@ -1613,7 +1742,8 @@ _STRATEGIES_5M  = [vwap_rsi_5m, orb_5m, trend_momentum_5m,
                    bb_scalp_5m, stoch_cross_5m, ema_micro_cross_5m,
                    mss_forex_15m,
                    double_bottom_breakout_5m, head_shoulders_breakdown_5m,
-                   flag_breakout_5m]
+                   flag_breakout_5m,
+                   liq_sweep_5m]
 _STRATEGIES_15M = [ema_pullback_15m, squeeze_15m, absorption_15m]
 
 _STRATEGY_NAME_MAP: dict[str, str] = {

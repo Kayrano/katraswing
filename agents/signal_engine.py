@@ -101,7 +101,7 @@ _MR_STRATEGIES = {
 _TREND_STRATEGIES = {"ORB_5M", "TREND_MOM_5M", "EMA_PB_15M", "SQUEEZE_15M",
                      "NR7_BREAKOUT_5M", "MSS_FOREX_15M", "EMA_MICRO_CROSS_5M",
                      "FLAG_BREAKOUT_5M"}
-# ABSORB is order-flow based — regime-independent, never penalised
+# ABSORB and LIQ_SWEEP are order-flow / manipulation based — regime-independent, never penalised
 
 # Minimum final confidence to issue a signal.
 # Raised 0.60 → 0.70 after analysing 74 closed trades: the [0.60, 0.70) bucket
