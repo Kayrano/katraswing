@@ -167,6 +167,138 @@ def _format_signal(sr) -> str:
     )
 
 
+# ── Position manager: breakeven stops + partial exits ────────────────────────
+# State keyed by MT5 ticket. Persists across poll cycles; stale entries are
+# pruned when the position closes. Resets on server restart — state is
+# recovered from the position's current SL vs open_price on first observation.
+
+_pos_state: dict[int, dict] = {}
+# {ticket: {"original_1r": float, "be_done": bool, "partial_done": bool}}
+
+
+def _pos_init(pos) -> dict:
+    """Return (and lazily create) management state for `pos`."""
+    if pos.ticket not in _pos_state:
+        # Derive original 1R from the TP (TP = entry + 2R, set at order time,
+        # never modified). Fallback to current SL if TP is zero/missing.
+        if pos.tp != 0 and pos.open_price != 0:
+            original_1r = abs(pos.tp - pos.open_price) / 2.0
+        elif pos.sl != 0 and pos.open_price != 0:
+            original_1r = abs(pos.open_price - pos.sl)
+        else:
+            original_1r = 0.0
+
+        # Recovery after server restart: if SL is already at or beyond entry
+        # the BE+partial cycle was completed in a previous run.
+        if original_1r > 0:
+            already = (
+                (pos.direction == "LONG"  and pos.sl >= pos.open_price - original_1r * 0.02)
+                or (pos.direction == "SHORT" and pos.sl <= pos.open_price + original_1r * 0.02)
+            )
+        else:
+            already = False
+
+        _pos_state[pos.ticket] = {
+            "original_1r":  original_1r,
+            "be_done":      already,
+            "partial_done": already,
+        }
+    return _pos_state[pos.ticket]
+
+
+def _manage_positions(log, dry_run: bool = False) -> None:
+    """
+    Called once per poll cycle before signal scanning.
+
+    For each open position:
+      1. Partial exit  — when profit >= 1R, close 50% of the position.
+      2. Breakeven SL  — when profit >= 1R, move stop-loss to entry price.
+
+    Both actions fire together at 1R and are each executed at most once per
+    position (tracked in _pos_state).  The remaining 50% rides to the
+    original 2R take-profit untouched.
+    """
+    if dry_run:
+        return
+
+    try:
+        from utils.mt5_bridge import (
+            get_open_positions, modify_position, partial_close_position,
+            is_connected,
+        )
+    except ImportError:
+        return
+
+    if not is_connected():
+        return
+
+    positions = get_open_positions()
+    open_tickets = set()
+
+    for pos in positions:
+        open_tickets.add(pos.ticket)
+        if pos.open_price == 0 or pos.tp == 0:
+            continue
+
+        state = _pos_init(pos)
+        one_r = state["original_1r"]
+        if one_r <= 0:
+            continue
+
+        # Current profit in price distance
+        profit_pts = (
+            pos.price_current - pos.open_price
+            if pos.direction == "LONG"
+            else pos.open_price - pos.price_current
+        )
+
+        if profit_pts < one_r:
+            continue   # not at 1R yet
+
+        sym = pos.symbol
+
+        # ── 1. Partial close (50%) ──────────────────────────────────────────
+        if not state["partial_done"]:
+            sym_info = None
+            try:
+                import MetaTrader5 as _mt5
+                sym_info = _mt5.symbol_info(sym)
+            except Exception:
+                pass
+            vol_step = float(getattr(sym_info, "volume_step", 0.01) or 0.01)
+            half     = max(vol_step, round(int(pos.volume / 2 / vol_step) * vol_step, 8))
+            if half < pos.volume:
+                ok = partial_close_position(pos.ticket, half)
+                if ok:
+                    state["partial_done"] = True
+                    log.info(
+                        f"  [PARTIAL] #{pos.ticket} {sym}: "
+                        f"closed {half:.2f} lots at +{profit_pts:.5g} "
+                        f"(1R={one_r:.5g}). Remaining {pos.volume - half:.2f} lots -> 2R."
+                    )
+                else:
+                    log.warning(f"  [PARTIAL] #{pos.ticket} {sym}: partial close failed")
+            else:
+                state["partial_done"] = True  # lot too small to split — skip
+
+        # ── 2. Breakeven stop ───────────────────────────────────────────────
+        if not state["be_done"]:
+            ok = modify_position(pos.ticket, new_sl=pos.open_price)
+            if ok:
+                state["be_done"] = True
+                log.info(
+                    f"  [BE] #{pos.ticket} {sym}: "
+                    f"SL moved to entry {pos.open_price:.5g} "
+                    f"(profit={profit_pts:.5g} >= 1R={one_r:.5g})"
+                )
+            else:
+                log.warning(f"  [BE] #{pos.ticket} {sym}: SL modify failed")
+
+    # Prune closed positions from state
+    for stale in [t for t in _pos_state if t not in open_tickets]:
+        del _pos_state[stale]
+
+
 def run_server(args: argparse.Namespace):
     _banner()
 
@@ -292,6 +424,9 @@ def run_server(args: argparse.Namespace):
                 open_symbols = {p.symbol for p in get_open_positions()}
             else:
                 open_symbols = set()
+
+            # ── Phase 0: manage open positions (breakeven + partial exits) ──
+            _manage_positions(log, dry_run=args.dry_run)
 
             # ── Phase 1: fetch signals in parallel ───────────────────────
             # Each run_signal is network-bound (yfinance/Finnhub) and
