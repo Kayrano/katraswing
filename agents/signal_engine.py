@@ -246,8 +246,12 @@ def run_signal(
             (2 if _pre_daily == "BULLISH" else -2 if _pre_daily == "BEARISH" else 0)
             + (1 if _pre_h4 == "BULLISH" else -1 if _pre_h4 == "BEARISH" else 0)
         )
-        _pre_veto_long  = _mtf_pre <= -2
-        _pre_veto_short = _mtf_pre >= 2
+        # Only pre-veto when BOTH daily AND H4 fully oppose (score ±3).
+        # Score -2 (daily BEARISH alone) is ambiguous — H4 could still be
+        # BULLISH, and we want to show the signal confidence in the log so
+        # marginal cases remain visible. The end-of-pipeline MTF gate handles -2.
+        _pre_veto_long  = _mtf_pre <= -3
+        _pre_veto_short = _mtf_pre >= 3
 
         all_signals: list[IntradaySignal] = []
         _pre_vetoed_any = False

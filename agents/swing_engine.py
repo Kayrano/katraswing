@@ -114,8 +114,8 @@ def run_h1_signal(
             (2 if _pre_daily_h1 == "BULLISH" else -2 if _pre_daily_h1 == "BEARISH" else 0)
             + (1 if _pre_h4_h1 == "BULLISH" else -1 if _pre_h4_h1 == "BEARISH" else 0)
         )
-        _pre_veto_long_h1  = _mtf_pre_h1 <= -2
-        _pre_veto_short_h1 = _mtf_pre_h1 >= 2
+        _pre_veto_long_h1  = _mtf_pre_h1 <= -3
+        _pre_veto_short_h1 = _mtf_pre_h1 >= 3
 
         all_signals: list[IntradaySignal] = []
         _pre_vetoed_any_h1 = False
