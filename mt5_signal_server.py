@@ -392,8 +392,10 @@ def run_server(args: argparse.Namespace):
     else:
         log.info("Telegram notifications: disabled (no token/chat-id)")
 
-    # Dedup set: track which (ticker, direction, session_date) have open positions
-    sent_signals: set[str] = set()
+    # Dedup sets: live orders vs paper-only signals tracked separately so the
+    # log message accurately says "already recorded (paper)" vs "already entered"
+    sent_signals: set[str] = set()   # live orders placed
+    paper_signals: set[str] = set()  # paper signals logged (no MT5 order)
 
     def _scan_with_cache(ticker: str):
         """Fetch run_signal for one ticker, reusing the cached result if we
@@ -450,9 +452,11 @@ def run_server(args: argparse.Namespace):
             except Exception as exc:
                 log.error("learning_loop tick failed: %s", exc)
 
-            # Clear stale sent signals from prior sessions
+            # Clear stale signals from prior sessions
             stale = {k for k in sent_signals if not k.endswith(str(today))}
             sent_signals -= stale
+            stale = {k for k in paper_signals if not k.endswith(str(today))}
+            paper_signals -= stale
 
             # Reconcile with MT5 open positions to avoid dedup drift
             if not args.dry_run and is_connected():
@@ -515,7 +519,8 @@ def run_server(args: argparse.Namespace):
                     continue
 
                 if sr.direction not in ("LONG", "SHORT"):
-                    log.info(f"{display}: NO TRADE (conf={sr.confidence:.1%})")
+                    veto = " [MTF vetoed]" if getattr(sr, "daily_trend_vetoed", False) else ""
+                    log.info(f"{display}: NO TRADE (conf={sr.confidence:.1%}){veto}")
                     continue
 
                 if sr.confidence < args.min_confidence:
@@ -534,21 +539,23 @@ def run_server(args: argparse.Namespace):
                 )
                 log.info(_format_signal(sr))
 
-                # Dedup check
+                # Dedup check — distinguish paper logs from live orders
                 key = _signal_key(ticker, sr.direction, today)
-                if key in sent_signals:
-                    log.info(f"  [dedup] Already entered {sr.direction} {display} today. Skipping.")
+                is_paper = getattr(sr, "paper_only", False)
+                if key in (paper_signals if is_paper else sent_signals):
+                    tag = "paper -- skipping" if is_paper else "live order placed -- skipping"
+                    log.info(f"  [dedup] {sr.direction} {display} already recorded today ({tag}).")
                     continue
 
                 # Paper-mode strategies/symbols: signal still passes calibration
                 # but the broker round-trip is skipped. trade_log records a
                 # paper row so the weekly auto-promotion harness can mature it.
-                if getattr(sr, "paper_only", False):
-                    log.info(f"  [paper] {sr.paper_reason or 'strategy'} — order not sent")
+                if is_paper:
+                    log.info(f"  [paper] {sr.paper_reason or 'strategy'} -- order not sent")
                     tg.signal(display, sr.direction, sr.confidence, sr.entry, sr.sl, sr.tp,
                               sr.chart_signals[0].strategy if sr.chart_signals else "?",
                               paper=True)
-                    sent_signals.add(key)
+                    paper_signals.add(key)
                     continue
 
                 if args.dry_run:
