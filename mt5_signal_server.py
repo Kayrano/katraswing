@@ -385,6 +385,7 @@ def run_server(args: argparse.Namespace):
 
     # Telegram notifier (no-op when token/chat_id not provided)
     from utils.telegram_notify import Notifier as _Notifier
+    from utils.correlation_filter import is_correlated_duplicate as _corr_check
     tg = _Notifier(token=args.telegram_token, chat_id=args.telegram_chat_id)
     if tg.enabled():
         log.info("Telegram notifications: ENABLED")
@@ -458,11 +459,14 @@ def run_server(args: argparse.Namespace):
             stale = {k for k in paper_signals if not k.endswith(str(today))}
             paper_signals -= stale
 
-            # Reconcile with MT5 open positions to avoid dedup drift
+            # Fetch open positions once per cycle — used for dedup, correlation
+            # filter, and position display. Avoids repeated MT5 round-trips.
             if not args.dry_run and is_connected():
-                open_symbols = {p.symbol for p in get_open_positions()}
+                current_positions = get_open_positions()
+                open_symbols      = {p.symbol for p in current_positions}
             else:
-                open_symbols = set()
+                current_positions = []
+                open_symbols      = set()
 
             # ── Phase 0: manage open positions (breakeven + partial exits) ──
             _manage_positions(
@@ -546,6 +550,17 @@ def run_server(args: argparse.Namespace):
                     tag = "paper -- skipping" if is_paper else "live order placed -- skipping"
                     log.info(f"  [dedup] {sr.direction} {display} already recorded today ({tag}).")
                     continue
+
+                # Correlation filter: block if a correlated instrument is already
+                # open in the same direction (redundant exposure, same thesis).
+                # Paper signals are exempt — they don't use real capital.
+                if not is_paper and not args.dry_run:
+                    corr_blocked, corr_reason = _corr_check(
+                        ticker, sr.direction, current_positions
+                    )
+                    if corr_blocked:
+                        log.info(f"  [corr] {corr_reason}")
+                        continue
 
                 # Paper-mode strategies/symbols: signal still passes calibration
                 # but the broker round-trip is skipped. trade_log records a
