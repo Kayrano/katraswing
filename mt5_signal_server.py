@@ -619,6 +619,23 @@ def run_server(args: argparse.Namespace):
                     log.info(f"  [dedup] {sr.direction} {display} already recorded today ({tag}).")
                     continue
 
+                # Open-position guard: never open a second position on a symbol
+                # that already has one open (same or opposite direction).
+                # Hedging (LONG + SHORT on the same symbol) wastes margin with
+                # zero net exposure; opposite signals usually mean the thesis
+                # changed, not that a hedge is wanted.
+                if not is_paper and not args.dry_run:
+                    mt5_sym = getattr(sr, "mt5_symbol", "") or ""
+                    if not mt5_sym:
+                        from utils.mt5_bridge import resolve_mt5_symbol as _resolve
+                        mt5_sym = _resolve(ticker)
+                    if mt5_sym and mt5_sym in open_symbols:
+                        log.info(
+                            f"  [open-pos] {display} skipped -- "
+                            f"{mt5_sym} already has an open position"
+                        )
+                        continue
+
                 # Correlation filter: block if a correlated instrument is already
                 # open in the same direction (redundant exposure, same thesis).
                 # Paper signals are exempt — they don't use real capital.
