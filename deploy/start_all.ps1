@@ -1,61 +1,61 @@
 # =============================================================================
 # Katraswing -- Start signal server + GitHub auto-update watcher
 # Run this once in the interactive session (same session as MT5).
-# - Launches the signal server in a minimized window
+# - Manages the signal server as a Windows Service (katraswing-server) so it
+#   survives RDP disconnects without stopping
 # - Starts a watcher that polls GitHub every 5 min and auto-updates on new commits
+#
+# First-time service setup (run once as Administrator):
+#   See deploy\install_service.ps1
 # =============================================================================
 
 $ErrorActionPreference = "Continue"   # never let a single error kill the loop
 
 $INSTALL_DIR  = "C:\katraswing"
-$FINNHUB_KEY  = "d7j16r1r01qn2qavovt0d7j16r1r01qn2qavovtg"
 
 # ── Local config (gitignored) ─────────────────────────────────────────────────
 # Create deploy\local_config.ps1 on the VPS with your secrets:
 #
-#   $GITHUB_PAT       = "ghp_your_token_here"
-#   $TELEGRAM_TOKEN   = "123456:ABCdef..."
-#   $TELEGRAM_CHAT_ID = "987654321"
+#   $GITHUB_PAT = "ghp_your_token_here"
 #
-# This file is never committed. start_all.ps1 stays clean.
-$GITHUB_PAT       = ""
-$TELEGRAM_TOKEN   = ""
-$TELEGRAM_CHAT_ID = ""
-$GITHUB_USER      = "Kayrano"
-$GITHUB_REPO      = "katraswing"
-$_localCfg        = Join-Path $INSTALL_DIR "deploy\local_config.ps1"
+# Telegram/Finnhub keys are baked into the katraswing-server service config
+# at install time (deploy\install_service.ps1) and are not needed here.
+$GITHUB_PAT  = ""
+$GITHUB_USER = "Kayrano"
+$GITHUB_REPO = "katraswing"
+$_localCfg   = Join-Path $INSTALL_DIR "deploy\local_config.ps1"
 if (Test-Path $_localCfg) { . $_localCfg }
 
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Write-OK($msg)   { Write-Host "    OK: $msg" -ForegroundColor Green }
 
 # Start-Service fails silently on a Paused service — resume it instead.
-function Start-StreamlitService {
-    $svc = Get-Service katraswing-streamlit -ErrorAction SilentlyContinue
+function Start-NssmService($name) {
+    $svc = Get-Service $name -ErrorAction SilentlyContinue
+    if ($null -eq $svc) {
+        Write-Host "  WARNING: service '$name' not found -- run deploy\install_service.ps1 first" -ForegroundColor Yellow
+        return
+    }
     if ($svc.Status -eq 'Paused') {
-        Resume-Service katraswing-streamlit -ErrorAction SilentlyContinue
+        Resume-Service $name -ErrorAction SilentlyContinue
     } elseif ($svc.Status -ne 'Running') {
-        Start-Service katraswing-streamlit -ErrorAction SilentlyContinue
+        Start-Service $name -ErrorAction SilentlyContinue
     }
     Start-Sleep -Seconds 2
 }
 
-# Kill only the python signal server process — the PowerShell window auto-closes
-# when python exits (no -NoExit), so no parent-kill needed (and parent-kill was
-# killing the watcher script itself due to Windows process-tree reporting).
-function Stop-SignalServer {
-    Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
+function Stop-NssmService($name) {
+    $svc = Get-Service $name -ErrorAction SilentlyContinue
+    if ($svc -and $svc.Status -eq 'Running') {
+        Stop-Service $name -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 3
+    }
 }
 
-function Start-SignalServer {
-    # No -NoExit: window closes automatically when python exits/is killed
-    # Tee to a log file so history survives window restarts
-    Start-Process powershell -ArgumentList @(
-        "-Command",
-        "`$env:PYTHONIOENCODING='utf-8'; cd $INSTALL_DIR; python mt5_signal_server.py --interval 30 --risk-pct 1.0 --finnhub-key $FINNHUB_KEY --telegram-token $TELEGRAM_TOKEN --telegram-chat-id $TELEGRAM_CHAT_ID 2>&1 | Tee-Object -FilePath '$INSTALL_DIR\logs\signal_server.log' -Append"
-    ) -WindowStyle Minimized
-}
+function Start-StreamlitService { Start-NssmService "katraswing-streamlit" }
+function Stop-StreamlitService  { Stop-NssmService  "katraswing-streamlit" }
+function Start-SignalServer     { Start-NssmService "katraswing-server"    }
+function Stop-SignalServer      { Stop-NssmService  "katraswing-server"    }
 
 Set-Location $INSTALL_DIR
 
@@ -118,7 +118,7 @@ while ($true) {
             Stop-SignalServer
 
             Write-Host "  [2/6] Stopping Streamlit..." -ForegroundColor DarkGray
-            Stop-Service katraswing-streamlit -ErrorAction SilentlyContinue
+            Stop-StreamlitService
             Start-Sleep -Seconds 2
 
             Write-Host "  [3/6] git pull (auto-resolving local data files)..." -ForegroundColor DarkGray
