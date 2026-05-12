@@ -11,12 +11,14 @@ $INSTALL_DIR  = "C:\katraswing"
 $FINNHUB_KEY  = "d7j16r1r01qn2qavovt0d7j16r1r01qn2qavovtg"
 
 # ── GitHub authentication ─────────────────────────────────────────────────────
-# Generate a PAT at https://github.com/settings/tokens (no-expiry, repo scope).
-# Paste it here once — the watcher embeds it in the remote URL so git never
-# prompts for credentials and HTTPS tokens never expire.
-$GITHUB_PAT   = ""   # <-- FILL IN YOUR GITHUB PAT HERE
+# Put your PAT in deploy\local_config.ps1 (gitignored, never committed):
+#   $GITHUB_PAT = "ghp_your_token_here"
+# That file is loaded below if it exists — start_all.ps1 stays clean.
+$GITHUB_PAT   = ""
 $GITHUB_USER  = "Kayrano"
 $GITHUB_REPO  = "katraswing"
+$_localCfg    = Join-Path $INSTALL_DIR "deploy\local_config.ps1"
+if (Test-Path $_localCfg) { . $_localCfg }
 
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Write-OK($msg)   { Write-Host "    OK: $msg" -ForegroundColor Green }
@@ -114,8 +116,9 @@ while ($true) {
             Start-Sleep -Seconds 2
 
             Write-Host "  [3/6] git pull (auto-resolving local data files)..." -ForegroundColor DarkGray
-            # Discard local changes to auto-generated runtime files that can conflict
+            # Discard local changes to files that conflict — PAT lives in deploy\local_config.ps1 (gitignored)
             git checkout -- data/strategy_params.json 2>&1 | Out-Null
+            git checkout -- deploy/start_all.ps1 2>&1 | Out-Null
             $pullOut = git pull 2>&1
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "[$checkTime] git pull FAILED -- aborting update cycle." -ForegroundColor Red

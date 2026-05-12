@@ -33,6 +33,9 @@ data/learning_state.json
 data/reports/
 logs/
 
+# Local VPS overrides (never commit — contains PAT)
+deploy/local_config.ps1
+
 # OS
 .DS_Store
 Thumbs.db
