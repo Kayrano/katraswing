@@ -427,6 +427,60 @@ def run_server(args: argparse.Namespace):
 
     _daily_summary_sent: set[str] = set()  # dates for which summary was sent
 
+    _HEARTBEAT_INTERVAL = 15 * 60  # seconds
+    _last_heartbeat: float = 0.0
+    _hb_signals: list[str] = []    # signal lines accumulated since last heartbeat
+
+    def _maybe_send_heartbeat(positions: list) -> None:
+        nonlocal _last_heartbeat, _hb_signals
+        now = time.time()
+        if now - _last_heartbeat < _HEARTBEAT_INTERVAL:
+            return
+        _last_heartbeat = now
+
+        from datetime import timezone as _tz
+        ts = datetime.now(_tz.utc).strftime("%H:%M UTC")
+
+        lines = [f"<b>Heartbeat {ts}</b>"]
+
+        # Account equity
+        try:
+            from utils.mt5_bridge import get_account_info as _acct
+            ai = _acct()
+            if ai:
+                lines.append(
+                    f"Equity: <b>{ai.get('equity', '?'):.2f} {ai.get('currency','')}</b>"
+                    f"  |  Balance: {ai.get('balance','?'):.2f}"
+                )
+        except Exception:
+            pass
+
+        # Open positions
+        if positions:
+            lines.append(f"\nOpen positions ({len(positions)}):")
+            total_pnl = 0.0
+            for p in positions:
+                arrow = "^" if p.direction == "LONG" else "v"
+                sym = DEFAULT_DISPLAY_NAMES.get(p.symbol, p.symbol)
+                lines.append(f"  {sym} {arrow} #{p.ticket}  P&L: {p.profit:+.2f}")
+                total_pnl += float(p.profit)
+            lines.append(f"  Running P&L: <b>{total_pnl:+.2f}</b>")
+        else:
+            lines.append("\nNo open positions")
+
+        # Recent signals since last heartbeat
+        if _hb_signals:
+            lines.append(f"\nSignals last 15 min ({len(_hb_signals)}):")
+            for s in _hb_signals[-8:]:   # cap at 8 lines
+                lines.append(f"  {s}")
+        else:
+            lines.append("\nNo new signals last 15 min")
+
+        _hb_signals = []
+
+        if tg:
+            tg._send("\n".join(lines))
+
     def _maybe_send_daily_summary() -> None:
         """Send a daily P&L Telegram summary once per day after 22:00 UTC."""
         import json as _json
@@ -636,6 +690,10 @@ def run_server(args: argparse.Namespace):
                     f"* SIGNAL: {display} {sr.direction} | "
                     f"conf={sr.confidence:.1%} | {pattern_str}"
                 )
+                _hb_signals.append(
+                    f"{display} {sr.direction} {sr.confidence:.0%}"
+                    + (" [paper]" if getattr(sr, "paper_only", False) else "")
+                )
                 log.info(_format_signal(sr))
 
                 # Dedup check — distinguish paper logs from live orders
@@ -771,6 +829,7 @@ def run_server(args: argparse.Namespace):
                     f"* H1 SIGNAL: {display} {sr.direction} | "
                     f"conf={sr.confidence:.1%} | strategy={sr.chart_signals[0].strategy if sr.chart_signals else '?'}"
                 )
+                _hb_signals.append(f"[H1] {display} {sr.direction} {sr.confidence:.0%}")
                 key = _signal_key(f"H1:{ticker}", sr.direction, today)
                 if key in sent_signals:
                     log.info(f"  [dedup] H1 {sr.direction} {display} already recorded today (paper -- skipping).")
@@ -805,6 +864,12 @@ def run_server(args: argparse.Namespace):
                             f"  #{p.ticket} {p.direction} {p.symbol} "
                             f"vol={p.volume} profit={p.profit:+.2f}"
                         )
+
+            # ── Heartbeat ────────────────────────────────────────────────
+            try:
+                _maybe_send_heartbeat(current_positions)
+            except Exception as _exc:
+                log.warning("heartbeat failed: %s", _exc)
 
             elapsed = time.time() - poll_start
             if metrics is not None:
