@@ -1733,6 +1733,87 @@ def liq_sweep_5m(df: pd.DataFrame) -> IntradaySignal:
     )
 
 
+# ── Liquidity sweep confluence helper ────────────────────────────────────────
+
+def recent_liq_sweep(
+    df: pd.DataFrame,
+    lookback: int = 5,
+    min_wick_atr: float = 0.3,
+    min_back_atr: float = 0.2,
+) -> tuple[str, float] | None:
+    """Check whether a liquidity sweep occurred in the last `lookback` bars.
+
+    Scans bars [-lookback .. -1] (not the current live bar) against the swing
+    high/low from the 30 bars preceding that window.  Returns
+    ``('LONG', wick_ratio)`` for a bullish sweep, ``('SHORT', wick_ratio)``
+    for a bearish sweep, or ``None`` if no qualifying sweep was found.
+
+    Used as a confluence multiplier: when another strategy fires in the same
+    direction as a recent sweep, confidence is boosted because institutions
+    just cleared stops before the move.
+    """
+    SWING_LOOKBACK = 30
+
+    needed = lookback + SWING_LOOKBACK + 10
+    if len(df) < needed:
+        return None
+
+    atr_s = ta.atr(df["High"], df["Low"], df["Close"], length=10)
+    if atr_s is None or atr_s.dropna().empty:
+        return None
+    cur_atr = float(atr_s.dropna().iloc[-1])
+    if cur_atr <= 0 or np.isnan(cur_atr):
+        return None
+
+    # Swing reference: 30 bars before the scan window
+    ref_end   = -(lookback + 1)
+    ref_start = ref_end - SWING_LOOKBACK
+    ref = df.iloc[ref_start:ref_end] if ref_end != 0 else df.iloc[ref_start:]
+    if ref.empty:
+        return None
+
+    swing_high = float(ref["High"].max())
+    swing_low  = float(ref["Low"].min())
+    if np.isnan(swing_high) or np.isnan(swing_low):
+        return None
+
+    # Scan the recent bars (newest first so we return the freshest sweep)
+    scan = df.iloc[-lookback:-1] if lookback > 1 else df.iloc[-2:-1]
+    best_bull: tuple[int, float] | None = None  # (row_idx, wick_ratio)
+    best_bear: tuple[int, float] | None = None
+
+    for i in range(len(scan) - 1, -1, -1):
+        row = scan.iloc[i]
+        lo, hi, cl = float(row["Low"]), float(row["High"]), float(row["Close"])
+
+        bull_wick  = swing_low - lo
+        bull_close = cl - swing_low
+        if (lo < swing_low
+                and cl > swing_low
+                and bull_wick  >= min_wick_atr * cur_atr
+                and bull_close >= min_back_atr * cur_atr):
+            if best_bull is None or bull_wick > best_bull[1]:
+                best_bull = (i, bull_wick / cur_atr)
+
+        bear_wick  = hi - swing_high
+        bear_close = swing_high - cl
+        if (hi > swing_high
+                and cl < swing_high
+                and bear_wick  >= min_wick_atr * cur_atr
+                and bear_close >= min_back_atr * cur_atr):
+            if best_bear is None or bear_wick > best_bear[1]:
+                best_bear = (i, bear_wick / cur_atr)
+
+    # Return the more recent sweep; if same bar, larger wick wins
+    if best_bull and best_bear:
+        return ("LONG", best_bull[1]) if best_bull[0] >= best_bear[0] else ("SHORT", best_bear[1])
+    if best_bull:
+        return ("LONG", best_bull[1])
+    if best_bear:
+        return ("SHORT", best_bear[1])
+    return None
+
+
 # ════════════════════════════════════════════════════════════════════════════════
 # ORCHESTRATOR — run_intraday_signals
 # ════════════════════════════════════════════════════════════════════════════════

@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from agents.intraday_strategies import (
-    IntradaySignal, _STRATEGIES_5M, _flat,
+    IntradaySignal, _STRATEGIES_5M, _flat, recent_liq_sweep,
 )
 from agents.pattern_detector import PatternReport, detect_patterns
 from agents.analyzer import AnalyzerAgent
@@ -281,6 +281,23 @@ def run_signal(
                     if sig.signal in ("LONG", "SHORT"):
                         sig.confidence = min(1.0, sig.confidence + 0.05)
                         sig.reason += " [+absorption]"
+        except Exception:
+            pass
+
+        # Liquidity sweep confluence boost (direction-specific)
+        # When institutions swept stops within the last 5 bars, any strategy
+        # that agrees with the reversal direction gets a +0.06 boost — the sweep
+        # is strong evidence that the smart-money move has already started.
+        # Kept below the +0.08 consensus cap so it doesn't single-handedly
+        # push marginal signals over the floor.
+        try:
+            sweep_result = recent_liq_sweep(df, lookback=5)
+            if sweep_result is not None:
+                sweep_dir, sweep_wick = sweep_result
+                for sig in all_signals:
+                    if sig.signal == sweep_dir:
+                        sig.confidence = min(1.0, sig.confidence + 0.06)
+                        sig.reason += f" [+sweep:{sweep_dir} {sweep_wick:.1f}xATR]"
         except Exception:
             pass
 
