@@ -144,6 +144,10 @@ def _parse_args() -> argparse.Namespace:
                    help="Emergency: close all Katraswing positions and exit")
     p.add_argument("--health-port",     type=int,   default=9100,
                    help="Port for /healthz and /metrics HTTP endpoints (0 to disable, default 9100)")
+    p.add_argument("--telegram-token",   type=str,  default="",
+                   help="Telegram bot token (from @BotFather)")
+    p.add_argument("--telegram-chat-id", type=str,  default="",
+                   help="Telegram chat ID to send notifications to")
     return p.parse_args()
 
 
@@ -174,6 +178,9 @@ def _format_signal(sr) -> str:
 
 _pos_state: dict[int, dict] = {}
 # {ticket: {"original_1r": float, "be_done": bool, "partial_done": bool}}
+
+_prev_positions: dict[int, object] = {}
+# {ticket: MT5Position} — snapshot from last poll, used to detect closed positions
 
 
 def _pos_init(pos) -> dict:
@@ -206,7 +213,7 @@ def _pos_init(pos) -> dict:
     return _pos_state[pos.ticket]
 
 
-def _manage_positions(log, dry_run: bool = False) -> None:
+def _manage_positions(log, dry_run: bool = False, tg=None, display_names: dict | None = None) -> None:
     """
     Called once per poll cycle before signal scanning.
 
@@ -214,10 +221,11 @@ def _manage_positions(log, dry_run: bool = False) -> None:
       1. Partial exit  — when profit >= 1R, close 50% of the position.
       2. Breakeven SL  — when profit >= 1R, move stop-loss to entry price.
 
-    Both actions fire together at 1R and are each executed at most once per
-    position (tracked in _pos_state).  The remaining 50% rides to the
-    original 2R take-profit untouched.
+    Also detects positions that closed since the last poll and fires a
+    Telegram notification with the realised P&L.
     """
+    global _prev_positions
+
     if dry_run:
         return
 
@@ -232,11 +240,25 @@ def _manage_positions(log, dry_run: bool = False) -> None:
     if not is_connected():
         return
 
-    positions = get_open_positions()
-    open_tickets = set()
+    positions   = get_open_positions()
+    open_tickets = {p.ticket: p for p in positions}
+    _dn          = display_names or {}
 
+    # ── Detect closed positions ──────────────────────────────────────────────
+    for ticket, prev in _prev_positions.items():
+        if ticket not in open_tickets:
+            sym     = getattr(prev, "symbol", "")
+            display = _dn.get(sym, sym)
+            profit  = float(getattr(prev, "profit", 0.0))
+            dirn    = getattr(prev, "direction", "")
+            log.info(f"  [CLOSED] #{ticket} {sym} {dirn} | P&L={profit:+.2f}")
+            if tg:
+                tg.position_closed(ticket, display, dirn, profit)
+
+    _prev_positions = dict(open_tickets)
+
+    # ── Breakeven + partial exit ─────────────────────────────────────────────
     for pos in positions:
-        open_tickets.add(pos.ticket)
         if pos.open_price == 0 or pos.tp == 0:
             continue
 
@@ -245,7 +267,6 @@ def _manage_positions(log, dry_run: bool = False) -> None:
         if one_r <= 0:
             continue
 
-        # Current profit in price distance
         profit_pts = (
             pos.price_current - pos.open_price
             if pos.direction == "LONG"
@@ -253,9 +274,10 @@ def _manage_positions(log, dry_run: bool = False) -> None:
         )
 
         if profit_pts < one_r:
-            continue   # not at 1R yet
+            continue
 
-        sym = pos.symbol
+        sym     = pos.symbol
+        display = _dn.get(sym, sym)
 
         # ── 1. Partial close (50%) ──────────────────────────────────────────
         if not state["partial_done"]:
@@ -276,10 +298,12 @@ def _manage_positions(log, dry_run: bool = False) -> None:
                         f"closed {half:.2f} lots at +{profit_pts:.5g} "
                         f"(1R={one_r:.5g}). Remaining {pos.volume - half:.2f} lots -> 2R."
                     )
+                    if tg:
+                        tg.partial_exit(pos.ticket, display, half, pos.open_price, pos.tp)
                 else:
                     log.warning(f"  [PARTIAL] #{pos.ticket} {sym}: partial close failed")
             else:
-                state["partial_done"] = True  # lot too small to split — skip
+                state["partial_done"] = True
 
         # ── 2. Breakeven stop ───────────────────────────────────────────────
         if not state["be_done"]:
@@ -291,10 +315,12 @@ def _manage_positions(log, dry_run: bool = False) -> None:
                     f"SL moved to entry {pos.open_price:.5g} "
                     f"(profit={profit_pts:.5g} >= 1R={one_r:.5g})"
                 )
+                if tg:
+                    tg.breakeven(pos.ticket, display, pos.open_price)
             else:
                 log.warning(f"  [BE] #{pos.ticket} {sym}: SL modify failed")
 
-    # Prune closed positions from state
+    # Prune closed positions from state dict
     for stale in [t for t in _pos_state if t not in open_tickets]:
         del _pos_state[stale]
 
@@ -356,6 +382,15 @@ def run_server(args: argparse.Namespace):
         except Exception as _he:
             log.warning(f"Could not start health HTTP server on :{args.health_port}: {_he}")
             metrics = None
+
+    # Telegram notifier (no-op when token/chat_id not provided)
+    from utils.telegram_notify import Notifier as _Notifier
+    tg = _Notifier(token=args.telegram_token, chat_id=args.telegram_chat_id)
+    if tg.enabled():
+        log.info("Telegram notifications: ENABLED")
+        tg.info(f"Katraswing started -- monitoring {len(args.tickers)} symbols")
+    else:
+        log.info("Telegram notifications: disabled (no token/chat-id)")
 
     # Dedup set: track which (ticker, direction, session_date) have open positions
     sent_signals: set[str] = set()
@@ -426,7 +461,10 @@ def run_server(args: argparse.Namespace):
                 open_symbols = set()
 
             # ── Phase 0: manage open positions (breakeven + partial exits) ──
-            _manage_positions(log, dry_run=args.dry_run)
+            _manage_positions(
+                log, dry_run=args.dry_run, tg=tg,
+                display_names=DEFAULT_DISPLAY_NAMES,
+            )
 
             # ── Phase 1: fetch signals in parallel ───────────────────────
             # Each run_signal is network-bound (yfinance/Finnhub) and
@@ -507,6 +545,9 @@ def run_server(args: argparse.Namespace):
                 # paper row so the weekly auto-promotion harness can mature it.
                 if getattr(sr, "paper_only", False):
                     log.info(f"  [paper] {sr.paper_reason or 'strategy'} — order not sent")
+                    tg.signal(display, sr.direction, sr.confidence, sr.entry, sr.sl, sr.tp,
+                              sr.chart_signals[0].strategy if sr.chart_signals else "?",
+                              paper=True)
                     sent_signals.add(key)
                     continue
 
@@ -515,9 +556,14 @@ def run_server(args: argparse.Namespace):
                     sent_signals.add(key)
                     continue
 
+                # Notify signal before sending order
+                tg.signal(display, sr.direction, sr.confidence, sr.entry, sr.sl, sr.tp,
+                          sr.chart_signals[0].strategy if sr.chart_signals else "?")
+
                 # Reconnect if needed
                 if not ensure_connected(args.mt5_path):
                     log.error("  MT5 reconnect failed. Skipping order.")
+                    tg.error(f"MT5 reconnect failed -- {display} {sr.direction} order skipped")
                     continue
 
                 result = send_from_signal_result(sr)
@@ -526,6 +572,8 @@ def run_server(args: argparse.Namespace):
                         f"  ✓ Order #{result.ticket} placed | "
                         f"{result.direction} {result.symbol} @ {result.entry:.4f}"
                     )
+                    tg.order_placed(result.ticket, display, result.direction,
+                                    result.entry, sr.sl, sr.tp)
                     sent_signals.add(key)
                     if metrics is not None:
                         metrics.record_signal()

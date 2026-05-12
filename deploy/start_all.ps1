@@ -10,14 +10,20 @@ $ErrorActionPreference = "Continue"   # never let a single error kill the loop
 $INSTALL_DIR  = "C:\katraswing"
 $FINNHUB_KEY  = "d7j16r1r01qn2qavovt0d7j16r1r01qn2qavovtg"
 
-# ── GitHub authentication ─────────────────────────────────────────────────────
-# Put your PAT in deploy\local_config.ps1 (gitignored, never committed):
-#   $GITHUB_PAT = "ghp_your_token_here"
-# That file is loaded below if it exists — start_all.ps1 stays clean.
-$GITHUB_PAT   = ""
-$GITHUB_USER  = "Kayrano"
-$GITHUB_REPO  = "katraswing"
-$_localCfg    = Join-Path $INSTALL_DIR "deploy\local_config.ps1"
+# ── Local config (gitignored) ─────────────────────────────────────────────────
+# Create deploy\local_config.ps1 on the VPS with your secrets:
+#
+#   $GITHUB_PAT       = "ghp_your_token_here"
+#   $TELEGRAM_TOKEN   = "123456:ABCdef..."
+#   $TELEGRAM_CHAT_ID = "987654321"
+#
+# This file is never committed. start_all.ps1 stays clean.
+$GITHUB_PAT       = ""
+$TELEGRAM_TOKEN   = ""
+$TELEGRAM_CHAT_ID = ""
+$GITHUB_USER      = "Kayrano"
+$GITHUB_REPO      = "katraswing"
+$_localCfg        = Join-Path $INSTALL_DIR "deploy\local_config.ps1"
 if (Test-Path $_localCfg) { . $_localCfg }
 
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
@@ -47,7 +53,7 @@ function Start-SignalServer {
     # Tee to a log file so history survives window restarts
     Start-Process powershell -ArgumentList @(
         "-Command",
-        "`$env:PYTHONIOENCODING='utf-8'; cd $INSTALL_DIR; python mt5_signal_server.py --interval 30 --risk-pct 1.0 --finnhub-key $FINNHUB_KEY 2>&1 | Tee-Object -FilePath '$INSTALL_DIR\logs\signal_server.log' -Append"
+        "`$env:PYTHONIOENCODING='utf-8'; cd $INSTALL_DIR; python mt5_signal_server.py --interval 30 --risk-pct 1.0 --finnhub-key $FINNHUB_KEY --telegram-token $TELEGRAM_TOKEN --telegram-chat-id $TELEGRAM_CHAT_ID 2>&1 | Tee-Object -FilePath '$INSTALL_DIR\logs\signal_server.log' -Append"
     ) -WindowStyle Minimized
 }
 
