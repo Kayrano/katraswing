@@ -100,7 +100,7 @@ _MR_STRATEGIES = {
 # FLAG_BREAKOUT_5M is a continuation pattern — needs an existing trend to project the pole
 _TREND_STRATEGIES = {"ORB_5M", "TREND_MOM_5M", "EMA_PB_15M", "SQUEEZE_15M",
                      "NR7_BREAKOUT_5M", "MSS_FOREX_15M", "EMA_MICRO_CROSS_5M",
-                     "FLAG_BREAKOUT_5M"}
+                     "FLAG_BREAKOUT_5M", "FVG_5M", "ORDER_BLOCK_5M"}
 # ABSORB and LIQ_SWEEP are order-flow / manipulation based — regime-independent, never penalised
 
 # Minimum final confidence to issue a signal.

@@ -1815,6 +1815,277 @@ def recent_liq_sweep(
 
 
 # ════════════════════════════════════════════════════════════════════════════════
+# STRATEGY — Fair Value Gap (FVG)  (5m)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def fvg_5m(df: pd.DataFrame) -> IntradaySignal:
+    """
+    Fair Value Gap reversal entry on 5m bars.
+
+    An FVG is a 3-candle imbalance where the middle candle moves so fast it
+    leaves an untraded price zone: candle[-3].High < candle[-1].Low (bullish)
+    or candle[-3].Low > candle[-1].High (bearish).  Price frequently returns
+    to fill this zone — that pullback is the entry.
+
+    Long:  unmitigated bullish FVG in last 20 bars AND current close is
+           inside the zone [c[-3].High, c[-1].Low]
+    Short: unmitigated bearish FVG in last 20 bars AND current close is
+           inside the zone [c[-1].High, c[-3].Low]
+
+    Mitigation: if any bar between FVG formation and current bar fully crossed
+    the zone (low < zone_low for bullish), the FVG is invalidated.
+    Gap must be >= 0.2×ATR to filter tick-sized noise.
+
+    Fresher FVGs (age <= 5 bars) → conf 0.73; older → 0.68.
+    RVOL >= 1.2 adds +0.05.
+
+    Regime: trend-following (FVGs form during impulses, fill as trend continues).
+    Penalised in ranging markets via _TREND_STRATEGIES.
+    """
+    TF   = "5m"
+    NAME = "FVG_5M"
+
+    LOOKBACK    = 20
+    MIN_GAP_ATR = 0.2
+
+    min_bars = LOOKBACK + 5
+    if len(df) < min_bars:
+        return _flat(NAME, TF, f"Insufficient bars (need {min_bars})")
+
+    atr = _safe_atr(df, length=10)
+    if atr <= 0:
+        return _flat(NAME, TF, "ATR zero")
+
+    cur_close = float(df["Close"].iloc[-1])
+    n         = len(df)
+
+    best_bull: tuple[float, float, int] | None = None  # (zone_low, zone_high, age)
+    best_bear: tuple[float, float, int] | None = None
+
+    # Scan bars to find FVG zones (3-candle pattern ending at bar i)
+    for i in range(max(2, n - LOOKBACK), n - 1):
+        h1 = float(df["High"].iloc[i - 2])
+        l1 = float(df["Low"].iloc[i - 2])
+        l3 = float(df["Low"].iloc[i])
+        h3 = float(df["High"].iloc[i])
+
+        # ── Bullish FVG: gap between candle[-3].high and candle[-1].low ──
+        gap = l3 - h1
+        if gap >= MIN_GAP_ATR * atr:
+            zone_low, zone_high = h1, l3
+            # Mitigation: any bar after formation (excl. current) went below zone_low
+            post = df["Low"].iloc[i + 1: n - 1]
+            if post.empty or float(post.min()) >= zone_low:
+                age = n - 1 - i
+                if best_bull is None or age < best_bull[2]:
+                    best_bull = (zone_low, zone_high, age)
+
+        # ── Bearish FVG: gap between candle[-3].low and candle[-1].high ──
+        gap = l1 - h3
+        if gap >= MIN_GAP_ATR * atr:
+            zone_low, zone_high = h3, l1
+            post = df["High"].iloc[i + 1: n - 1]
+            if post.empty or float(post.max()) <= zone_high:
+                age = n - 1 - i
+                if best_bear is None or age < best_bear[2]:
+                    best_bear = (zone_low, zone_high, age)
+
+    rvol = _safe_rvol(df)
+
+    # ── Entry: current close inside the freshest unmitigated zone ──
+    if best_bull and best_bull[0] <= cur_close <= best_bull[1]:
+        zone_low, zone_high, age = best_bull
+        conf = 0.73 if age <= 5 else 0.68
+        if rvol >= 1.2:
+            conf = min(conf + 0.05, 0.88)
+        return _make_signal(
+            NAME, TF, "LONG", conf, cur_close, atr,
+            sl_atr_mult=1.0, tp_atr_mult=2.0,
+            reason=(
+                f"Bullish FVG [{zone_low:.5g}-{zone_high:.5g}] "
+                f"age={age}bars | RVOL={rvol:.1f}x"
+            ),
+            df=df, use_structural=True,
+        )
+
+    if best_bear and best_bear[0] <= cur_close <= best_bear[1]:
+        zone_low, zone_high, age = best_bear
+        conf = 0.73 if age <= 5 else 0.68
+        if rvol >= 1.2:
+            conf = min(conf + 0.05, 0.88)
+        return _make_signal(
+            NAME, TF, "SHORT", conf, cur_close, atr,
+            sl_atr_mult=1.0, tp_atr_mult=2.0,
+            reason=(
+                f"Bearish FVG [{zone_low:.5g}-{zone_high:.5g}] "
+                f"age={age}bars | RVOL={rvol:.1f}x"
+            ),
+            df=df, use_structural=True,
+        )
+
+    bull_note = f"bull FVG [{best_bull[0]:.5g}-{best_bull[1]:.5g}]" if best_bull else "no bull FVG"
+    bear_note = f"bear FVG [{best_bear[0]:.5g}-{best_bear[1]:.5g}]" if best_bear else "no bear FVG"
+    return _flat(NAME, TF, f"Price {cur_close:.5g} not in zone | {bull_note} | {bear_note}")
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# STRATEGY — Order Block  (5m)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def order_block_5m(df: pd.DataFrame) -> IntradaySignal:
+    """
+    Order block pullback entry on 5m bars.
+
+    An order block is the last opposing candle before a strong impulse move.
+    Institutions leave unfilled orders in this zone; price returns to it
+    before continuing in the impulse direction.
+
+    Impulse detection: 3+ candles in the same direction with total body
+    >= 1.5×ATR, found within the last 30 bars.
+
+    Bullish OB: last bearish candle before a bullish impulse.
+      Entry when: current bar LOW touches the OB zone AND close >= OB low
+      (shows price entered the zone but rejected downward — support held).
+
+    Bearish OB: last bullish candle before a bearish impulse.
+      Entry when: current bar HIGH touches the OB zone AND close <= OB high.
+
+    OB zone = [OB candle Low, OB candle High].
+    Gap between OB candle and impulse start must be <= 3 bars (tighter OB).
+
+    Conf 0.74 base; RVOL >= 1.2 adds +0.05 (capped 0.87).
+
+    Regime: trend-following (OB is defined by an impulse, entry is in impulse
+    direction). Penalised in ranging markets via _TREND_STRATEGIES.
+    """
+    TF   = "5m"
+    NAME = "ORDER_BLOCK_5M"
+
+    LOOKBACK         = 30
+    MIN_IMPULSE_ATR  = 1.5   # impulse body must be >= this × ATR
+    MIN_IMPULSE_BARS = 3     # consecutive same-direction bars forming the impulse
+    MAX_OB_GAP       = 3     # OB candle must be within this many bars of impulse start
+
+    min_bars = LOOKBACK + MIN_IMPULSE_BARS + 5
+    if len(df) < min_bars:
+        return _flat(NAME, TF, f"Insufficient bars (need {min_bars})")
+
+    atr = _safe_atr(df, length=10)
+    if atr <= 0:
+        return _flat(NAME, TF, "ATR zero")
+
+    n         = len(df)
+    cur_close = float(df["Close"].iloc[-1])
+    cur_low   = float(df["Low"].iloc[-1])
+    cur_high  = float(df["High"].iloc[-1])
+    rvol      = _safe_rvol(df)
+
+    opens  = df["Open"].values
+    closes = df["Close"].values
+    highs  = df["High"].values
+    lows   = df["Low"].values
+
+    best_bull_ob: tuple[float, float, int] | None = None  # (ob_low, ob_high, impulse_end_idx)
+    best_bear_ob: tuple[float, float, int] | None = None
+
+    scan_start = max(MIN_IMPULSE_BARS, n - LOOKBACK)
+
+    for i in range(scan_start, n - 1):
+        # ── Bullish impulse: MIN_IMPULSE_BARS consecutive bullish candles ──
+        if i >= MIN_IMPULSE_BARS:
+            bull_run = all(
+                closes[j] > opens[j]
+                for j in range(i - MIN_IMPULSE_BARS + 1, i + 1)
+            )
+            if bull_run:
+                total_body = closes[i] - opens[i - MIN_IMPULSE_BARS + 1]
+                if total_body >= MIN_IMPULSE_ATR * atr:
+                    impulse_start = i - MIN_IMPULSE_BARS + 1
+                    # Find last bearish candle within MAX_OB_GAP bars before impulse
+                    for k in range(
+                        impulse_start - 1,
+                        max(0, impulse_start - MAX_OB_GAP - 1),
+                        -1,
+                    ):
+                        if closes[k] < opens[k]:  # bearish candle = order block
+                            ob_low  = float(lows[k])
+                            ob_high = float(highs[k])
+                            age     = n - 1 - i
+                            # Only keep if OB hasn't been fully violated since
+                            post_lows = lows[i + 1: n - 1]
+                            if len(post_lows) == 0 or float(post_lows.min()) >= ob_low:
+                                if best_bull_ob is None or age < best_bull_ob[2]:
+                                    best_bull_ob = (ob_low, ob_high, age)
+                            break
+
+        # ── Bearish impulse: MIN_IMPULSE_BARS consecutive bearish candles ──
+        if i >= MIN_IMPULSE_BARS:
+            bear_run = all(
+                closes[j] < opens[j]
+                for j in range(i - MIN_IMPULSE_BARS + 1, i + 1)
+            )
+            if bear_run:
+                total_body = opens[i - MIN_IMPULSE_BARS + 1] - closes[i]
+                if total_body >= MIN_IMPULSE_ATR * atr:
+                    impulse_start = i - MIN_IMPULSE_BARS + 1
+                    for k in range(
+                        impulse_start - 1,
+                        max(0, impulse_start - MAX_OB_GAP - 1),
+                        -1,
+                    ):
+                        if closes[k] > opens[k]:  # bullish candle = order block
+                            ob_low  = float(lows[k])
+                            ob_high = float(highs[k])
+                            age     = n - 1 - i
+                            post_highs = highs[i + 1: n - 1]
+                            if len(post_highs) == 0 or float(post_highs.max()) <= ob_high:
+                                if best_bear_ob is None or age < best_bear_ob[2]:
+                                    best_bear_ob = (ob_low, ob_high, age)
+                            break
+
+    conf_base = 0.74
+    vol_bonus = 0.05 if rvol >= 1.2 else 0.0
+
+    # ── Bullish OB entry: price low touched OB zone, close held above OB low ──
+    if best_bull_ob:
+        ob_low, ob_high, age = best_bull_ob
+        touched = cur_low <= ob_high          # price entered the zone
+        held    = cur_close >= ob_low         # close didn't fall through
+        if touched and held:
+            conf = min(conf_base + vol_bonus, 0.87)
+            return _make_signal(
+                NAME, TF, "LONG", conf, cur_close, atr,
+                sl_atr_mult=1.0, tp_atr_mult=2.0,
+                reason=(
+                    f"Bullish OB [{ob_low:.5g}-{ob_high:.5g}] "
+                    f"age={age}bars | RVOL={rvol:.1f}x"
+                ),
+                df=df, use_structural=True,
+            )
+
+    # ── Bearish OB entry: price high touched OB zone, close held below OB high ──
+    if best_bear_ob:
+        ob_low, ob_high, age = best_bear_ob
+        touched = cur_high >= ob_low
+        held    = cur_close <= ob_high
+        if touched and held:
+            conf = min(conf_base + vol_bonus, 0.87)
+            return _make_signal(
+                NAME, TF, "SHORT", conf, cur_close, atr,
+                sl_atr_mult=1.0, tp_atr_mult=2.0,
+                reason=(
+                    f"Bearish OB [{ob_low:.5g}-{ob_high:.5g}] "
+                    f"age={age}bars | RVOL={rvol:.1f}x"
+                ),
+                df=df, use_structural=True,
+            )
+
+    bull_note = f"bull OB [{best_bull_ob[0]:.5g}-{best_bull_ob[1]:.5g}]" if best_bull_ob else "no bull OB"
+    bear_note = f"bear OB [{best_bear_ob[0]:.5g}-{best_bear_ob[1]:.5g}]" if best_bear_ob else "no bear OB"
+    return _flat(NAME, TF, f"No OB touch: {bull_note} | {bear_note}")
+
+
+# ════════════════════════════════════════════════════════════════════════════════
 # ORCHESTRATOR — run_intraday_signals
 # ════════════════════════════════════════════════════════════════════════════════
 
@@ -1824,7 +2095,8 @@ _STRATEGIES_5M  = [vwap_rsi_5m, orb_5m, trend_momentum_5m,
                    mss_forex_15m,
                    double_bottom_breakout_5m, head_shoulders_breakdown_5m,
                    flag_breakout_5m,
-                   liq_sweep_5m]
+                   liq_sweep_5m,
+                   fvg_5m, order_block_5m]
 _STRATEGIES_15M = [ema_pullback_15m, squeeze_15m, absorption_15m]
 
 _STRATEGY_NAME_MAP: dict[str, str] = {
