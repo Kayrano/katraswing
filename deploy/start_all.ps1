@@ -7,8 +7,16 @@
 
 $ErrorActionPreference = "Continue"   # never let a single error kill the loop
 
-$INSTALL_DIR = "C:\katraswing"
-$FINNHUB_KEY = "d7j16r1r01qn2qavovt0d7j16r1r01qn2qavovtg"
+$INSTALL_DIR  = "C:\katraswing"
+$FINNHUB_KEY  = "d7j16r1r01qn2qavovt0d7j16r1r01qn2qavovtg"
+
+# ── GitHub authentication ─────────────────────────────────────────────────────
+# Generate a PAT at https://github.com/settings/tokens (no-expiry, repo scope).
+# Paste it here once — the watcher embeds it in the remote URL so git never
+# prompts for credentials and HTTPS tokens never expire.
+$GITHUB_PAT   = ""   # <-- FILL IN YOUR GITHUB PAT HERE
+$GITHUB_USER  = "Kayrano"
+$GITHUB_REPO  = "katraswing"
 
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Write-OK($msg)   { Write-Host "    OK: $msg" -ForegroundColor Green }
@@ -43,6 +51,15 @@ function Start-SignalServer {
 
 Set-Location $INSTALL_DIR
 
+# ── Embed PAT in remote URL so git never prompts for credentials ──────────────
+if ($GITHUB_PAT -ne "") {
+    $remoteUrl = "https://${GITHUB_USER}:${GITHUB_PAT}@github.com/${GITHUB_USER}/${GITHUB_REPO}.git"
+    git remote set-url origin $remoteUrl
+    Write-OK "GitHub remote URL configured with PAT"
+} else {
+    Write-Host "  WARNING: GITHUB_PAT is empty -- watcher may fail if HTTPS credentials expire." -ForegroundColor Yellow
+}
+
 # Kill any existing signal server
 Write-Step "Stopping any existing signal server"
 Stop-SignalServer
@@ -73,10 +90,17 @@ Set-Location $INSTALL_DIR
 while ($true) {
     $checkTime = Get-Date -Format "HH:mm:ss"
 
-    git fetch origin main --quiet 2>$null
+    # Fetch — capture output and check exit code; do NOT use 2>$null (swallows errors silently)
+    $fetchOut = git fetch origin main 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[$checkTime] FETCH FAILED (exit $LASTEXITCODE) -- check PAT/network. Will retry in 5 min." -ForegroundColor Red
+        Write-Host "  $fetchOut" -ForegroundColor Red
+        Start-Sleep -Seconds 300
+        continue
+    }
 
-    $local  = git rev-parse HEAD 2>$null
-    $remote = git rev-parse origin/main 2>$null
+    $local  = git rev-parse HEAD 2>&1
+    $remote = git rev-parse origin/main 2>&1
 
     if ($local -ne $remote) {
         Write-Host ""
@@ -89,8 +113,18 @@ while ($true) {
             Stop-Service katraswing-streamlit -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 2
 
-            Write-Host "  [3/6] git pull..." -ForegroundColor DarkGray
-            git pull
+            Write-Host "  [3/6] git pull (auto-resolving local data files)..." -ForegroundColor DarkGray
+            # Discard local changes to auto-generated runtime files that can conflict
+            git checkout -- data/strategy_params.json 2>&1 | Out-Null
+            $pullOut = git pull 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "[$checkTime] git pull FAILED -- aborting update cycle." -ForegroundColor Red
+                Write-Host "  $pullOut" -ForegroundColor Red
+                Start-SignalServer
+                Start-StreamlitService
+                Start-Sleep -Seconds 300
+                continue
+            }
 
             Write-Host "  [4/6] pip install..." -ForegroundColor DarkGray
             python -m pip install -r requirements.txt -q
