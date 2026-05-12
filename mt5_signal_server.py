@@ -298,7 +298,7 @@ def run_server(args: argparse.Namespace):
             # independent. Bar-level cache hits return immediately.
             workers = min(MAX_SCAN_WORKERS, len(args.tickers)) or 1
             signal_results: dict[str, object] = {}
-            log.info(f"── Scanning {len(args.tickers)} ticker(s) (workers={workers}) ──")
+            log.info(f"-- Scanning {len(args.tickers)} ticker(s) (workers={workers}) --")
             with ThreadPoolExecutor(max_workers=workers) as ex:
                 futures = {ex.submit(_scan_with_cache, t): t for t in args.tickers}
                 outer_budget = max(120, PER_TICKER_TIMEOUT * ((len(args.tickers) + workers - 1) // workers) + 30)
@@ -347,16 +347,16 @@ def run_server(args: argparse.Namespace):
 
                 if sr.confidence < args.min_confidence:
                     log.info(
-                        f"{display}: {sr.direction} @ {sr.confidence:.1%} — "
+                        f"{display}: {sr.direction} @ {sr.confidence:.1%} -- "
                         f"below threshold {args.min_confidence:.0%}, skipping."
                     )
                     continue
 
                 top_patterns = [(p.name, p.win_rate) for p in sr.patterns.patterns[:3]]
-                pattern_str  = " | ".join(f"{n} {w:.0%}" for n, w in top_patterns) or "—"
+                pattern_str  = " | ".join(f"{n} {w:.0%}" for n, w in top_patterns) or "-"
 
                 log.info(
-                    f"★ SIGNAL: {display} {sr.direction} | "
+                    f"* SIGNAL: {display} {sr.direction} | "
                     f"conf={sr.confidence:.1%} | {pattern_str}"
                 )
                 log.info(_format_signal(sr))
@@ -438,12 +438,12 @@ def run_server(args: argparse.Namespace):
 
                 display = DEFAULT_DISPLAY_NAMES.get(ticker, ticker)
                 log.info(
-                    f"★ H1 SIGNAL: {display} {sr.direction} | "
+                    f"* H1 SIGNAL: {display} {sr.direction} | "
                     f"conf={sr.confidence:.1%} | strategy={sr.chart_signals[0].strategy if sr.chart_signals else '?'}"
                 )
                 key = _signal_key(f"H1:{ticker}", sr.direction, today)
                 if key in sent_signals:
-                    log.info(f"  [dedup] H1 {sr.direction} {display} already recorded today (paper — skipping).")
+                    log.info(f"  [dedup] H1 {sr.direction} {display} already recorded today (paper -- skipping).")
                     continue
                 # H1 strategies are paper_only at launch — no broker round-trip.
                 if getattr(sr, "paper_only", True):
