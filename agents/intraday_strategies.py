@@ -373,6 +373,12 @@ def trend_momentum_5m(df: pd.DataFrame) -> IntradaySignal:
     rvol_ok   = cur_rvol >= 1.5
     trend_str = ema_gap > 0.3 * cur_atr
 
+    # ADX floor: trend strategies require confirmed trend strength
+    adx_s = ta.adx(df["High"], df["Low"], df["Close"], length=14)
+    cur_adx = float(adx_s.iloc[-1]) if adx_s is not None and not adx_s.isna().all() else 0.0
+    if cur_adx < 20:
+        return _flat(NAME, TF, f"ADX={cur_adx:.1f} < 20 -- no trend, skipping")
+
     def _conf(rsi_strong: bool) -> float:
         c = 0.62
         if rvol_ok:   c += 0.08
@@ -959,6 +965,14 @@ def nr7_breakout_5m(df: pd.DataFrame) -> IntradaySignal:
     cur_close = float(closes[-1])
     rvol      = float(df["rvol"].iloc[-1]) if "rvol" in df.columns else 1.0
 
+    # Volume confirmation: breakout on below-average volume fails ~60% of the time
+    if "Volume" in df.columns:
+        vols = df["Volume"].values.astype(float)
+        avg_vol = float(np.nanmean(vols[max(0, n-20):n-1])) if n > 1 else 0.0
+        if avg_vol > 0 and vols[-1] < 1.2 * avg_vol:
+            return _flat(NAME, TF,
+                f"NR7 breakout on low volume ({vols[-1]:.0f} < 1.2x avg {avg_vol:.0f})")
+
     breakout_long  = cur_close > nr7_high
     breakout_short = cur_close < nr7_low
 
@@ -1178,6 +1192,12 @@ def ema_micro_cross_5m(df: pd.DataFrame) -> IntradaySignal:
                                    cur_atr, cur_vwap]) or cur_atr == 0:
         return _flat(NAME, TF, "NaN indicator — warmup incomplete")
 
+    # ADX floor: EMA crosses in ranging markets are noise
+    adx_s = ta.adx(df["High"], df["Low"], df["Close"], length=14)
+    cur_adx = float(adx_s.iloc[-1]) if adx_s is not None and not adx_s.isna().all() else 0.0
+    if cur_adx < 20:
+        return _flat(NAME, TF, f"ADX={cur_adx:.1f} < 20 -- ranging market, skipping")
+
     long_cross  = prev_ema5 < prev_ema13 and cur_ema5 > cur_ema13
     short_cross = prev_ema5 > prev_ema13 and cur_ema5 < cur_ema13
 
@@ -1269,6 +1289,12 @@ def mss_forex_15m(df: pd.DataFrame) -> IntradaySignal:
     # malformed yfinance returns).
     if not isinstance(df.index, pd.DatetimeIndex):
         return _flat(NAME, TF, "Index is not DatetimeIndex — cannot resample to 1D")
+
+    # ADX floor: MSS entries in choppy/ranging forex = false structure breaks
+    adx_s = ta.adx(df["High"], df["Low"], df["Close"], length=14)
+    cur_adx = float(adx_s.iloc[-1]) if adx_s is not None and not adx_s.isna().all() else 0.0
+    if cur_adx < 20:
+        return _flat(NAME, TF, f"ADX={cur_adx:.1f} < 20 -- no structure shift in ranging market")
 
     # ── Daily swing structure ─────────────────────────────────────────────────
     daily = (

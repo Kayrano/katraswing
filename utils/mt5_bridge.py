@@ -833,6 +833,38 @@ def send_signal(
     return MT5OrderResult(False, 0, symbol, direction, lots, price, live_sl, live_tp, err)
 
 
+def get_spread_ratio(symbol: str) -> float:
+    """Return current_spread / typical_spread for the symbol.
+    Returns 1.0 if MT5 is unavailable or data is missing."""
+    if not MT5_AVAILABLE or not is_connected():
+        return 1.0
+    try:
+        tick = mt5.symbol_info_tick(symbol)
+        info = mt5.symbol_info(symbol)
+        if tick is None or info is None:
+            return 1.0
+        current_spread = tick.ask - tick.bid
+        typical_spread = info.spread * info.point
+        if typical_spread <= 0:
+            return 1.0
+        return current_spread / typical_spread
+    except Exception:
+        return 1.0
+
+
+def get_current_price(symbol: str, direction: str) -> float:
+    """Return the current bid (SHORT entry) or ask (LONG entry) price, or 0.0."""
+    if not MT5_AVAILABLE or not is_connected():
+        return 0.0
+    try:
+        tick = mt5.symbol_info_tick(symbol)
+        if tick is None:
+            return 0.0
+        return float(tick.ask if direction == "LONG" else tick.bid)
+    except Exception:
+        return 0.0
+
+
 def send_from_signal_result(
     signal_result,
     lots: Optional[float] = None,

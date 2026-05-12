@@ -761,6 +761,47 @@ def run_server(args: argparse.Namespace):
                     sent_signals.add(key)
                     continue
 
+                # ── Pre-order quality filters ────────────────────────────
+                from utils.mt5_bridge import (
+                    get_spread_ratio as _spread_ratio,
+                    get_current_price as _cur_price,
+                )
+
+                # 1. Spread filter: skip if spread > 2× typical
+                _mt5_sym_live = getattr(sr, "mt5_symbol", "") or mt5_sym or ""
+                if _mt5_sym_live:
+                    _sr = _spread_ratio(_mt5_sym_live)
+                    if _sr > 2.0:
+                        log.info(
+                            f"  [spread] {display} skipped -- "
+                            f"spread {_sr:.1f}x typical (threshold 2x)"
+                        )
+                        continue
+
+                # 2. Minimum R:R filter: require TP/SL ratio >= 1.5
+                _sl_dist = abs(sr.entry - sr.sl)
+                _tp_dist = abs(sr.tp - sr.entry)
+                _rr = _tp_dist / _sl_dist if _sl_dist > 0 else 0.0
+                if _rr < 1.5:
+                    log.info(
+                        f"  [rr] {display} skipped -- "
+                        f"R:R={_rr:.2f} < 1.5 (SL={sr.sl:.5g} TP={sr.tp:.5g})"
+                    )
+                    continue
+
+                # 3. Stale entry filter: skip if price moved > 0.5×ATR from signal entry
+                if _mt5_sym_live and sr.atr > 0:
+                    _live_px = _cur_price(_mt5_sym_live, sr.direction)
+                    if _live_px > 0:
+                        _drift = abs(_live_px - sr.entry)
+                        if _drift > 0.5 * sr.atr:
+                            log.info(
+                                f"  [stale] {display} skipped -- "
+                                f"price drifted {_drift:.5g} from entry "
+                                f"(threshold 0.5x ATR={0.5*sr.atr:.5g})"
+                            )
+                            continue
+
                 # Notify signal before sending order
                 tg.signal(display, sr.direction, sr.confidence, sr.entry, sr.sl, sr.tp,
                           sr.chart_signals[0].strategy if sr.chart_signals else "?")
