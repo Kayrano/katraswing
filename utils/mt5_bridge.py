@@ -853,6 +853,11 @@ def send_from_signal_result(
     _RISK_MULTIPLIER = {"LOW": 1.5, "MEDIUM": 1.0, "HIGH": 0.5}
     effective_risk_pct = risk_pct * _RISK_MULTIPLIER.get(getattr(sr, "risk_level", "MEDIUM"), 1.0)
 
+    # Scale further by volatility: high ATR relative to average → smaller lot
+    vol = getattr(sr, "vol_ratio", 1.0)
+    vol_scale = max(0.5, min(1.5, 1.0 / vol))
+    effective_risk_pct *= vol_scale
+
     # Resolve yfinance ticker → broker MT5 symbol using full auto-resolution logic
     ticker = getattr(sr, "mt5_symbol", "") or ""
     if not ticker or any(c in ticker for c in ("=", "^")) or ticker.endswith("-USD"):

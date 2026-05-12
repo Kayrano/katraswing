@@ -158,8 +158,9 @@ class SignalResult:
     # send paths in app.py / mt5_signal_server.py skip the MT5 round-trip.
     # Stamped from the picked strategy's IntradaySignal.paper_only flag.
     paper_only: bool = False
-    paper_reason: str = ""           # "strategy" | "symbol" | "" — origin of the paper flag
+    paper_reason: str = ""           # "strategy" | "symbol" | "single_strategy" | ""
     session_boost: float = 0.0       # UTC-session nudge applied to this signal
+    vol_ratio: float = 1.0           # current ATR / 20-bar avg ATR — >1 = volatile, <1 = calm
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -659,13 +660,34 @@ def run_signal(
         # months of trades the rest of the system was calibrated on.
         final_conf = raw_confidence
 
-        # ── Derive risk level from confidence ─────────────────────────────────
-        # HIGH confidence = LOW risk = larger position; LOW confidence = HIGH risk = smaller position
+        # ── Volatility ratio: current ATR vs 20-bar average ──────────────────
+        # Passed to send_from_signal_result to scale lot size down in volatile
+        # conditions and up slightly in calm conditions.
+        vol_ratio = 1.0
+        try:
+            _atr_s = ta.atr(df["High"], df["Low"], df["Close"], length=10).dropna()
+            if len(_atr_s) >= 20:
+                _cur_atr = float(_atr_s.iloc[-1])
+                _avg_atr = float(_atr_s.iloc[-20:].mean())
+                if _avg_atr > 0:
+                    vol_ratio = round(_cur_atr / _avg_atr, 3)
+        except Exception:
+            pass
+
+        # ── Derive risk level from confidence + volatility ────────────────────
+        # HIGH confidence = LOW risk label = larger position (1.5× multiplier)
+        # LOW confidence  = HIGH risk label = smaller position (0.5× multiplier)
+        # Volatile markets (vol_ratio > 1.4) further reduce lot size.
         if final_conf >= 0.80:
             risk_level = "LOW"
         elif final_conf >= 0.65:
             risk_level = "MEDIUM"
         else:
+            risk_level = "HIGH"
+        # Downgrade one tier when current ATR is 40%+ above its 20-bar average
+        if vol_ratio > 1.4 and risk_level == "LOW":
+            risk_level = "MEDIUM"
+        elif vol_ratio > 1.4 and risk_level == "MEDIUM":
             risk_level = "HIGH"
 
         return SignalResult(
@@ -697,13 +719,18 @@ def run_signal(
             raw_confidence=round(raw_confidence, 3),
             calibration_applied=calibration_applied,
             paper_only=(
-                getattr(best, "paper_only", False) or disposition == "PAPER"
+                getattr(best, "paper_only", False)
+                or disposition == "PAPER"
+                or len(active) == 1   # single-strategy signals go to paper
             ),
             paper_reason=(
-                "symbol" if disposition == "PAPER"
-                else ("strategy" if getattr(best, "paper_only", False) else "")
+                "symbol"           if disposition == "PAPER"
+                else "strategy"    if getattr(best, "paper_only", False)
+                else "single_strategy" if len(active) == 1
+                else ""
             ),
             session_boost=round(session_boost_val, 3),
+            vol_ratio=vol_ratio,
         )
 
     except Exception as exc:

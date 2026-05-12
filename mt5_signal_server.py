@@ -398,6 +398,68 @@ def run_server(args: argparse.Namespace):
     sent_signals: set[str] = set()   # live orders placed
     paper_signals: set[str] = set()  # paper signals logged (no MT5 order)
 
+    _daily_summary_sent: set[str] = set()  # dates for which summary was sent
+
+    def _maybe_send_daily_summary() -> None:
+        """Send a daily P&L Telegram summary once per day after 22:00 UTC."""
+        import json as _json
+        from datetime import timezone as _tz
+        now_utc = datetime.now(_tz.utc)
+        if now_utc.hour < 22:
+            return
+        today_str = str(now_utc.date())
+        if today_str in _daily_summary_sent:
+            return
+        _daily_summary_sent.add(today_str)
+
+        trade_log_path = "data/trade_log.json"
+        try:
+            with open(trade_log_path, encoding="utf-8") as _f:
+                all_trades = _json.load(_f)
+        except Exception:
+            all_trades = []
+
+        today_trades = [
+            t for t in all_trades
+            if isinstance(t, dict)
+            and str(t.get("closed_at", ""))[:10] == today_str
+            and t.get("outcome") in ("WIN", "LOSS")
+        ]
+
+        if not today_trades:
+            if tg:
+                tg.info(f"Daily summary {today_str}: no closed trades today.")
+            return
+
+        wins   = sum(1 for t in today_trades if t.get("outcome") == "WIN")
+        losses = sum(1 for t in today_trades if t.get("outcome") == "LOSS")
+        total  = len(today_trades)
+        pnl    = sum(float(t.get("profit", 0)) for t in today_trades)
+        wr_pct = wins / total * 100
+
+        lines = [f"<b>Daily P&amp;L Summary — {today_str}</b>"]
+        lines.append(f"Trades: {total}  |  W: {wins}  L: {losses}  ({wr_pct:.0f}% WR)")
+        lines.append(f"Net P&amp;L: <b>{'+'if pnl>=0 else ''}{pnl:.2f} USD</b>")
+
+        by_sym: dict[str, dict] = {}
+        for t in today_trades:
+            sym = t.get("ticker", "?")
+            if sym not in by_sym:
+                by_sym[sym] = {"wins": 0, "losses": 0, "pnl": 0.0}
+            if t.get("outcome") == "WIN":
+                by_sym[sym]["wins"] += 1
+            else:
+                by_sym[sym]["losses"] += 1
+            by_sym[sym]["pnl"] += float(t.get("profit", 0))
+        for sym, s in sorted(by_sym.items(), key=lambda x: -abs(x[1]["pnl"])):
+            sign = "+" if s["pnl"] >= 0 else ""
+            lines.append(f"  {sym}: {s['wins']}W/{s['losses']}L  {sign}{s['pnl']:.2f}")
+
+        msg = "\n".join(lines)
+        log.info("[daily-summary] %s", msg.replace("<b>","").replace("</b>","").replace("&amp;","&"))
+        if tg:
+            tg._send(msg)
+
     def _scan_with_cache(ticker: str):
         """Fetch run_signal for one ticker, reusing the cached result if we
         already computed it in the current 5-min bar window."""
@@ -473,6 +535,12 @@ def run_server(args: argparse.Namespace):
                 log, dry_run=args.dry_run, tg=tg,
                 display_names=DEFAULT_DISPLAY_NAMES,
             )
+
+            # ── Phase 0b: daily P&L Telegram summary (after 22:00 UTC) ─────
+            try:
+                _maybe_send_daily_summary()
+            except Exception as _exc:
+                log.warning("daily summary failed: %s", _exc)
 
             # ── Phase 1: fetch signals in parallel ───────────────────────
             # Each run_signal is network-bound (yfinance/Finnhub) and
