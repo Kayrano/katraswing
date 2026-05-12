@@ -676,6 +676,32 @@ def run_weekly(now: datetime) -> Path:
     if pruned or promoted:
         save_params()
 
+    # ── Symbol promotion: paper → live ───────────────────────────────
+    # Promote a PAPER symbol to LIVE when it accumulates enough evidence.
+    _SYM_PROMOTE_MIN_TRADES = 20
+    _SYM_PROMOTE_WR_MIN     = 0.40
+    _SYM_PROMOTE_PF_MIN     = 1.0
+
+    sym_promoted: list[dict] = []
+    from data.symbol_policy import _normalise as _norm_sym, PAPER_SYMBOLS, save_override, _load_overrides
+    existing_overrides = _load_overrides()
+    for row in sym_scoreboard:
+        sym = row["symbol"]
+        # Only consider symbols currently designated PAPER
+        in_paper_set = sym in PAPER_SYMBOLS
+        in_override  = existing_overrides.get(sym)
+        is_paper = in_paper_set and in_override != "LIVE"
+        if not is_paper:
+            continue
+        if row["n"] < _SYM_PROMOTE_MIN_TRADES:
+            continue
+        if row["wr"] >= _SYM_PROMOTE_WR_MIN and row["pf"] >= _SYM_PROMOTE_PF_MIN:
+            save_override(sym, "LIVE")
+            sym_promoted.append({"symbol": sym, "n": row["n"],
+                                  "wr": row["wr"], "pf": row["pf"]})
+            logger.info("weekly symbol promote: %s -> LIVE (n=%d wr=%.2f pf=%.2f)",
+                        sym, row["n"], row["wr"], row["pf"])
+
     # ── Watchlist regime over the past week ───────────────────────────
     weekly_regime: list[dict] = []
     label_counts = {"TRENDING": 0, "RANGING": 0, "MIXED": 0,
@@ -729,6 +755,7 @@ def run_weekly(now: datetime) -> Path:
         sym_scoreboard=sym_scoreboard,
         pruned=pruned,
         promoted=promoted,
+        sym_promoted=sym_promoted,
         weekly_regime=weekly_regime,
         overall_regime=overall_regime,
         calibration_info=calibration_info,
@@ -792,6 +819,7 @@ def _render_weekly_markdown(
     sym_scoreboard: list[dict],
     pruned: list[dict],
     promoted: list[dict],
+    sym_promoted: list[dict] | None = None,
     weekly_regime: list[dict],
     overall_regime: str,
     calibration_info: dict,
@@ -809,12 +837,16 @@ def _render_weekly_markdown(
 
     # Structural changes
     lines.append("## Structural changes")
-    if pruned or promoted:
+    any_changes = pruned or promoted or sym_promoted
+    if any_changes:
         for r in pruned:
             lines.append(f"- DISABLED: {r['strategy']} "
                          f"(WR {r['wr']:.0%}, PF {r['pf']:.2f}, n={r['n']})")
         for r in promoted:
             lines.append(f"- PROMOTED: {r['strategy']} from paper_only "
+                         f"(WR {r['wr']:.0%}, PF {r['pf']:.2f}, n={r['n']})")
+        for r in (sym_promoted or []):
+            lines.append(f"- SYMBOL LIVE: {r['symbol']} graduated from PAPER "
                          f"(WR {r['wr']:.0%}, PF {r['pf']:.2f}, n={r['n']})")
     else:
         lines.append("_No strategies hit the prune or promote thresholds this week._")

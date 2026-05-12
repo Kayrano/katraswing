@@ -161,9 +161,13 @@ class TestA3SymbolPolicy:
         assert get_disposition("NQ=F") == "DROP"
 
     def test_paper_returns_paper(self):
+        from unittest.mock import patch
         from data.symbol_policy import get_disposition
-        for s in ("EURUSD=X", "GBPUSD=X", "AUDUSD=X"):
-            assert get_disposition(s) == "PAPER", f"{s} must be PAPER"
+        # Patch overrides to empty so the test exercises hardcoded policy only
+        # (symbol_promotions.json may promote symbols at runtime)
+        with patch("data.symbol_policy._load_overrides", return_value={}):
+            for s in ("EURUSD=X", "GBPUSD=X", "AUDUSD=X"):
+                assert get_disposition(s) == "PAPER", f"{s} must be PAPER"
 
     def test_live_default(self):
         from data.symbol_policy import get_disposition
@@ -172,11 +176,13 @@ class TestA3SymbolPolicy:
             assert get_disposition(s) == "LIVE"
 
     def test_normalisation_strips_yfinance_suffixes(self):
+        from unittest.mock import patch
         from data.symbol_policy import get_disposition
         # The kill set internally is the normalised key; both yf and broker
-        # forms must hit the same disposition.
-        assert get_disposition("EURUSD") == get_disposition("EURUSD=X") == "PAPER"
-        assert get_disposition("NQ") == get_disposition("NQ=F") == "DROP"
+        # forms must hit the same disposition. Patch overrides to isolate hardcoded policy.
+        with patch("data.symbol_policy._load_overrides", return_value={}):
+            assert get_disposition("EURUSD") == get_disposition("EURUSD=X") == "PAPER"
+            assert get_disposition("NQ") == get_disposition("NQ=F") == "DROP"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

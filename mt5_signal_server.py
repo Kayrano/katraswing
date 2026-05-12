@@ -209,6 +209,7 @@ def _pos_init(pos) -> dict:
             "original_1r":  original_1r,
             "be_done":      already,
             "partial_done": already,
+            "trail_sl":     pos.sl if already else 0.0,
         }
     return _pos_state[pos.ticket]
 
@@ -310,6 +311,7 @@ def _manage_positions(log, dry_run: bool = False, tg=None, display_names: dict |
             ok = modify_position(pos.ticket, new_sl=pos.open_price)
             if ok:
                 state["be_done"] = True
+                state["trail_sl"] = pos.open_price
                 log.info(
                     f"  [BE] #{pos.ticket} {sym}: "
                     f"SL moved to entry {pos.open_price:.5g} "
@@ -319,6 +321,31 @@ def _manage_positions(log, dry_run: bool = False, tg=None, display_names: dict |
                     tg.breakeven(pos.ticket, display, pos.open_price)
             else:
                 log.warning(f"  [BE] #{pos.ticket} {sym}: SL modify failed")
+
+        # ── 3. Trailing stop (active once breakeven is set) ─────────────────
+        # Trail distance = 0.5×1R. Move SL only in the profitable direction.
+        if state["be_done"] and one_r > 0:
+            trail_dist = one_r * 0.5
+            if pos.direction == "LONG":
+                new_trail = pos.price_current - trail_dist
+                if new_trail > state["trail_sl"] and new_trail > pos.open_price:
+                    ok = modify_position(pos.ticket, new_sl=round(new_trail, 5))
+                    if ok:
+                        state["trail_sl"] = new_trail
+                        log.info(
+                            f"  [TRAIL] #{pos.ticket} {sym}: SL -> {new_trail:.5g} "
+                            f"(price={pos.price_current:.5g}, dist={trail_dist:.5g})"
+                        )
+            else:  # SHORT
+                new_trail = pos.price_current + trail_dist
+                if new_trail < state["trail_sl"] and new_trail < pos.open_price:
+                    ok = modify_position(pos.ticket, new_sl=round(new_trail, 5))
+                    if ok:
+                        state["trail_sl"] = new_trail
+                        log.info(
+                            f"  [TRAIL] #{pos.ticket} {sym}: SL -> {new_trail:.5g} "
+                            f"(price={pos.price_current:.5g}, dist={trail_dist:.5g})"
+                        )
 
     # Prune closed positions from state dict
     for stale in [t for t in _pos_state if t not in open_tickets]:
@@ -634,6 +661,19 @@ def run_server(args: argparse.Namespace):
                             f"  [open-pos] {display} skipped -- "
                             f"{mt5_sym} already has an open position"
                         )
+                        continue
+
+                # Economic calendar filter: block within 30 min of high-impact events.
+                # Applied to both live and paper signals so calibration data stays clean.
+                if args.finnhub_key:
+                    from utils.economic_calendar import is_news_window as _news_win
+                    import datetime as _dtmod
+                    _now_utc = _dtmod.datetime.now(_dtmod.timezone.utc)
+                    cal_blocked, cal_reason = _news_win(
+                        ticker, _now_utc.hour, _now_utc.minute, args.finnhub_key
+                    )
+                    if cal_blocked:
+                        log.info(f"  [calendar] {cal_reason}")
                         continue
 
                 # Correlation filter: block if a correlated instrument is already
