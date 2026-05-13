@@ -55,8 +55,9 @@ _DEFAULT_ENTRY = {
     # paper_only=True means the strategy is suspended pending walk-forward
     # validation — the weekly learning_loop run promotes it to live (sets
     # paper_only=False, enabled=True) once n>=20, wr>=0.50, pf>=1.3 over
-    # the trailing 30d.
-    "paper_only":   False,
+    # the trailing 30d. Default True so any newly auto-registered strategy
+    # starts as paper rather than going live immediately.
+    "paper_only":   True,
     # disabled_directions: a list of {"LONG", "SHORT"} that are blocked while
     # other directions stay live. Lets us paper one side of a strategy that's
     # asymmetric in live perf (e.g. CAMARILLA SHORT 60% WR vs LONG 33% WR).
