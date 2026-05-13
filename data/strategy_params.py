@@ -42,7 +42,7 @@ _DEFAULT_DISABLED = {
 }
 
 # Strategies that ship paper_only=True (live signal routing but no order send).
-# Auto-promoted by learning_loop.run_weekly() once walk-forward gate passes.
+# Auto-promoted by learning_loop.run_nightly() once walk-forward gate passes.
 _DEFAULT_PAPER_ONLY = {
     "MSS_H1", "ORB_H1", "EMA_PB_H1", "LONDON_BREAKOUT_H1",
 }
@@ -114,7 +114,7 @@ def _default_entry(strategy: str = "") -> dict:
         entry["enabled"] = False
         entry["paper_only"] = True
     # H1 strategies ship paper_only=True (enabled=True so signals are generated
-    # and calibration accumulates) until auto-promotion in run_weekly.
+    # and calibration accumulates) until auto-promotion in run_nightly.
     if strategy in _DEFAULT_PAPER_ONLY:
         entry["paper_only"] = True
     return entry

@@ -7,7 +7,7 @@ the H1 strategy roster from agents.swing_strategies.
 All H1 strategy IDs end in _H1 so:
   - live-WR calibration and strategy_params track them independently
   - trade_log entries are separate from 5m trades
-  - the walk-forward auto-promotion harness (learning_loop.run_weekly)
+  - the walk-forward auto-promotion harness (learning_loop.run_nightly)
     handles H1 paper_only promotion in the same bucket system
 
 Ships with all four H1 strategies in paper_only=True mode until the

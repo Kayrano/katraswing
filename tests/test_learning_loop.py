@@ -34,9 +34,9 @@ def _isolate_state(monkeypatch, tmp_path):
     monkeypatch.setattr(learning_loop, "_REPORTS_DIR", reports)
     # Reset module locks so tests don't leak state
     monkeypatch.setattr(learning_loop, "_LOCKS", {
-        "hourly": threading.Lock(),
-        "daily":  threading.Lock(),
-        "weekly": threading.Lock(),
+        "hourly":  threading.Lock(),
+        "daily":   threading.Lock(),
+        "nightly": threading.Lock(),
     })
     monkeypatch.setattr(learning_loop, "_WATCHLIST", [])
     yield
@@ -121,20 +121,20 @@ class TestCadenceRules:
         state = {"last_daily_at": datetime(2026, 5, 4, 23, 5, tzinfo=timezone.utc)}
         assert learning_loop._is_due("daily", now, state) is False
 
-    def test_weekly_due_every_night_after_23h(self):
-        # Weekly was accelerated to daily (fires every night, not just Sundays)
+    def test_nightly_due_every_night_after_23h(self):
+        # Nightly fires every night at 23:00 UTC
         # Mon 23:05 → due (no prior run)
         mon = datetime(2026, 5, 4, 23, 5, tzinfo=timezone.utc)
-        assert learning_loop._is_due("weekly", mon, {}) is True
+        assert learning_loop._is_due("nightly", mon, {}) is True
         # Before 23:00 → not due
         early = datetime(2026, 5, 4, 22, 59, tzinfo=timezone.utc)
-        assert learning_loop._is_due("weekly", early, {}) is False
+        assert learning_loop._is_due("nightly", early, {}) is False
 
-    def test_weekly_idempotent_same_day(self):
+    def test_nightly_idempotent_same_day(self):
         # Already ran today → not due again
         sun   = datetime(2026, 5, 3, 23, 30, tzinfo=timezone.utc)
-        state = {"last_weekly_at": datetime(2026, 5, 3, 23, 5, tzinfo=timezone.utc)}
-        assert learning_loop._is_due("weekly", sun, state) is False
+        state = {"last_nightly_at": datetime(2026, 5, 3, 23, 5, tzinfo=timezone.utc)}
+        assert learning_loop._is_due("nightly", sun, state) is False
 
 
 # ── State persistence ──────────────────────────────────────────────────────
@@ -317,7 +317,7 @@ class TestDailyReadOnly:
         assert before == after, "run_daily must not mutate strategy_params.json"
 
 
-# ── run_weekly prune + promote ─────────────────────────────────────────────
+# ── run_nightly prune + promote ────────────────────────────────────────────
 
 class TestWeeklyMutations:
     """Verify the live-from-day-1 prune and promote rules write the
@@ -379,7 +379,7 @@ class TestWeeklyMutations:
         )
         now = datetime(2026, 5, 3, 23, 5, tzinfo=timezone.utc)
         monkeypatch.setattr(learning_loop, "_now", _frozen_clock(now))
-        learning_loop.run_weekly(now)
+        learning_loop.run_nightly(now)
         loaded = json.loads(params_file.read_text(encoding="utf-8"))
         assert loaded["LOSER_X"]["enabled"] is False, \
             "LOSER_X (n=20, WR=25%, PF<1) must be disabled"
@@ -415,7 +415,7 @@ class TestWeeklyMutations:
         )
         now = datetime(2026, 5, 3, 23, 5, tzinfo=timezone.utc)
         monkeypatch.setattr(learning_loop, "_now", _frozen_clock(now))
-        learning_loop.run_weekly(now)
+        learning_loop.run_nightly(now)
         loaded = json.loads(params_file.read_text(encoding="utf-8"))
         assert loaded["PAPER_GOOD"]["paper_only"] is False
         assert loaded["PAPER_GOOD"]["enabled"] is True
@@ -446,8 +446,8 @@ class TestWeeklyMutations:
         )
         now = datetime(2026, 5, 3, 23, 5, tzinfo=timezone.utc)
         monkeypatch.setattr(learning_loop, "_now", _frozen_clock(now))
-        learning_loop.run_weekly(now)
-        archived = learning_loop._DATA_DIR / "learning_log.2026-W18.jsonl"
+        learning_loop.run_nightly(now)
+        archived = learning_loop._DATA_DIR / "learning_log.2026-05-03.jsonl"
         assert archived.exists()
         assert not learning_loop._AUDIT_PATH.exists()
 

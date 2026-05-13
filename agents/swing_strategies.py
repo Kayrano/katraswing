@@ -7,7 +7,7 @@ live-WR calibration and strategy_params track them independently from 5m IDs.
 
 All strategies ship with paper_only=True (set in data/strategy_params.py
 defaults) and stay paper until the walk-forward auto-promotion harness in
-agents/learning_loop.run_weekly() flips them live (n>=20, WR>=0.50, PF>=1.30).
+agents/learning_loop.run_nightly() flips them live (n>=10, WR>=0.50, PF>=1.10).
 
 Strategy roster
 ───────────────

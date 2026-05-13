@@ -4,10 +4,10 @@ Tick `tick()` once per server poll iteration. The function is O(microseconds)
 when nothing is due (one JSON read + three timestamp compares). When a job
 *is* due:
 
-  - hourly  : runs synchronously in the calling thread (target <5s)
-  - daily   : spawned in a daemon thread (may take minutes; report-only)
-  - weekly  : spawned in a daemon thread (applies prune/promote per the
-              user's 2026-05-01 decision)
+  - hourly   : runs synchronously in the calling thread (target <5s)
+  - daily    : spawned in a daemon thread (may take minutes; report-only)
+  - nightly  : spawned in a daemon thread (applies prune/promote per the
+               user's 2026-05-01 decision; fires every night at 23:00 UTC)
 
 State persists in `data/learning_state.json`. Every fire appends one JSONL
 row to `data/learning_log.jsonl` for audit.
@@ -39,7 +39,7 @@ _STATE_PATH  = _DATA_DIR / "learning_state.json"
 _AUDIT_PATH  = _DATA_DIR / "learning_log.jsonl"
 _REPORTS_DIR = _DATA_DIR / "reports"
 
-# Watchlist set by the CLI on first tick(); used by daily/weekly sweeps.
+# Watchlist set by the CLI on first tick(); used by daily/nightly sweeps.
 # Module-level so threads share the same value without lock juggling
 # (write-once on startup, read-only afterwards).
 _WATCHLIST: list[str] = []
@@ -51,7 +51,7 @@ _TG = None
 _LOCKS: dict[str, threading.Lock] = {
     "hourly": threading.Lock(),
     "daily":  threading.Lock(),
-    "weekly": threading.Lock(),
+    "nightly": threading.Lock(),
 }
 
 
@@ -77,7 +77,7 @@ def _load_state() -> dict:
         return {}
     state: dict = {}
     now = _now()
-    for kind in ("hourly", "daily", "weekly"):
+    for kind in ("hourly", "daily", "nightly"):
         key = f"last_{kind}_at"
         ts_str = raw.get(key)
         if not ts_str:
@@ -132,9 +132,9 @@ def _audit(row: dict) -> None:
 def _is_due(kind: str, now: datetime, state: dict) -> bool:
     """Return True if the cadence window is open and we haven't fired in it yet.
 
-    Hourly: now.minute < 5 and last_hourly_at is in a previous hour bucket.
-    Daily : now.hour == 23 and last_daily_at.date() < now.date().
-    Weekly: Sunday >=23:00 UTC and ISO week > last_weekly_at's ISO week.
+    Hourly : now.minute < 5 and last_hourly_at is in a previous hour bucket.
+    Daily  : now.hour == 23 and last_daily_at.date() < now.date().
+    Nightly: every night at 23:00 UTC — prune/promote/ML-retrain.
     """
     last: Optional[datetime] = state.get(f"last_{kind}_at")
 
@@ -154,9 +154,7 @@ def _is_due(kind: str, now: datetime, state: dict) -> bool:
             return True
         return last.date() < now.date()
 
-    if kind == "weekly":
-        # Accelerated to daily: prune/promote/ML-retrain every night at 23:00 UTC
-        # so the system converges in weeks rather than months.
+    if kind == "nightly":
         if now.hour < 23:
             return False
         if last is None:
@@ -169,7 +167,7 @@ def _is_due(kind: str, now: datetime, state: dict) -> bool:
 # ── Main entry point ──────────────────────────────────────────────────────
 
 def set_watchlist(tickers: list[str]) -> None:
-    """Called once by the CLI on startup so daily/weekly sweeps know which
+    """Called once by the CLI on startup so daily/nightly sweeps know which
     tickers to backtest. Idempotent — safe to call from every tick if cheaper
     than threading args through."""
     global _WATCHLIST
@@ -196,7 +194,7 @@ def tick(now: Optional[datetime] = None, tickers: Optional[list[str]] = None) ->
     """Called once per server poll iteration. Returns {'fired': [...]}.
 
     `tickers` (optional): the CLI's --tickers list. Stored module-locally so
-    background daily/weekly threads can read it. Pass at least once on
+    background daily/nightly threads can read it. Pass at least once on
     startup; subsequent calls without it reuse the prior value.
     """
     now = now or _now()
@@ -224,15 +222,15 @@ def tick(now: Optional[datetime] = None, tickers: Optional[list[str]] = None) ->
             ).start()
             fired.append("daily")
 
-    if _is_due("weekly", now, state):
-        if _LOCKS["weekly"].acquire(blocking=False):
+    if _is_due("nightly", now, state):
+        if _LOCKS["nightly"].acquire(blocking=False):
             threading.Thread(
                 target=_run_async_with_audit,
-                args=("weekly", run_weekly, now, _LOCKS["weekly"]),
+                args=("nightly", run_nightly, now, _LOCKS["nightly"]),
                 daemon=True,
-                name="learning_loop_weekly",
+                name="learning_loop_nightly",
             ).start()
-            fired.append("weekly")
+            fired.append("nightly")
 
     return {"fired": fired}
 
@@ -616,7 +614,7 @@ def _atomic_write_text(path: Path, content: str) -> None:
         raise
 
 
-# ── Weekly: structural prune + promote + report ───────────────────────────
+# ── Nightly: structural prune + promote + report ─────────────────────────
 
 # Prune: disable strategies failing trailing-30d health (per the user's
 # 2026-05-01 decision: changes apply live from day 1).
@@ -631,18 +629,17 @@ _PROMOTE_WR_MIN     = 0.50
 _PROMOTE_PF_MIN     = 1.10  # was 1.30 — lower profit-factor bar
 
 
-def run_weekly(now: datetime) -> Path:
-    """Build the weekly review.
+def run_nightly(now: datetime) -> Path:
+    """Build the nightly review (fires every night at 23:00 UTC).
 
-    Per the user's 2026-05-01 decision the weekly job applies prune /
-    promote *live from day 1*. Every flip is logged in the report and in
-    the JSONL audit log.
+    Applies prune/promote live from day 1. Every flip is logged in the
+    report and in the JSONL audit log.
 
     Steps:
       1. Compute 30d (strategy, symbol) bucket health.
-      2. Prune buckets that fail (n>=15, wr<0.35 or pf<1.0).
+      2. Prune buckets that fail (n>=10, wr<0.35 or pf<1.0).
       3. Promote paper-only strategies whose 30d health passes the bar.
-      4. Write data/reports/weekly_YYYY-WNN.md.
+      4. Write data/reports/nightly_YYYY-MM-DD.md.
       5. Force calibrator refit so it sees the new active mix.
       6. Rotate learning_log.jsonl.
     """
@@ -655,7 +652,7 @@ def run_weekly(now: datetime) -> Path:
 
     _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     iso_year, iso_week, _ = now.isocalendar()
-    report_path = _REPORTS_DIR / f"weekly_{iso_year}-W{iso_week:02d}.md"
+    report_path = _REPORTS_DIR / f"nightly_{now.strftime('%Y-%m-%d')}.md"
 
     trades = _load_trades()
     load_params()        # rebinds _sp._PARAMS to the file contents
@@ -679,7 +676,7 @@ def run_weekly(now: datetime) -> Path:
                     "strategy": row["strategy"],
                     "n":  row["n"], "wr": row["wr"], "pf": row["pf"],
                 })
-                logger.info("weekly prune: disabled %s (n=%d wr=%.2f pf=%.2f)",
+                logger.info("nightly prune: disabled %s (n=%d wr=%.2f pf=%.2f)",
                             row["strategy"], row["n"], row["wr"], row["pf"])
 
     # ── Promote step (paper_only strategies) ──────────────────────────
@@ -699,13 +696,13 @@ def run_weekly(now: datetime) -> Path:
                 "strategy": strat,
                 "n": h["n"], "wr": h["wr"], "pf": h["pf"],
             })
-            logger.info("weekly promote: %s went paper_only=False enabled=True "
+            logger.info("nightly promote: %s went paper_only=False enabled=True "
                         "(n=%d wr=%.2f pf=%.2f)",
                         strat, h["n"], h["wr"], h["pf"])
 
     if pruned or promoted:
         save_params()
-        lines = ["<b>Learning (weekly) — Strategy changes</b>"]
+        lines = ["<b>Learning (nightly) — Strategy changes</b>"]
         for r in pruned:
             lines.append(f"DISABLED: {r['strategy']} (WR {r['wr']:.0%}, PF {r['pf']:.2f}, n={r['n']})")
         for r in promoted:
@@ -735,7 +732,7 @@ def run_weekly(now: datetime) -> Path:
             save_override(sym, "LIVE")
             sym_promoted.append({"symbol": sym, "n": row["n"],
                                   "wr": row["wr"], "pf": row["pf"]})
-            logger.info("weekly symbol promote: %s -> LIVE (n=%d wr=%.2f pf=%.2f)",
+            logger.info("nightly symbol promote: %s -> LIVE (n=%d wr=%.2f pf=%.2f)",
                         sym, row["n"], row["wr"], row["pf"])
             _tg_send(
                 f"<b>Symbol promoted to LIVE: {sym}</b>\n"
@@ -743,14 +740,14 @@ def run_weekly(now: datetime) -> Path:
             )
 
     # ── Watchlist regime over the past week ───────────────────────────
-    weekly_regime: list[dict] = []
+    nightly_regime: list[dict] = []
     label_counts = {"TRENDING": 0, "RANGING": 0, "MIXED": 0,
                     "INSUFFICIENT_DATA": 0, "ERROR": 0}
     for ticker in (_WATCHLIST or []):
         try:
             df = fetch_intraday_data(ticker, interval="5m", days=7)
             r = _regime_classify(df, ticker=ticker, lookback_bars=2016)  # 7d × 288
-            weekly_regime.append({
+            nightly_regime.append({
                 "ticker":  ticker,
                 "label":   r.label,
                 "pct_t":   r.pct_trending,
@@ -759,21 +756,21 @@ def run_weekly(now: datetime) -> Path:
             })
             label_counts[r.label] = label_counts.get(r.label, 0) + 1
         except Exception as exc:
-            logger.warning("ctx=weekly.regime ticker=%s: %s", ticker, exc)
-            weekly_regime.append({"ticker": ticker, "label": "ERROR",
-                                  "pct_t": 0.0, "pct_r": 0.0, "bars": 0})
+            logger.warning("ctx=nightly.regime ticker=%s: %s", ticker, exc)
+            nightly_regime.append({"ticker": ticker, "label": "ERROR",
+                                   "pct_t": 0.0, "pct_r": 0.0, "bars": 0})
             label_counts["ERROR"] += 1
     overall_regime = (
-        max(label_counts, key=label_counts.get) if weekly_regime else "UNKNOWN"
+        max(label_counts, key=label_counts.get) if nightly_regime else "UNKNOWN"
     )
 
     # ── ML predictor retrain ──────────────────────────────────────────
     try:
         from models.ml_predictor import retrain_from_log
         ml_retrained = retrain_from_log()
-        logger.info("ctx=weekly.ml_predictor: retrained=%s", ml_retrained)
+        logger.info("ctx=nightly.ml_predictor: retrained=%s", ml_retrained)
     except Exception as exc:
-        logger.warning("ctx=weekly.ml_predictor: %s", exc)
+        logger.warning("ctx=nightly.ml_predictor: %s", exc)
 
     # ── Calibration snapshot before forced refit ──────────────────────
     calibration_info = {"sample_count": 0, "fitted": False}
@@ -784,10 +781,10 @@ def run_weekly(now: datetime) -> Path:
         calibration_info["sample_count"] = getattr(cal, "sample_count", 0)
         calibration_info["fitted"]       = bool(getattr(cal, "is_fitted", False))
     except Exception as exc:
-        logger.warning("ctx=weekly.calibration: %s", exc)
+        logger.warning("ctx=nightly.calibration: %s", exc)
 
     # ── Render markdown ───────────────────────────────────────────────
-    md = _render_weekly_markdown(
+    md = _render_nightly_markdown(
         now=now,
         iso_year=iso_year,
         iso_week=iso_week,
@@ -796,7 +793,7 @@ def run_weekly(now: datetime) -> Path:
         pruned=pruned,
         promoted=promoted,
         sym_promoted=sym_promoted,
-        weekly_regime=weekly_regime,
+        nightly_regime=nightly_regime,
         overall_regime=overall_regime,
         calibration_info=calibration_info,
     )
@@ -805,10 +802,10 @@ def run_weekly(now: datetime) -> Path:
     # ── Rotate the JSONL audit log so it doesn't grow unbounded ───────
     try:
         if _AUDIT_PATH.exists():
-            archive = _DATA_DIR / f"learning_log.{iso_year}-W{iso_week:02d}.jsonl"
+            archive = _DATA_DIR / f"learning_log.{now.strftime('%Y-%m-%d')}.jsonl"
             os.replace(_AUDIT_PATH, archive)
     except OSError as exc:
-        logger.warning("ctx=weekly.rotate_audit: %s", exc)
+        logger.warning("ctx=nightly.rotate_audit: %s", exc)
 
     return report_path
 
@@ -850,7 +847,7 @@ def _per_symbol_health_30d(trades: list[dict], now: datetime) -> list[dict]:
     return rows
 
 
-def _render_weekly_markdown(
+def _render_nightly_markdown(
     *,
     now: datetime,
     iso_year: int,
@@ -860,19 +857,14 @@ def _render_weekly_markdown(
     pruned: list[dict],
     promoted: list[dict],
     sym_promoted: list[dict] | None = None,
-    weekly_regime: list[dict],
+    nightly_regime: list[dict],
     overall_regime: str,
     calibration_info: dict,
 ) -> str:
-    """Render the weekly markdown. Pure formatting; no I/O."""
-    from datetime import timedelta
-    period_start = now - timedelta(days=now.weekday() + 1)   # last Sunday
-    period_end   = now
+    """Render the nightly markdown report. Pure formatting; no I/O."""
     lines: list[str] = []
-    lines.append(f"# Weekly Review — {iso_year}-W{iso_week:02d}")
-    lines.append(f"Period: {period_start.strftime('%Y-%m-%d')} → "
-                 f"{period_end.strftime('%Y-%m-%d')}   |   "
-                 f"Watchlist regime: **{overall_regime}**")
+    lines.append(f"# Nightly Review — {now.strftime('%Y-%m-%d')}")
+    lines.append(f"Regime: **{overall_regime}**")
     lines.append("")
 
     # Structural changes
@@ -889,7 +881,7 @@ def _render_weekly_markdown(
             lines.append(f"- SYMBOL LIVE: {r['symbol']} graduated from PAPER "
                          f"(WR {r['wr']:.0%}, PF {r['pf']:.2f}, n={r['n']})")
     else:
-        lines.append("_No strategies hit the prune or promote thresholds this week._")
+        lines.append("_No strategies hit the prune or promote thresholds today._")
     lines.append("")
 
     # Strategy scoreboard
@@ -924,10 +916,10 @@ def _render_weekly_markdown(
 
     # Watchlist regime
     lines.append("## Watchlist regime breakdown (last 7d)")
-    if weekly_regime:
+    if nightly_regime:
         lines.append("| Ticker | %Trending | %Ranging | Bars | Dominant |")
         lines.append("|--------|-----------|----------|------|----------|")
-        for r in weekly_regime:
+        for r in nightly_regime:
             lines.append(f"| {r['ticker']} | {r['pct_t']:.1%} | {r['pct_r']:.1%} | "
                          f"{r['bars']} | {r['label']} |")
     else:
