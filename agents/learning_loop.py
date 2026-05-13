@@ -44,6 +44,9 @@ _REPORTS_DIR = _DATA_DIR / "reports"
 # (write-once on startup, read-only afterwards).
 _WATCHLIST: list[str] = []
 
+# Optional Telegram notifier — set by the server via set_notifier()
+_TG = None
+
 # Per-kind locks so concurrent tick() calls don't fire the same job twice.
 _LOCKS: dict[str, threading.Lock] = {
     "hourly": threading.Lock(),
@@ -171,6 +174,22 @@ def set_watchlist(tickers: list[str]) -> None:
     than threading args through."""
     global _WATCHLIST
     _WATCHLIST = list(tickers or [])
+
+
+def set_notifier(tg) -> None:
+    """Pass a utils.telegram_notify.Notifier instance so learning events are
+    sent to Telegram. Call once at server startup."""
+    global _TG
+    _TG = tg
+
+
+def _tg_send(msg: str) -> None:
+    """Send a Telegram message if a notifier is configured."""
+    try:
+        if _TG and _TG.enabled():
+            _TG._send(msg)
+    except Exception as exc:
+        logger.warning("ctx=tg_send: %s", exc)
 
 
 def tick(now: Optional[datetime] = None, tickers: Optional[list[str]] = None) -> dict:
@@ -331,6 +350,17 @@ def run_hourly(now: datetime) -> dict:
         _reset_iv()
     except Exception as exc:
         logger.warning("ctx=hourly.intervention_stats: %s", exc)
+
+    # Telegram: notify if any new trades were pulled or buckets adapted
+    new_trades = extras.get("mt5_updated", 0)
+    buckets_updated = extras.get("buckets_updated", 0)
+    if (new_trades and new_trades > 0) or (buckets_updated and buckets_updated > 0):
+        _tg_send(
+            f"<b>Learning (hourly)</b>\n"
+            f"New closes pulled: {new_trades or 0}\n"
+            f"Strategy buckets adapted: {buckets_updated or 0}\n"
+            f"Patterns tracked: {extras.get('pattern_count', '?')}"
+        )
 
     return extras
 
@@ -590,7 +620,7 @@ def _atomic_write_text(path: Path, content: str) -> None:
 
 # Prune: disable strategies failing trailing-30d health (per the user's
 # 2026-05-01 decision: changes apply live from day 1).
-_PRUNE_MIN_TRADES = 15   # need enough trades for statistical confidence
+_PRUNE_MIN_TRADES = 10   # lowered from 15 — prune toxic strategies faster
 _PRUNE_WR_MAX     = 0.35
 _PRUNE_PF_MAX     = 1.0
 
@@ -675,6 +705,12 @@ def run_weekly(now: datetime) -> Path:
 
     if pruned or promoted:
         save_params()
+        lines = ["<b>Learning (weekly) — Strategy changes</b>"]
+        for r in pruned:
+            lines.append(f"DISABLED: {r['strategy']} (WR {r['wr']:.0%}, PF {r['pf']:.2f}, n={r['n']})")
+        for r in promoted:
+            lines.append(f"PROMOTED: {r['strategy']} paper->live (WR {r['wr']:.0%}, n={r['n']})")
+        _tg_send("\n".join(lines))
 
     # ── Symbol promotion: paper → live ───────────────────────────────
     # Promote a PAPER symbol to LIVE when it accumulates enough evidence.
@@ -701,6 +737,10 @@ def run_weekly(now: datetime) -> Path:
                                   "wr": row["wr"], "pf": row["pf"]})
             logger.info("weekly symbol promote: %s -> LIVE (n=%d wr=%.2f pf=%.2f)",
                         sym, row["n"], row["wr"], row["pf"])
+            _tg_send(
+                f"<b>Symbol promoted to LIVE: {sym}</b>\n"
+                f"WR {row['wr']:.0%}  |  PF {row['pf']:.2f}  |  n={row['n']}"
+            )
 
     # ── Watchlist regime over the past week ───────────────────────────
     weekly_regime: list[dict] = []

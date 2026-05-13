@@ -420,6 +420,13 @@ def run_server(args: argparse.Namespace):
     else:
         log.info("Telegram notifications: disabled (no token/chat-id)")
 
+    # Wire Telegram notifier into learning loop so strategy changes are reported
+    try:
+        from agents.learning_loop import set_notifier as _set_tg_notifier
+        _set_tg_notifier(tg)
+    except Exception:
+        pass
+
     # Dedup sets: live orders vs paper-only signals tracked separately so the
     # log message accurately says "already recorded (paper)" vs "already entered"
     sent_signals: set[str] = set()   # live orders placed
@@ -471,10 +478,43 @@ def run_server(args: argparse.Namespace):
         # Recent signals since last heartbeat
         if _hb_signals:
             lines.append(f"\nSignals last 15 min ({len(_hb_signals)}):")
-            for s in _hb_signals[-8:]:   # cap at 8 lines
+            for s in _hb_signals[-8:]:
                 lines.append(f"  {s}")
         else:
             lines.append("\nNo new signals last 15 min")
+
+        # 7-day strategy WR summary (top performers + worst)
+        try:
+            import json as _json
+            from datetime import timezone as _tz2, timedelta as _td
+            _cutoff = (datetime.now(_tz2.utc) - _td(days=7)).isoformat()
+            with open("data/trade_log.json", encoding="utf-8") as _f:
+                _trades = _json.load(_f)
+            _buckets: dict[str, list] = {}
+            for _t in _trades:
+                if _t.get("strategy") == "MT5_IMPORT":
+                    continue
+                if _t.get("outcome") not in ("WIN", "LOSS"):
+                    continue
+                if str(_t.get("closed_at", "")) < _cutoff[:10]:
+                    continue
+                _s = _t["strategy"]
+                _buckets.setdefault(_s, []).append(_t)
+            if _buckets:
+                lines.append("\n7-day strategy WR:")
+                _rows = sorted(
+                    [(s, sum(1 for t in ts if t["outcome"]=="WIN"), len(ts))
+                     for s, ts in _buckets.items()],
+                    key=lambda x: -(x[1]/x[2]) if x[2] >= 3 else -99,
+                )
+                for _s, _w, _n in _rows:
+                    if _n < 2:
+                        continue
+                    _wr = _w / _n * 100
+                    _bar = "+" if _wr >= 50 else "-"
+                    lines.append(f"  {_bar} {_s[:20]:<20} {_w}/{_n} ({_wr:.0f}%)")
+        except Exception:
+            pass
 
         _hb_signals = []
 
