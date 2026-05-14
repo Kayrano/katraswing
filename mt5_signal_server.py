@@ -522,7 +522,12 @@ def run_server(args: argparse.Namespace):
             tg._send("\n".join(lines))
 
     def _maybe_send_daily_summary() -> None:
-        """Send a daily P&L Telegram summary once per day after 22:00 UTC."""
+        """Send a daily P&L Telegram summary once per day after 22:00 UTC.
+
+        The day is only marked as sent once a non-empty summary is dispatched,
+        so the function retries on each poll cycle until trades appear or
+        midnight passes (whichever comes first).
+        """
         import json as _json
         from datetime import timezone as _tz
         now_utc = datetime.now(_tz.utc)
@@ -531,7 +536,6 @@ def run_server(args: argparse.Namespace):
         today_str = str(now_utc.date())
         if today_str in _daily_summary_sent:
             return
-        _daily_summary_sent.add(today_str)
 
         trade_log_path = "data/trade_log.json"
         try:
@@ -548,8 +552,12 @@ def run_server(args: argparse.Namespace):
         ]
 
         if not today_trades:
-            if tg:
-                tg.info(f"Daily summary {today_str}: no closed trades today.")
+            # Mark sent only at 23:00+ so we don't retry indefinitely, but still
+            # allow earlier cycles (22:xx) to retry if outcomes arrive late.
+            if now_utc.hour >= 23:
+                _daily_summary_sent.add(today_str)
+                if tg:
+                    tg.info(f"Daily summary {today_str}: no closed trades today.")
             return
 
         wins   = sum(1 for t in today_trades if t.get("outcome") == "WIN")
@@ -580,6 +588,7 @@ def run_server(args: argparse.Namespace):
         log.info("[daily-summary] %s", msg.replace("<b>","").replace("</b>","").replace("&amp;","&"))
         if tg:
             tg._send(msg)
+        _daily_summary_sent.add(today_str)
 
     def _scan_with_cache(ticker: str):
         """Fetch run_signal for one ticker, reusing the cached result if we
