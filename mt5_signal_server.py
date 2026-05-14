@@ -870,6 +870,20 @@ def run_server(args: argparse.Namespace):
                     tg.order_placed(result.ticket, display, result.direction,
                                     result.entry, sr.sl, sr.tp)
                     sent_signals.add(key)
+                    try:
+                        from data.trade_outcomes import record_trade
+                        _strat = sr.chart_signals[0].strategy if getattr(sr, "chart_signals", None) else "UNKNOWN"
+                        _pats  = sr.patterns.patterns if getattr(sr, "patterns", None) else None
+                        record_trade(
+                            result.ticket, ticker, _strat, sr.direction,
+                            sr.confidence, sr.entry, sr.sl, sr.tp,
+                            patterns=_pats,
+                            adx_value=getattr(sr, "adx_value", None),
+                            atr_value=getattr(sr, "atr", None),
+                            h1_trend=getattr(sr, "daily_trend_direction", None),
+                        )
+                    except Exception as _rte:
+                        log.warning("record_trade #%s: %s", result.ticket, _rte)
                     if metrics is not None:
                         metrics.record_signal()
                 else:
@@ -941,6 +955,20 @@ def run_server(args: argparse.Namespace):
                 if result.success:
                     log.info(f"  ✓ H1 Order #{result.ticket} placed")
                     sent_signals.add(key)
+                    try:
+                        from data.trade_outcomes import record_trade
+                        _strat = sr.chart_signals[0].strategy if getattr(sr, "chart_signals", None) else "UNKNOWN"
+                        _pats  = sr.patterns.patterns if getattr(sr, "patterns", None) else None
+                        record_trade(
+                            result.ticket, ticker, _strat, sr.direction,
+                            sr.confidence, sr.entry, sr.sl, sr.tp,
+                            patterns=_pats,
+                            adx_value=getattr(sr, "adx_value", None),
+                            atr_value=getattr(sr, "atr", None),
+                            h1_trend=getattr(sr, "daily_trend_direction", None),
+                        )
+                    except Exception as _rte:
+                        log.warning("record_trade H1 #%s: %s", result.ticket, _rte)
                 else:
                     log.warning(f"  ✗ H1 Order failed: {result.error}")
 
