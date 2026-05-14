@@ -807,7 +807,137 @@ def run_nightly(now: datetime) -> Path:
     except OSError as exc:
         logger.warning("ctx=nightly.rotate_audit: %s", exc)
 
+    # ── Backup data files to GitHub (data-backup branch) ─────────────
+    try:
+        _backup_data_to_git(now)
+    except Exception as exc:
+        logger.warning("ctx=nightly.backup: %s", exc)
+
     return report_path
+
+
+_BACKUP_FILES = [
+    "data/trade_log.json",
+    "data/strategy_params.json",
+    "data/pattern_stats.json",
+    "data/calibration.json",
+    "data/stop_minimums.json",
+    "data/symbol_promotions.json",
+    "data/learning_state.json",
+]
+
+_GIT_ENV = {
+    "GIT_AUTHOR_NAME":     "katraswing-server",
+    "GIT_AUTHOR_EMAIL":    "server@katraswing.local",
+    "GIT_COMMITTER_NAME":  "katraswing-server",
+    "GIT_COMMITTER_EMAIL": "server@katraswing.local",
+}
+
+
+def _backup_data_to_git(now: datetime) -> None:
+    """Commit gitignored data files to the data-backup branch on GitHub.
+
+    Uses a temporary git worktree so the main working tree is never touched
+    and `git pull` in start_all.ps1 continues to work without conflicts.
+
+    Restore on a new server after cloning:
+        git fetch origin data-backup:data-backup
+        git checkout data-backup -- data/
+        git checkout main
+    """
+    import shutil
+    import subprocess
+
+    install_dir = _DATA_DIR.parent
+    wt_path = install_dir.parent / "_katraswing_backup_wt"
+    env = {**os.environ, **_GIT_ENV}
+
+    existing = [f for f in _BACKUP_FILES if (install_dir / f).exists()]
+    if not existing:
+        return
+
+    try:
+        # Clean up any stale worktree from a previous crashed run
+        subprocess.run(["git", "worktree", "prune"],
+                       cwd=install_dir, capture_output=True, timeout=15)
+        if wt_path.exists():
+            shutil.rmtree(wt_path, ignore_errors=True)
+
+        # Create the data-backup branch on remote if it doesn't exist yet
+        ls = subprocess.run(
+            ["git", "ls-remote", "--heads", "origin", "data-backup"],
+            cwd=install_dir, capture_output=True, timeout=20,
+        )
+        if not ls.stdout.strip():
+            # Write an empty tree object, make a root commit, push
+            empty_tree = subprocess.run(
+                ["git", "hash-object", "-t", "tree", "--stdin"],
+                input=b"", cwd=install_dir, capture_output=True,
+                timeout=10, env=env,
+            ).stdout.decode().strip()
+            empty_commit = subprocess.run(
+                ["git", "commit-tree", empty_tree, "-m", "init: data backup branch"],
+                cwd=install_dir, capture_output=True,
+                timeout=10, env=env,
+            ).stdout.decode().strip()
+            subprocess.run(
+                ["git", "branch", "data-backup", empty_commit],
+                cwd=install_dir, capture_output=True, timeout=10,
+            )
+            subprocess.run(
+                ["git", "push", "origin", "data-backup"],
+                cwd=install_dir, capture_output=True, timeout=30,
+            )
+            logger.info("ctx=nightly.backup: created data-backup branch on remote")
+
+        # Attach a worktree to the data-backup branch
+        r = subprocess.run(
+            ["git", "worktree", "add", str(wt_path), "data-backup"],
+            cwd=install_dir, capture_output=True, timeout=30,
+        )
+        if r.returncode != 0:
+            logger.warning("ctx=nightly.backup: worktree add failed: %s",
+                           r.stderr.decode().strip())
+            return
+
+        # Copy each data file into the worktree
+        (wt_path / "data").mkdir(exist_ok=True)
+        for rel in existing:
+            shutil.copy2(install_dir / rel, wt_path / rel)
+
+        # Stage and check for actual changes before committing
+        subprocess.run(["git", "add", "data/"],
+                       cwd=wt_path, capture_output=True)
+        diff = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            cwd=wt_path, capture_output=True,
+        )
+        if diff.returncode == 0:
+            logger.info("ctx=nightly.backup: no data changes since last backup")
+            return
+
+        date_str = now.strftime("%Y-%m-%d")
+        subprocess.run(
+            ["git", "commit", "-m", f"data: backup {date_str}"],
+            cwd=wt_path, capture_output=True, timeout=30, env=env,
+        )
+        push = subprocess.run(
+            ["git", "push", "origin", "data-backup"],
+            cwd=wt_path, capture_output=True, timeout=60,
+        )
+        if push.returncode == 0:
+            logger.info("ctx=nightly.backup: pushed data backup for %s", date_str)
+            _tg_send(f"<b>Nightly backup pushed</b> — {date_str}\n"
+                     f"Files: {', '.join(existing)}")
+        else:
+            logger.warning("ctx=nightly.backup: push failed: %s",
+                           push.stderr.decode().strip())
+
+    finally:
+        subprocess.run(
+            ["git", "worktree", "remove", "--force", str(wt_path)],
+            cwd=install_dir, capture_output=True, timeout=15,
+        )
 
 
 def _per_symbol_health_30d(trades: list[dict], now: datetime) -> list[dict]:
