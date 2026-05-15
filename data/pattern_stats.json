@@ -1,0 +1,92 @@
+{
+  "Ascending Triangle": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
+  },
+  "Ascending Triangle:LONG": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
+  },
+  "Triple Bottom": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
+  },
+  "Triple Bottom:LONG": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
+  },
+  "Double Bottom": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
+  },
+  "Double Bottom:LONG": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
+  },
+  "Descending Triangle": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Descending Triangle:SHORT": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Rectangle": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Rectangle:SHORT": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Triple Top": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Triple Top:SHORT": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Bear Flag": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Bear Flag:SHORT": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Double Top": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Double Top:SHORT": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Head & Shoulders": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Head & Shoulders:SHORT": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  }
+}

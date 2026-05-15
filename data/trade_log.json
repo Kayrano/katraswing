@@ -1,0 +1,140 @@
+[
+  {
+    "ticket": 227175191,
+    "ticker": "EURUSD=X",
+    "strategy": "ORDER_BLOCK_5M",
+    "direction": "LONG",
+    "confidence": 0.729,
+    "entry": 1.164,
+    "sl": 1.1631,
+    "tp": 1.1658,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.83
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.87
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.88,
+        "win_rate": 0.87
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BEARISH",
+        "confidence": 0.62,
+        "win_rate": 0.58
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.59,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.88
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.79
+      },
+      {
+        "name": "Rising Wedge",
+        "bias": "BEARISH",
+        "confidence": 0.45,
+        "win_rate": 0.64
+      }
+    ],
+    "sent_at": "2026-05-15T07:45:23",
+    "closed_at": "2026-05-15T11:17:37",
+    "profit": -12.74,
+    "outcome": "LOSS",
+    "adx_value": 23.4,
+    "atr_value": 0.0004,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "london",
+    "day_of_week": 4,
+    "close_price": 1.1631,
+    "close_reason": "SL"
+  },
+  {
+    "ticket": 227320932,
+    "ticker": "SI=F",
+    "strategy": "FVG_5M",
+    "direction": "SHORT",
+    "confidence": 0.78,
+    "entry": 78.728,
+    "sl": 80.4474,
+    "tp": 75.2892,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.87
+      },
+      {
+        "name": "Rectangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.77
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.87,
+        "win_rate": 0.87
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.62,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Bear Flag",
+        "bias": "BEARISH",
+        "confidence": 0.58,
+        "win_rate": 0.68
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.52,
+        "win_rate": 0.79
+      },
+      {
+        "name": "Head & Shoulders",
+        "bias": "BEARISH",
+        "confidence": 0.52,
+        "win_rate": 0.83
+      }
+    ],
+    "sent_at": "2026-05-15T10:45:23",
+    "closed_at": "2026-05-15T16:25:07",
+    "profit": 65.8,
+    "outcome": "WIN",
+    "adx_value": 41.1,
+    "atr_value": 0.6878,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "london",
+    "day_of_week": 4,
+    "close_price": 77.346,
+    "close_reason": "SL"
+  }
+]
