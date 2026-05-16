@@ -739,10 +739,6 @@ def run_server(args: argparse.Namespace):
                     f"* SIGNAL: {display} {sr.direction} | "
                     f"conf={sr.confidence:.1%} | {pattern_str}"
                 )
-                _hb_signals.append(
-                    f"{display} {sr.direction} {sr.confidence:.0%}"
-                    + (" [paper]" if getattr(sr, "paper_only", False) else "")
-                )
                 log.info(_format_signal(sr))
 
                 # Dedup check — distinguish paper logs from live orders
@@ -752,6 +748,12 @@ def run_server(args: argparse.Namespace):
                     tag = "paper -- skipping" if is_paper else "live order placed -- skipping"
                     log.info(f"  [dedup] {sr.direction} {display} already recorded today ({tag}).")
                     continue
+
+                # Only count in heartbeat after dedup passes (new signal this session)
+                _hb_signals.append(
+                    f"{display} {sr.direction} {sr.confidence:.0%}"
+                    + (" [paper]" if is_paper else "")
+                )
 
                 # Open-position guard: never open a second position on a symbol
                 # that already has one open (same or opposite direction).
