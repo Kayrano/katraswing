@@ -941,13 +941,16 @@ def _backup_data_to_git(now: datetime) -> None:
 
 
 def _per_symbol_health_30d(trades: list[dict], now: datetime) -> list[dict]:
-    """Per-symbol scoreboard over the trailing 30d (excludes MT5_IMPORT)."""
+    """Per-symbol scoreboard over the trailing 30d.
+
+    Includes MT5_IMPORT rows (backfilled historical trades) because those
+    ARE system trades — just without strategy metadata. Strategy-level
+    prune/promote still excludes them; only symbol-level stats use them.
+    """
     from collections import defaultdict
     cutoff = now.timestamp() - 30 * 86400
     buckets: dict[str, list[dict]] = defaultdict(list)
     for t in trades:
-        if t.get("strategy") == "MT5_IMPORT":
-            continue
         if t.get("outcome") not in ("WIN", "LOSS"):
             continue
         try:
