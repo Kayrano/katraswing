@@ -1,27 +1,31 @@
 """
 ML-based win probability predictor for trade signals.
 
-Trains a logistic regression on closed trade history to estimate the
-probability a new signal will be a winner.  Falls back gracefully (returns
+Trains a LightGBM gradient-boosted tree on closed trade history to estimate
+the probability a new signal will be a winner.  Falls back gracefully (returns
 None) when fewer than MIN_SAMPLES closed trades exist.
 
 Features derived at signal-evaluation time (all available before the trade
 is placed):
-    strategy_*      one-hot encoded strategy name
-    is_long         1 = LONG, 0 = SHORT
-    hour            UTC hour of signal (0–23)
-    day_of_week     0 = Monday … 6 = Sunday
-    session_*       one-hot: london / ny / asia / other
-    sl_dist_pct     |entry − sl| / entry  (ATR proxy as fraction)
-    designed_rr     |tp − entry| / |entry − sl|
-    confidence      raw blended confidence at signal time
+    strategy_*         one-hot encoded strategy name
+    is_long            1 = LONG, 0 = SHORT
+    hour               UTC hour of signal (0–23)
+    day_of_week        0 = Monday … 6 = Sunday
+    session_*          one-hot: london / ny / asia / other
+    sl_dist_pct        |entry − sl| / entry  (ATR proxy as fraction)
+    designed_rr        |tp − entry| / |entry − sl|
+    confidence         raw blended confidence at signal time
+    vol_ratio          current ATR / 20-bar avg ATR
+    consensus_count    number of strategies agreeing on direction
+    pattern_boost_val  pattern alignment boost (±0.05) applied at entry
+    calibrated_conf    isotonic-calibrated empirical win probability
 """
 from __future__ import annotations
 
 import json
 import logging
 import pickle
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -33,7 +37,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _MODEL_PATH = Path(__file__).parent.parent / "data" / "ml_predictor.pkl"
-_MIN_SAMPLES = 40   # need at least this many closed trades before fitting
+_MIN_SAMPLES = 30   # LightGBM with shallow trees handles smaller datasets than logistic regression
 _MIN_WIN_RATE = 0.10  # sanity check — don't fit on degenerate data
 
 # Known strategies for stable one-hot encoding across retrains
@@ -70,6 +74,10 @@ def extract_features(
     h1_trend: str | None = None,
     session: str | None = None,
     day_of_week: int | None = None,
+    vol_ratio: float | None = None,
+    consensus_count: int | None = None,
+    pattern_boost_val: float | None = None,
+    calibrated_conf: float | None = None,
 ) -> dict:
     """Return a flat feature dict for one signal."""
     if isinstance(sent_at, str):
@@ -112,6 +120,11 @@ def extract_features(
         "atr_value": atr_value if atr_value is not None else sl_dist_pct,
         "spread_pips": spread_pips if spread_pips is not None else 1.0,
         "trend_align": trend_align,
+        # Signal quality features (new Phase 2)
+        "vol_ratio": vol_ratio if vol_ratio is not None else 1.0,
+        "consensus_count": float(consensus_count) if consensus_count is not None else 1.0,
+        "pattern_boost_val": pattern_boost_val if pattern_boost_val is not None else 0.0,
+        "calibrated_conf": calibrated_conf if calibrated_conf is not None else confidence,
     }
     for s in _KNOWN_STRATEGIES:
         feats[f"strat_{s}"] = int(strategy == s)
@@ -124,7 +137,7 @@ def _feats_to_array(feats: dict, feature_names: list[str]) -> np.ndarray:
 
 
 class WinRatePredictor:
-    """Logistic regression wrapper with train / predict / save / load."""
+    """LightGBM gradient-boosted tree wrapper with train / predict / save / load."""
 
     def __init__(self) -> None:
         self.model = None
@@ -132,6 +145,7 @@ class WinRatePredictor:
         self.n_samples: int = 0
         self.cv_score: float | None = None
         self.trained_at: str | None = None
+        self.feature_importances_: dict[str, float] = {}
 
     @property
     def is_fitted(self) -> bool:
@@ -142,10 +156,13 @@ class WinRatePredictor:
         Fit on closed automated trades.  Returns True on success.
         Excludes MT5_IMPORT (manual trades) and open trades.
         """
-        from sklearn.linear_model import LogisticRegression
+        try:
+            from lightgbm import LGBMClassifier
+        except ImportError:
+            logger.warning("ml_predictor: lightgbm not installed — run: pip install lightgbm>=4.0")
+            return False
+
         from sklearn.model_selection import cross_val_score
-        from sklearn.preprocessing import StandardScaler
-        from sklearn.pipeline import Pipeline
 
         closed = [
             t for t in trades
@@ -180,30 +197,45 @@ class WinRatePredictor:
                 h1_trend=t.get("h1_trend"),
                 session=t.get("session"),
                 day_of_week=t.get("day_of_week"),
+                vol_ratio=t.get("vol_ratio"),
+                consensus_count=t.get("consensus_count"),
+                pattern_boost_val=t.get("pattern_boost_val"),
+                calibrated_conf=t.get("calibrated_conf"),
             )
             for t in closed
         ]
 
-        if not self.feature_names:
-            self.feature_names = list(rows[0].keys())
+        feature_names = list(rows[0].keys())
+        self.feature_names = feature_names
 
         X = np.array([_feats_to_array(r, self.feature_names) for r in rows])
         y = np.array([1 if t["outcome"] == "WIN" else 0 for t in closed])
 
-        pipe = Pipeline([
-            ("scaler", StandardScaler()),
-            ("clf", LogisticRegression(C=0.5, max_iter=500, class_weight="balanced")),
-        ])
+        # Shallow trees prevent overfit on small datasets; min_child_samples=5
+        # ensures at least 5 trades per leaf node.
+        clf = LGBMClassifier(
+            n_estimators=200,
+            learning_rate=0.05,
+            max_depth=4,
+            min_child_samples=5,
+            class_weight="balanced",
+            verbosity=-1,
+        )
 
-        cv_scores = cross_val_score(pipe, X, y, cv=min(5, len(closed) // 8),
-                                    scoring="roc_auc")
+        cv_folds = min(5, max(2, len(closed) // 8))
+        cv_scores = cross_val_score(clf, X, y, cv=cv_folds, scoring="roc_auc")
         self.cv_score = float(np.mean(cv_scores))
-        logger.info("ml_predictor: CV AUC=%.3f (n=%d)", self.cv_score, len(closed))
+        logger.info("ml_predictor: CV AUC=%.3f (n=%d, LightGBM)", self.cv_score, len(closed))
 
-        pipe.fit(X, y)
-        self.model = pipe
+        clf.fit(X, y)
+        self.model = clf
         self.n_samples = len(closed)
         self.trained_at = datetime.now(tz=timezone.utc).isoformat()
+
+        # Store feature importances for nightly reporting
+        if hasattr(clf, "feature_importances_"):
+            self.feature_importances_ = dict(zip(feature_names, clf.feature_importances_))
+
         return True
 
     def predict_proba(
@@ -219,6 +251,10 @@ class WinRatePredictor:
         atr_value: float | None = None,
         spread_pips: float | None = None,
         h1_trend: str | None = None,
+        vol_ratio: float | None = None,
+        consensus_count: int | None = None,
+        pattern_boost_val: float | None = None,
+        calibrated_conf: float | None = None,
     ) -> float | None:
         """Return predicted win probability, or None if model not fitted."""
         if not self.is_fitted:
@@ -227,10 +263,14 @@ class WinRatePredictor:
             strategy, direction, entry, sl, tp, confidence, sent_at,
             adx_value=adx_value, atr_value=atr_value,
             spread_pips=spread_pips, h1_trend=h1_trend,
+            vol_ratio=vol_ratio, consensus_count=consensus_count,
+            pattern_boost_val=pattern_boost_val, calibrated_conf=calibrated_conf,
         )
         x = _feats_to_array(feats, self.feature_names).reshape(1, -1)
         try:
-            return float(self.model.predict_proba(x)[0, 1])
+            proba = self.model.predict_proba(x)
+            # LGBMClassifier returns shape (1, 2); col 1 = win probability
+            return float(proba[0, 1])
         except Exception as exc:
             logger.warning("ml_predictor: predict failed: %s", exc)
             return None
@@ -272,8 +312,29 @@ def reload_predictor() -> WinRatePredictor:
     return _predictor
 
 
+_TRAINING_WINDOW_DAYS = 90   # prefer recent trades; fall back to full history if too few
+
+
+def _parse_dt(s: str | None) -> datetime:
+    """Parse an ISO-format datetime string; return epoch on failure."""
+    if not s:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    try:
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
 def retrain_from_log(trade_log_path: Path | None = None) -> bool:
-    """Load trade_log.json, retrain, save. Returns True on success."""
+    """Load trade_log.json, retrain on 90-day rolling window, save.
+
+    Falls back to full history when the rolling window has fewer than
+    _MIN_SAMPLES closed trades so the model stays fitted during slow periods.
+    Returns True on success.
+    """
     if trade_log_path is None:
         trade_log_path = Path(__file__).parent.parent / "data" / "trade_log.json"
     try:
@@ -283,8 +344,25 @@ def retrain_from_log(trade_log_path: Path | None = None) -> bool:
         logger.error("ml_predictor: cannot load trade log: %s", exc)
         return False
 
+    cutoff = datetime.now(timezone.utc) - timedelta(days=_TRAINING_WINDOW_DAYS)
+    windowed = [
+        t for t in trades
+        if t.get("outcome") in ("WIN", "LOSS")
+        and t.get("strategy") != "MT5_IMPORT"
+        and _parse_dt(t.get("closed_at")) >= cutoff
+    ]
+
+    if len(windowed) >= _MIN_SAMPLES:
+        logger.info("ml_predictor: using 90d window, n=%d", len(windowed))
+        training_set = trades   # train() filters internally; pass full list but windowed will dominate
+        # Override: rebuild trades to only include windowed closed + all open (for completeness)
+        training_set = windowed
+    else:
+        logger.info("ml_predictor: 90d window only %d samples, falling back to full history", len(windowed))
+        training_set = trades
+
     predictor = WinRatePredictor()
-    if predictor.train(trades):
+    if predictor.train(training_set):
         predictor.save()
         reload_predictor()
         return True

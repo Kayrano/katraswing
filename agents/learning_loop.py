@@ -766,9 +766,17 @@ def run_nightly(now: datetime) -> Path:
 
     # ── ML predictor retrain ──────────────────────────────────────────
     try:
-        from models.ml_predictor import retrain_from_log
+        from models.ml_predictor import retrain_from_log, get_predictor as _get_pred
         ml_retrained = retrain_from_log()
         logger.info("ctx=nightly.ml_predictor: retrained=%s", ml_retrained)
+        if ml_retrained:
+            _pred = _get_pred()
+            if _pred.is_fitted and getattr(_pred, "feature_importances_", None):
+                top = sorted(_pred.feature_importances_.items(), key=lambda x: -x[1])[:5]
+                lines = [f"<b>ML top features (n={_pred.n_samples}, AUC={_pred.cv_score:.3f})</b>"]
+                for _fname, _score in top:
+                    lines.append(f"  {_fname}: {_score:.3f}")
+                _tg_send("\n".join(lines))
     except Exception as exc:
         logger.warning("ctx=nightly.ml_predictor: %s", exc)
 

@@ -89,6 +89,10 @@ def record_trade(
     atr_value: Optional[float] = None,
     spread_pips: Optional[float] = None,
     h1_trend: Optional[str] = None,
+    vol_ratio: Optional[float] = None,
+    consensus_count: Optional[int] = None,
+    pattern_boost_val: Optional[float] = None,
+    calibrated_conf: Optional[float] = None,
 ) -> None:
     """Record a newly sent trade. Called immediately after order_send succeeds.
 
@@ -98,10 +102,14 @@ def record_trade(
 
     Optional keyword-only args capture market context at signal time so the
     ML predictor can use richer features:
-      adx_value   — ADX reading at entry (regime strength)
-      atr_value   — raw ATR in price units (volatility proxy)
-      spread_pips — bid-ask spread from MT5 tick (fill-cost indicator)
-      h1_trend    — H1 daily-structure direction: "UP" | "DOWN" | "NEUTRAL"
+      adx_value        — ADX reading at entry (regime strength)
+      atr_value        — raw ATR in price units (volatility proxy)
+      spread_pips      — bid-ask spread from MT5 tick (fill-cost indicator)
+      h1_trend         — H1 daily-structure direction: "UP" | "DOWN" | "NEUTRAL"
+      vol_ratio        — current ATR / 20-bar avg ATR (>1 = volatile, <1 = calm)
+      consensus_count  — number of strategies agreeing on the dominant direction
+      pattern_boost_val— pattern alignment boost applied at entry (±0.05)
+      calibrated_conf  — isotonic-calibrated empirical win probability
     """
     now_utc = datetime.now(timezone.utc)
     trades = _load()
@@ -146,12 +154,16 @@ def record_trade(
         "profit":     None,
         "outcome":    None,   # "WIN" | "LOSS" | "BREAKEVEN"
         # ── Market context at signal time (ML features) ──────────────────
-        "adx_value":   round(adx_value, 2) if adx_value is not None else None,
-        "atr_value":   round(atr_value, 6) if atr_value is not None else None,
-        "spread_pips": round(spread_pips, 2) if spread_pips is not None else None,
-        "h1_trend":    h1_trend,
-        "session":     _session(now_utc.hour),
-        "day_of_week": now_utc.weekday(),
+        "adx_value":         round(adx_value, 2) if adx_value is not None else None,
+        "atr_value":         round(atr_value, 6) if atr_value is not None else None,
+        "spread_pips":       round(spread_pips, 2) if spread_pips is not None else None,
+        "h1_trend":          h1_trend,
+        "session":           _session(now_utc.hour),
+        "day_of_week":       now_utc.weekday(),
+        "vol_ratio":         round(vol_ratio, 4) if vol_ratio is not None else None,
+        "consensus_count":   int(consensus_count) if consensus_count is not None else None,
+        "pattern_boost_val": round(pattern_boost_val, 4) if pattern_boost_val is not None else None,
+        "calibrated_conf":   round(calibrated_conf, 4) if calibrated_conf is not None else None,
     })
     _save(trades)
     logger.info(f"Recorded trade #{ticket} {direction} {ticker} via {strategy}")

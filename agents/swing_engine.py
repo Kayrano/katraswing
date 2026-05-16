@@ -192,12 +192,14 @@ def run_h1_signal(
 
         # ── Consensus ────────────────────────────────────────────────────
         consensus_boost   = 0.0
+        consensus_count   = 0
         strategy_agreement = ""
         if len(active) >= 2:
             long_c  = sum(1 for s in active if s.signal == "LONG")
             short_c = sum(1 for s in active if s.signal == "SHORT")
             total   = len(active)
             dominant = max(long_c, short_c)
+            consensus_count = dominant
             ratio    = dominant / total
             best_dir = active[0].signal
             _consensus_cap_h1 = 0.08 if dominant >= 3 else 0.05
@@ -214,6 +216,7 @@ def run_h1_signal(
                     if short_c >= long_c else -0.08
                 )
         elif len(active) == 1:
+            consensus_count = 1
             strategy_agreement = f"1/1 {active[0].signal}"
 
         # ── Pattern + indicators + news ──────────────────────────────────
@@ -371,9 +374,35 @@ def run_h1_signal(
         except Exception:
             pass
 
-        # ── Floor on raw confidence ───────────────────────────────────────
-        if not daily_trend_vetoed and raw_confidence < _SIGNAL_FLOOR:
+        # ── Floor (calibrated when available, raw otherwise) ─────────────
+        gate_conf = calibrated_conf if calibration_applied else final_conf
+        if not daily_trend_vetoed and gate_conf < _SIGNAL_FLOOR:
             direction = "NO TRADE"
+
+        # ── ML win-probability gate (H1 — slightly higher bar than 5m) ───
+        # H1 trades carry wider stops → larger capital exposure per trade.
+        if direction not in ("NO TRADE", "FLAT") and best is not None:
+            try:
+                from models.ml_predictor import get_predictor as _get_pred
+                _pred = _get_pred()
+                if _pred.is_fitted:
+                    _ml_prob = _pred.predict_proba(
+                        strategy=best.strategy,
+                        direction=direction,
+                        entry=best.entry,
+                        sl=best.stop_loss,
+                        tp=best.take_profit,
+                        confidence=raw_confidence,
+                        adx_value=adx_val,
+                        atr_value=best.atr,
+                        h1_trend=daily_trend_direction,
+                        consensus_count=consensus_count,
+                        calibrated_conf=calibrated_conf,
+                    )
+                    if _ml_prob is not None and _ml_prob < 0.35:
+                        direction = "NO TRADE"
+            except Exception:
+                pass
 
         final_conf = raw_confidence
 
@@ -419,6 +448,9 @@ def run_h1_signal(
                 "symbol"   if disposition == "PAPER"
                 else "strategy" if getattr(best, "paper_only", True) else ""
             ),
+            calibrated_conf=round(calibrated_conf, 3),
+            consensus_count=consensus_count,
+            pattern_boost_val=round(pattern_boost, 3),
         )
 
     except Exception as exc:

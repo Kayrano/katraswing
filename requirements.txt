@@ -6,3 +6,4 @@ streamlit>=1.35.0
 plotly>=5.20.0
 requests>=2.31.0
 scikit-learn>=1.4.0
+lightgbm>=4.0

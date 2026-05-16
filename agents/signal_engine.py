@@ -161,6 +161,9 @@ class SignalResult:
     paper_reason: str = ""           # "strategy" | "symbol" | "single_strategy" | ""
     session_boost: float = 0.0       # UTC-session nudge applied to this signal
     vol_ratio: float = 1.0           # current ATR / 20-bar avg ATR — >1 = volatile, <1 = calm
+    calibrated_conf: float = 0.0     # empirical win probability from isotonic calibrator
+    consensus_count: int = 0         # number of strategies agreeing on dominant direction
+    pattern_boost_val: float = 0.0   # pattern alignment boost applied at entry
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -371,12 +374,14 @@ def run_signal(
 
         # ── Improvement 2B: Strategy consensus scoring ───────────────────────
         consensus_boost = 0.0
+        consensus_count = 0
         strategy_agreement = ""
         if len(active) >= 2:
             long_count  = sum(1 for s in active if s.signal == "LONG")
             short_count = sum(1 for s in active if s.signal == "SHORT")
             total       = len(active)
             dominant    = max(long_count, short_count)
+            consensus_count = dominant
             consensus_ratio = dominant / total  # 0.5 split → 1.0 unanimous
 
             # Determine what the best signal's direction is vs consensus
@@ -398,6 +403,7 @@ def run_signal(
                 else:
                     consensus_boost = -0.08
         elif len(active) == 1:
+            consensus_count = 1
             strategy_agreement = f"1/1 {active[0].signal}"
 
         # --- Pattern detection ---
@@ -620,8 +626,11 @@ def run_signal(
                 "calibration skipped: %s", _ce,
             )
 
-        # ── Enforce 0.60 confidence floor (on RAW, not calibrated) ───────────
-        if not daily_trend_vetoed and raw_confidence < _SIGNAL_FLOOR:
+        # ── Enforce confidence floor ──────────────────────────────────────────
+        # Use calibrated (empirical win probability) when the calibrator is
+        # fitted; fall back to raw blended confidence otherwise.
+        gate_conf = calibrated_conf if calibration_applied else final_conf
+        if not daily_trend_vetoed and gate_conf < _SIGNAL_FLOOR:
             direction = "NO TRADE"
 
         # ── ML win-probability gate ───────────────────────────────────────────
@@ -731,6 +740,9 @@ def run_signal(
             ),
             session_boost=round(session_boost_val, 3),
             vol_ratio=vol_ratio,
+            calibrated_conf=round(calibrated_conf, 3),
+            consensus_count=consensus_count,
+            pattern_boost_val=round(pattern_boost, 3),
         )
 
     except Exception as exc:

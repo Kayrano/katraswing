@@ -883,6 +883,10 @@ def run_server(args: argparse.Namespace):
                             adx_value=getattr(sr, "adx_value", None),
                             atr_value=getattr(sr, "atr", None),
                             h1_trend=getattr(sr, "daily_trend_direction", None),
+                            vol_ratio=getattr(sr, "vol_ratio", None),
+                            consensus_count=getattr(sr, "consensus_count", None),
+                            pattern_boost_val=getattr(sr, "pattern_boost_val", None),
+                            calibrated_conf=getattr(sr, "calibrated_conf", None),
                         )
                     except Exception as _rte:
                         log.warning("record_trade #%s: %s", result.ticket, _rte)
@@ -968,6 +972,10 @@ def run_server(args: argparse.Namespace):
                             adx_value=getattr(sr, "adx_value", None),
                             atr_value=getattr(sr, "atr", None),
                             h1_trend=getattr(sr, "daily_trend_direction", None),
+                            vol_ratio=getattr(sr, "vol_ratio", None),
+                            consensus_count=getattr(sr, "consensus_count", None),
+                            pattern_boost_val=getattr(sr, "pattern_boost_val", None),
+                            calibrated_conf=getattr(sr, "calibrated_conf", None),
                         )
                     except Exception as _rte:
                         log.warning("record_trade H1 #%s: %s", result.ticket, _rte)
