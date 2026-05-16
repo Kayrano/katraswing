@@ -354,8 +354,6 @@ def retrain_from_log(trade_log_path: Path | None = None) -> bool:
 
     if len(windowed) >= _MIN_SAMPLES:
         logger.info("ml_predictor: using 90d window, n=%d", len(windowed))
-        training_set = trades   # train() filters internally; pass full list but windowed will dominate
-        # Override: rebuild trades to only include windowed closed + all open (for completeness)
         training_set = windowed
     else:
         logger.info("ml_predictor: 90d window only %d samples, falling back to full history", len(windowed))

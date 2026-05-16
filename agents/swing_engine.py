@@ -33,6 +33,7 @@ from agents.signal_engine import (
     _BACKTEST_BASELINE_WR,
     _safe_detect_patterns,
     _safe_indicators,
+    _session_boost,
 )
 from agents.swing_strategies import (
     _STRATEGIES_H1,
@@ -221,11 +222,7 @@ def run_h1_signal(
 
         # ── Pattern + indicators + news ──────────────────────────────────
         patterns   = _safe_detect_patterns(df)
-        try:
-            from models.pattern_stats import apply_to_report as _apr
-            _apr(patterns)
-        except Exception:
-            pass
+        # apply_to_report deferred until after `direction = best.signal` below
         indicators = _safe_indicators(df)
         from data.news_fetcher import fetch_news, aggregate_sentiment
         news_items = fetch_news(ticker, api_key=finnhub_api_key, lookback_hours=6)
@@ -252,6 +249,13 @@ def run_h1_signal(
         base_conf = best.confidence
         direction = best.signal
         sym_clean = ticker.replace("=X", "").upper()
+
+        # Apply direction-specific pattern win rates now that direction is known
+        try:
+            from models.pattern_stats import apply_to_report as _apr
+            _apr(patterns, direction=direction)
+        except Exception:
+            pass
 
         # ── SL/TP from learned stops ─────────────────────────────────────
         sl_tp_source = "ATR"
@@ -306,11 +310,15 @@ def run_h1_signal(
             )
             pattern_boost = 0.05 if aligns else -0.05
 
+        import datetime as _dt
+        _hour_utc = _dt.datetime.now(_dt.timezone.utc).hour
+        session_boost_val = _session_boost(ticker, _hour_utc)
+
         # ── +0.20 hard cap on positive boosts ────────────────────────────
         positive_boosts = sum(max(b, 0.0) for b in (
-            consensus_boost, bt_adjustment, live_adjustment, news_boost, pattern_boost))
+            consensus_boost, bt_adjustment, live_adjustment, news_boost, pattern_boost, session_boost_val))
         negative_boosts = sum(min(b, 0.0) for b in (
-            consensus_boost, bt_adjustment, live_adjustment, news_boost, pattern_boost))
+            consensus_boost, bt_adjustment, live_adjustment, news_boost, pattern_boost, session_boost_val))
         final_conf = max(0.0, min(1.0,
             base_conf + min(positive_boosts, 0.20) + negative_boosts))
 
@@ -354,12 +362,13 @@ def run_h1_signal(
 
         # ── B3: suppress boosts on vetoed signals ────────────────────────
         if daily_trend_vetoed:
-            final_conf      = base_conf
-            consensus_boost = 0.0
-            bt_adjustment   = 0.0
-            live_adjustment = 0.0
-            news_boost      = 0.0
-            pattern_boost   = 0.0
+            final_conf        = base_conf
+            consensus_boost   = 0.0
+            bt_adjustment     = 0.0
+            live_adjustment   = 0.0
+            news_boost        = 0.0
+            pattern_boost     = 0.0
+            session_boost_val = 0.0
 
         # ── Isotonic calibration ─────────────────────────────────────────
         raw_confidence  = final_conf
@@ -406,6 +415,18 @@ def run_h1_signal(
 
         final_conf = raw_confidence
 
+        # ── Volatility ratio: current ATR vs 20-bar average ──────────────
+        vol_ratio = 1.0
+        try:
+            _atr_s = ta.atr(df["High"], df["Low"], df["Close"], length=10).dropna()
+            if len(_atr_s) >= 20:
+                _cur_atr = float(_atr_s.iloc[-1])
+                _avg_atr = float(_atr_s.iloc[-20:].mean())
+                if _avg_atr > 0:
+                    vol_ratio = round(_cur_atr / _avg_atr, 3)
+        except Exception:
+            pass
+
         if final_conf >= 0.80:
             risk_level = "LOW"
         elif final_conf >= 0.65:
@@ -446,11 +467,13 @@ def run_h1_signal(
             ),
             paper_reason=(
                 "symbol"   if disposition == "PAPER"
-                else "strategy" if getattr(best, "paper_only", True) else ""
+                else "strategy" if getattr(best, "paper_only", False) else ""
             ),
             calibrated_conf=round(calibrated_conf, 3),
             consensus_count=consensus_count,
             pattern_boost_val=round(pattern_boost, 3),
+            session_boost=round(session_boost_val, 3),
+            vol_ratio=vol_ratio,
         )
 
     except Exception as exc:
