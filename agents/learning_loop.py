@@ -317,6 +317,15 @@ def run_hourly(now: datetime) -> dict:
         logger.warning("ctx=hourly.update_outcomes: %s", exc)
         extras["mt5_updated"] = -1
 
+    # 1b. Resolve paper trade outcomes via bar data (TP/SL hit detection)
+    try:
+        from data.trade_outcomes import update_paper_outcomes_from_mt5
+        paper_resolved = update_paper_outcomes_from_mt5()
+        if paper_resolved:
+            extras["paper_resolved"] = paper_resolved
+    except Exception as exc:
+        logger.debug("ctx=hourly.paper_outcomes: %s", exc)
+
     # 2. Refresh pattern stats unconditionally (cheap and important)
     try:
         from models.pattern_stats import refresh as _refresh_patterns
@@ -897,6 +906,19 @@ def _backup_data_to_git(now: datetime) -> None:
                 cwd=install_dir, capture_output=True, timeout=30,
             )
             logger.info("ctx=nightly.backup: created data-backup branch on remote")
+        else:
+            # Remote branch exists — ensure local tracking branch also exists.
+            # On a fresh clone the local branch is absent; git worktree add
+            # requires a local branch, not just a remote ref.
+            local_br = subprocess.run(
+                ["git", "branch", "--list", "data-backup"],
+                cwd=install_dir, capture_output=True, timeout=10,
+            )
+            if not local_br.stdout.strip():
+                subprocess.run(
+                    ["git", "fetch", "origin", "data-backup:data-backup"],
+                    cwd=install_dir, capture_output=True, timeout=30,
+                )
 
         # Attach a worktree to the data-backup branch
         r = subprocess.run(

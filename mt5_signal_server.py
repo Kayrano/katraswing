@@ -805,6 +805,30 @@ def run_server(args: argparse.Namespace):
                               sr.chart_signals[0].strategy if sr.chart_signals else "?",
                               paper=True)
                     paper_signals.add(key)
+                    # Record paper trade with synthetic ticket so the nightly
+                    # promotion harness can accumulate outcome data.
+                    try:
+                        import time as _time
+                        from data.trade_outcomes import record_trade as _rt
+                        _syn_ticket = -(int(_time.time() * 1000) % (2**30))
+                        _strat = sr.chart_signals[0].strategy if getattr(sr, "chart_signals", None) else "UNKNOWN"
+                        _pats  = sr.patterns.patterns if getattr(sr, "patterns", None) else None
+                        _rt(
+                            _syn_ticket, ticker, _strat, sr.direction,
+                            sr.confidence, sr.entry, sr.sl, sr.tp,
+                            patterns=_pats,
+                            adx_value=getattr(sr, "adx_value", None),
+                            atr_value=getattr(sr, "atr", None),
+                            h1_trend=getattr(sr, "daily_trend_direction", None),
+                            vol_ratio=getattr(sr, "vol_ratio", None),
+                            consensus_count=getattr(sr, "consensus_count", None),
+                            pattern_boost_val=getattr(sr, "pattern_boost_val", None),
+                            calibrated_conf=getattr(sr, "calibrated_conf", None),
+                            paper_only=True,
+                            mt5_symbol=getattr(sr, "mt5_symbol", "") or mt5_sym or "",
+                        )
+                    except Exception as _pe:
+                        log.debug("paper record_trade: %s", _pe)
                     continue
 
                 if args.dry_run:

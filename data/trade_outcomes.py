@@ -93,8 +93,12 @@ def record_trade(
     consensus_count: Optional[int] = None,
     pattern_boost_val: Optional[float] = None,
     calibrated_conf: Optional[float] = None,
+    paper_only: bool = False,
+    mt5_symbol: Optional[str] = None,
 ) -> None:
-    """Record a newly sent trade. Called immediately after order_send succeeds.
+    """Record a newly sent trade. Called immediately after order_send succeeds,
+    OR for paper trades using a synthetic ticket so the promotion harness can
+    accumulate outcome data.
 
     `patterns` is the list[PatternMatch] that fired at entry — recorded so the
     pattern win-rate learner (models.pattern_stats) can attribute each closed
@@ -110,6 +114,7 @@ def record_trade(
       consensus_count  — number of strategies agreeing on the dominant direction
       pattern_boost_val— pattern alignment boost applied at entry (±0.05)
       calibrated_conf  — isotonic-calibrated empirical win probability
+      paper_only       — True for simulated paper trades (no MT5 ticket)
     """
     now_utc = datetime.now(timezone.utc)
     trades = _load()
@@ -164,6 +169,8 @@ def record_trade(
         "consensus_count":   int(consensus_count) if consensus_count is not None else None,
         "pattern_boost_val": round(pattern_boost_val, 4) if pattern_boost_val is not None else None,
         "calibrated_conf":   round(calibrated_conf, 4) if calibrated_conf is not None else None,
+        "paper_only":        paper_only,
+        "mt5_symbol":        mt5_symbol or "",
     })
     _save(trades)
     logger.info(f"Recorded trade #{ticket} {direction} {ticker} via {strategy}")
@@ -253,6 +260,103 @@ def backfill_close_reasons() -> dict[str, int]:
         _LOAD_CACHE = None
         logger.info("backfill_close_reasons: updated %d/%d rows", counts["updated"], counts["seen"])
     return counts
+
+
+def update_paper_outcomes_from_mt5(mt5_symbol_map: dict | None = None) -> int:
+    """Check open paper trades and mark WIN/LOSS if TP or SL was hit.
+
+    Uses 5-minute MT5 bar data since the trade's sent_at to detect the first
+    candle where the high/low crossed the recorded TP or SL.
+
+    LONG: WIN if any bar's high >= tp, LOSS if any bar's low <= sl
+    SHORT: WIN if any bar's low <= tp, LOSS if any bar's high >= sl
+
+    Returns the number of paper trades whose outcome was updated.
+    """
+    try:
+        import MetaTrader5 as mt5  # type: ignore[import]
+    except ImportError:
+        return 0
+
+    trades = _load()
+    open_paper = [
+        t for t in trades
+        if t.get("paper_only")
+        and t.get("outcome") is None
+        and t.get("entry") and t.get("sl") and t.get("tp")
+        and t.get("mt5_symbol") or t.get("ticker")
+    ]
+    if not open_paper:
+        return 0
+
+    from datetime import timedelta
+    updated = 0
+
+    for t in open_paper:
+        mt5_sym = t.get("mt5_symbol") or t.get("ticker", "")
+        if not mt5_sym:
+            continue
+        sent_str = t.get("sent_at", "")
+        try:
+            sent_dt = datetime.fromisoformat(sent_str).replace(tzinfo=None)
+        except Exception:
+            continue
+
+        entry     = float(t["entry"])
+        sl        = float(t["sl"])
+        tp        = float(t["tp"])
+        direction = t.get("direction", "LONG")
+        now_utc   = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        # Query 5m bars from entry time to now
+        bars = mt5.copy_rates_range(mt5_sym, mt5.TIMEFRAME_M5, sent_dt, now_utc)
+        if bars is None or len(bars) == 0:
+            continue
+
+        outcome = None
+        close_time = None
+        close_price = None
+
+        for bar in bars:
+            bar_high = float(bar["high"])
+            bar_low  = float(bar["low"])
+            bar_time = datetime.utcfromtimestamp(int(bar["time"])).isoformat(timespec="seconds")
+
+            if direction == "LONG":
+                if bar_high >= tp:
+                    outcome = "WIN"
+                    close_time  = bar_time
+                    close_price = tp
+                    break
+                if bar_low <= sl:
+                    outcome = "LOSS"
+                    close_time  = bar_time
+                    close_price = sl
+                    break
+            else:  # SHORT
+                if bar_low <= tp:
+                    outcome = "WIN"
+                    close_time  = bar_time
+                    close_price = tp
+                    break
+                if bar_high >= sl:
+                    outcome = "LOSS"
+                    close_time  = bar_time
+                    close_price = sl
+                    break
+
+        if outcome:
+            t["outcome"]      = outcome
+            t["closed_at"]    = close_time
+            t["close_price"]  = close_price
+            t["close_reason"] = "TP" if outcome == "WIN" else "SL"
+            t["profit"]       = abs(tp - entry) if outcome == "WIN" else -abs(sl - entry)
+            updated += 1
+
+    if updated:
+        _save(trades)
+        logger.info("update_paper_outcomes: resolved %d paper trade(s)", updated)
+    return updated
 
 
 def update_outcomes_from_mt5(magic: int = 234100) -> int:
