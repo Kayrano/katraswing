@@ -1,33 +1,33 @@
 {
   "Ascending Triangle": {
-    "wins": 0,
-    "trades": 1,
-    "win_rate": 0.0
+    "wins": 1,
+    "trades": 3,
+    "win_rate": 0.3333
   },
   "Ascending Triangle:LONG": {
-    "wins": 0,
-    "trades": 1,
-    "win_rate": 0.0
+    "wins": 1,
+    "trades": 3,
+    "win_rate": 0.3333
   },
   "Triple Bottom": {
-    "wins": 0,
-    "trades": 1,
-    "win_rate": 0.0
+    "wins": 1,
+    "trades": 3,
+    "win_rate": 0.3333
   },
   "Triple Bottom:LONG": {
-    "wins": 0,
-    "trades": 1,
-    "win_rate": 0.0
+    "wins": 1,
+    "trades": 3,
+    "win_rate": 0.3333
   },
   "Double Bottom": {
-    "wins": 0,
-    "trades": 1,
-    "win_rate": 0.0
+    "wins": 1,
+    "trades": 3,
+    "win_rate": 0.3333
   },
   "Double Bottom:LONG": {
-    "wins": 0,
-    "trades": 1,
-    "win_rate": 0.0
+    "wins": 1,
+    "trades": 3,
+    "win_rate": 0.3333
   },
   "Descending Triangle": {
     "wins": 1,
@@ -51,13 +51,13 @@
   },
   "Triple Top": {
     "wins": 1,
-    "trades": 1,
-    "win_rate": 1.0
+    "trades": 2,
+    "win_rate": 0.5
   },
   "Triple Top:SHORT": {
     "wins": 1,
-    "trades": 1,
-    "win_rate": 1.0
+    "trades": 2,
+    "win_rate": 0.5
   },
   "Bear Flag": {
     "wins": 1,
@@ -71,13 +71,13 @@
   },
   "Double Top": {
     "wins": 1,
-    "trades": 1,
-    "win_rate": 1.0
+    "trades": 2,
+    "win_rate": 0.5
   },
   "Double Top:SHORT": {
     "wins": 1,
-    "trades": 1,
-    "win_rate": 1.0
+    "trades": 2,
+    "win_rate": 0.5
   },
   "Head & Shoulders": {
     "wins": 1,
@@ -88,5 +88,35 @@
     "wins": 1,
     "trades": 1,
     "win_rate": 1.0
+  },
+  "Inside Bar (NR4)": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
+  },
+  "Inside Bar (NR4):LONG": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
+  },
+  "Rising Wedge": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
+  },
+  "Rising Wedge:SHORT": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
+  },
+  "Bearish Harami": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
+  },
+  "Bearish Harami:SHORT": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
   }
 }

@@ -2866,5 +2866,2113 @@
     "adx_value": null,
     "atr_value": null,
     "h1_trend": null
+  },
+  {
+    "ticket": 228151754,
+    "ticker": "EURUSD=X",
+    "strategy": "ORDER_BLOCK_5M",
+    "direction": "LONG",
+    "confidence": 0.652,
+    "entry": 1.1621,
+    "sl": 1.1616,
+    "tp": 1.163,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.813
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.9,
+        "win_rate": 0.852
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.7,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BEARISH",
+        "confidence": 0.62,
+        "win_rate": 0.58
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.862
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.786
+      },
+      {
+        "name": "Rising Wedge",
+        "bias": "BEARISH",
+        "confidence": 0.45,
+        "win_rate": 0.64
+      }
+    ],
+    "sent_at": "2026-05-18T04:30:16",
+    "closed_at": "2026-05-18T09:20:37",
+    "profit": 6.3,
+    "outcome": "WIN",
+    "adx_value": 20.6,
+    "atr_value": 0.0002,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 0.915,
+    "consensus_count": 2,
+    "pattern_boost_val": -0.05,
+    "calibrated_conf": 0.652,
+    "paper_only": false,
+    "mt5_symbol": "",
+    "close_price": 1.16305,
+    "close_reason": "TP"
+  },
+  {
+    "ticket": -962752967,
+    "ticker": "USDCAD=X",
+    "strategy": "FVG_5M",
+    "direction": "LONG",
+    "confidence": 0.68,
+    "entry": 1.3752,
+    "sl": 1.3749,
+    "tp": 1.3758,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.9,
+        "win_rate": 0.852
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.9,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BULLISH",
+        "confidence": 0.62,
+        "win_rate": 0.58
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.56,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.862
+      },
+      {
+        "name": "Falling Wedge",
+        "bias": "BULLISH",
+        "confidence": 0.45,
+        "win_rate": 0.71
+      }
+    ],
+    "sent_at": "2026-05-18T04:40:13",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 19.0,
+    "atr_value": 0.0002,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 0.829,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.68,
+    "paper_only": true,
+    "mt5_symbol": "EURUSD"
+  },
+  {
+    "ticket": -962753394,
+    "ticker": "GBPJPY=X",
+    "strategy": "ORDER_BLOCK_5M",
+    "direction": "SHORT",
+    "confidence": 0.743,
+    "entry": 211.673,
+    "sl": 211.8084,
+    "tp": 211.4023,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.813
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.9,
+        "win_rate": 0.852
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BEARISH",
+        "confidence": 0.62,
+        "win_rate": 0.58
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.57,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.862
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.786
+      },
+      {
+        "name": "Inv. Head & Shoulders",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.89
+      },
+      {
+        "name": "Rising Wedge",
+        "bias": "BEARISH",
+        "confidence": 0.45,
+        "win_rate": 0.64
+      }
+    ],
+    "sent_at": "2026-05-18T04:40:13",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 23.8,
+    "atr_value": 0.0541,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 1.065,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.743,
+    "paper_only": true,
+    "mt5_symbol": "EURUSD"
+  },
+  {
+    "ticket": -963956042,
+    "ticker": "USDJPY=X",
+    "strategy": "FVG_5M",
+    "direction": "SHORT",
+    "confidence": 0.66,
+    "entry": 158.983,
+    "sl": 159.0773,
+    "tp": 158.7945,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.813
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.9,
+        "win_rate": 0.852
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.62,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BULLISH",
+        "confidence": 0.62,
+        "win_rate": 0.58
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.862
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.786
+      },
+      {
+        "name": "Inv. Head & Shoulders",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.89
+      },
+      {
+        "name": "Falling Wedge",
+        "bias": "BULLISH",
+        "confidence": 0.46,
+        "win_rate": 0.71
+      },
+      {
+        "name": "Doji",
+        "bias": "NEUTRAL",
+        "confidence": 0.3,
+        "win_rate": 0.52
+      }
+    ],
+    "sent_at": "2026-05-18T05:00:16",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 30.2,
+    "atr_value": 0.0377,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 1.09,
+    "consensus_count": 1,
+    "pattern_boost_val": -0.05,
+    "calibrated_conf": 0.66,
+    "paper_only": true,
+    "mt5_symbol": "EURUSD"
+  },
+  {
+    "ticket": -967553988,
+    "ticker": "EURJPY=X",
+    "strategy": "ORDER_BLOCK_5M",
+    "direction": "SHORT",
+    "confidence": 0.821,
+    "entry": 184.726,
+    "sl": 184.8143,
+    "tp": 184.5495,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.9,
+        "win_rate": 0.852
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Bearish Engulfing",
+        "bias": "BEARISH",
+        "confidence": 0.57,
+        "win_rate": 0.65
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.56,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.862
+      },
+      {
+        "name": "Falling Wedge",
+        "bias": "BULLISH",
+        "confidence": 0.45,
+        "win_rate": 0.71
+      }
+    ],
+    "sent_at": "2026-05-18T06:00:14",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 28.4,
+    "atr_value": 0.0353,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 0.862,
+    "consensus_count": 2,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.821,
+    "paper_only": true,
+    "mt5_symbol": "EURUSD"
+  },
+  {
+    "ticket": -969952690,
+    "ticker": "AUDUSD=X",
+    "strategy": "MSS_FOREX_15M",
+    "direction": "LONG",
+    "confidence": 0.773,
+    "entry": 0.7141,
+    "sl": 0.71198,
+    "tp": 0.71834,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.813
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.89,
+        "win_rate": 0.852
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.56,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.862
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.786
+      },
+      {
+        "name": "Inv. Head & Shoulders",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.89
+      }
+    ],
+    "sent_at": "2026-05-18T06:40:13",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 21.7,
+    "atr_value": 0.00033,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 1.116,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.773,
+    "paper_only": true,
+    "mt5_symbol": "EURUSD"
+  },
+  {
+    "ticket": -971157638,
+    "ticker": "USDCAD=X",
+    "strategy": "FVG_5M",
+    "direction": "SHORT",
+    "confidence": 0.81,
+    "entry": 1.3744,
+    "sl": 1.375,
+    "tp": 1.3733,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.9,
+        "win_rate": 0.852
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.9,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.59,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.862
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.786
+      },
+      {
+        "name": "Head & Shoulders",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.825
+      },
+      {
+        "name": "Falling Wedge",
+        "bias": "BULLISH",
+        "confidence": 0.45,
+        "win_rate": 0.71
+      }
+    ],
+    "sent_at": "2026-05-18T07:00:18",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 31.0,
+    "atr_value": 0.0002,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "london",
+    "day_of_week": 0,
+    "vol_ratio": 1.062,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.81,
+    "paper_only": true,
+    "mt5_symbol": "EURUSD"
+  },
+  {
+    "ticket": 228259215,
+    "ticker": "USDJPY=X",
+    "strategy": "FVG_5M",
+    "direction": "LONG",
+    "confidence": 0.86,
+    "entry": 158.93,
+    "sl": 158.8449,
+    "tp": 159.1002,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.813
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.9,
+        "win_rate": 0.852
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.9,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BULLISH",
+        "confidence": 0.62,
+        "win_rate": 0.58
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.59,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.862
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.786
+      },
+      {
+        "name": "Rising Wedge",
+        "bias": "BEARISH",
+        "confidence": 0.45,
+        "win_rate": 0.64
+      }
+    ],
+    "sent_at": "2026-05-18T07:25:13",
+    "closed_at": "2026-05-18T10:26:23",
+    "profit": -19.94,
+    "outcome": "LOSS",
+    "adx_value": 32.3,
+    "atr_value": 0.034,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "london",
+    "day_of_week": 0,
+    "vol_ratio": 0.978,
+    "consensus_count": 2,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.86,
+    "paper_only": false,
+    "mt5_symbol": "",
+    "close_price": 158.845,
+    "close_reason": "SL"
+  },
+  {
+    "ticket": -973252518,
+    "ticker": "GBPUSD=X",
+    "strategy": "ORDER_BLOCK_5M",
+    "direction": "SHORT",
+    "confidence": 0.72,
+    "entry": 1.3354,
+    "sl": 1.336,
+    "tp": 1.3343,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.813
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.89,
+        "win_rate": 0.852
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BULLISH",
+        "confidence": 0.62,
+        "win_rate": 0.58
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.57,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.51,
+        "win_rate": 0.786
+      }
+    ],
+    "sent_at": "2026-05-18T07:35:13",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 50.2,
+    "atr_value": 0.0005,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "london",
+    "day_of_week": 0,
+    "vol_ratio": 1.123,
+    "consensus_count": 1,
+    "pattern_boost_val": -0.05,
+    "calibrated_conf": 0.72,
+    "paper_only": true,
+    "mt5_symbol": "USDJPY"
+  },
+  {
+    "ticket": 228361127,
+    "ticker": "USDJPY=X",
+    "strategy": "ORDER_BLOCK_5M",
+    "direction": "SHORT",
+    "confidence": 0.677,
+    "entry": 158.905,
+    "sl": 158.9199,
+    "tp": 158.8752,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.813
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.9,
+        "win_rate": 0.852
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.9,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.67,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BULLISH",
+        "confidence": 0.62,
+        "win_rate": 0.58
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.862
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.786
+      },
+      {
+        "name": "Inv. Head & Shoulders",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.89
+      },
+      {
+        "name": "Rising Wedge",
+        "bias": "BEARISH",
+        "confidence": 0.45,
+        "win_rate": 0.64
+      },
+      {
+        "name": "Bearish Harami",
+        "bias": "BEARISH",
+        "confidence": 0.42,
+        "win_rate": 0.55
+      }
+    ],
+    "sent_at": "2026-05-18T09:55:15",
+    "closed_at": "2026-05-18T12:57:38",
+    "profit": -16.78,
+    "outcome": "LOSS",
+    "adx_value": 15.9,
+    "atr_value": 0.0298,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "london",
+    "day_of_week": 0,
+    "vol_ratio": 0.812,
+    "consensus_count": 2,
+    "pattern_boost_val": -0.05,
+    "calibrated_conf": 0.677,
+    "paper_only": false,
+    "mt5_symbol": "",
+    "close_price": 158.925,
+    "close_reason": "SL"
+  },
+  {
+    "ticket": -982857181,
+    "ticker": "AUDUSD=X",
+    "strategy": "FVG_5M",
+    "direction": "SHORT",
+    "confidence": 0.8,
+    "entry": 0.7154,
+    "sl": 0.7161,
+    "tp": 0.714,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.89,
+        "win_rate": 0.852
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BEARISH",
+        "confidence": 0.62,
+        "win_rate": 0.58
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.6,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.51,
+        "win_rate": 0.862
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.786
+      },
+      {
+        "name": "Head & Shoulders",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.825
+      },
+      {
+        "name": "Falling Wedge",
+        "bias": "BULLISH",
+        "confidence": 0.45,
+        "win_rate": 0.71
+      },
+      {
+        "name": "Bearish Harami",
+        "bias": "BEARISH",
+        "confidence": 0.42,
+        "win_rate": 0.55
+      }
+    ],
+    "sent_at": "2026-05-18T10:15:17",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 28.0,
+    "atr_value": 0.0003,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "london",
+    "day_of_week": 0,
+    "vol_ratio": 0.761,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.8,
+    "paper_only": true,
+    "mt5_symbol": "USDJPY"
+  },
+  {
+    "ticket": -984657782,
+    "ticker": "SI=F",
+    "strategy": "FVG_5M",
+    "direction": "SHORT",
+    "confidence": 0.733,
+    "entry": 75.965,
+    "sl": 76.621,
+    "tp": 74.653,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.84,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.72,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.54,
+        "win_rate": 0.786
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.52,
+        "win_rate": 0.862
+      },
+      {
+        "name": "Falling Wedge",
+        "bias": "BULLISH",
+        "confidence": 0.45,
+        "win_rate": 0.71
+      }
+    ],
+    "sent_at": "2026-05-18T10:45:18",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 21.8,
+    "atr_value": 0.2667,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "london",
+    "day_of_week": 0,
+    "vol_ratio": 0.966,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.733,
+    "paper_only": true,
+    "mt5_symbol": "USDJPY"
+  },
+  {
+    "ticket": -984658202,
+    "ticker": "BZ=F",
+    "strategy": "FVG_5M",
+    "direction": "LONG",
+    "confidence": 0.78,
+    "entry": 106.996,
+    "sl": 106.4154,
+    "tp": 108.1572,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.813
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.84,
+        "win_rate": 0.852
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.67,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BULLISH",
+        "confidence": 0.62,
+        "win_rate": 0.58
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.53,
+        "win_rate": 0.862
+      },
+      {
+        "name": "Rising Wedge",
+        "bias": "BEARISH",
+        "confidence": 0.46,
+        "win_rate": 0.64
+      }
+    ],
+    "sent_at": "2026-05-18T10:45:18",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 38.1,
+    "atr_value": 0.2322,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "london",
+    "day_of_week": 0,
+    "vol_ratio": 1.027,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.78,
+    "paper_only": true,
+    "mt5_symbol": "#US500_M26"
+  },
+  {
+    "ticket": -985257481,
+    "ticker": "ES=F",
+    "strategy": "FVG_5M",
+    "direction": "SHORT",
+    "confidence": 0.663,
+    "entry": 7401.75,
+    "sl": 7423.8068,
+    "tp": 7357.6364,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.87,
+        "win_rate": 0.852
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BULLISH",
+        "confidence": 0.62,
+        "win_rate": 0.58
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.56,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.51,
+        "win_rate": 0.862
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.51,
+        "win_rate": 0.786
+      },
+      {
+        "name": "Falling Wedge",
+        "bias": "BULLISH",
+        "confidence": 0.46,
+        "win_rate": 0.71
+      }
+    ],
+    "sent_at": "2026-05-18T10:55:18",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 26.4,
+    "atr_value": 8.8227,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "london",
+    "day_of_week": 0,
+    "vol_ratio": 0.973,
+    "consensus_count": 1,
+    "pattern_boost_val": -0.05,
+    "calibrated_conf": 0.663,
+    "paper_only": true,
+    "mt5_symbol": "#US500_M26"
+  },
+  {
+    "ticket": -985855203,
+    "ticker": "ES=F",
+    "strategy": "FVG_5M",
+    "direction": "LONG",
+    "confidence": 0.674,
+    "entry": 7397.25,
+    "sl": 7391.3994,
+    "tp": 7408.9512,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.87,
+        "win_rate": 0.852
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.87,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BEARISH",
+        "confidence": 0.62,
+        "win_rate": 0.58
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.56,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.53,
+        "win_rate": 0.862
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.51,
+        "win_rate": 0.786
+      },
+      {
+        "name": "Falling Wedge",
+        "bias": "BULLISH",
+        "confidence": 0.46,
+        "win_rate": 0.71
+      },
+      {
+        "name": "Doji",
+        "bias": "NEUTRAL",
+        "confidence": 0.3,
+        "win_rate": 0.52
+      }
+    ],
+    "sent_at": "2026-05-18T11:05:15",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 29.5,
+    "atr_value": 7.8354,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "london",
+    "day_of_week": 0,
+    "vol_ratio": 0.871,
+    "consensus_count": 1,
+    "pattern_boost_val": -0.05,
+    "calibrated_conf": 0.674,
+    "paper_only": true,
+    "mt5_symbol": "#US500_M26"
+  },
+  {
+    "ticket": -988855423,
+    "ticker": "GC=F",
+    "strategy": "FVG_5M",
+    "direction": "LONG",
+    "confidence": 0.706,
+    "entry": 146.3173,
+    "sl": 145.7545,
+    "tp": 147.4429,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.813
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.86,
+        "win_rate": 0.852
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.86,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.63,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.51,
+        "win_rate": 0.862
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.51,
+        "win_rate": 0.786
+      }
+    ],
+    "sent_at": "2026-05-18T11:55:15",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 18.4,
+    "atr_value": 0.2251,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "london",
+    "day_of_week": 0,
+    "vol_ratio": 1.107,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.706,
+    "paper_only": true,
+    "mt5_symbol": "#US500_M26"
+  },
+  {
+    "ticket": -990059141,
+    "ticker": "BZ=F",
+    "strategy": "FVG_5M",
+    "direction": "SHORT",
+    "confidence": 0.73,
+    "entry": 106.475,
+    "sl": 107.376,
+    "tp": 104.6731,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.85,
+        "win_rate": 0.852
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.79,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.66,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BULLISH",
+        "confidence": 0.62,
+        "win_rate": 0.58
+      },
+      {
+        "name": "Hanging Man",
+        "bias": "BEARISH",
+        "confidence": 0.56,
+        "win_rate": 0.59
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.53,
+        "win_rate": 0.786
+      },
+      {
+        "name": "Falling Wedge",
+        "bias": "BULLISH",
+        "confidence": 0.49,
+        "win_rate": 0.71
+      }
+    ],
+    "sent_at": "2026-05-18T12:15:19",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 30.0,
+    "atr_value": 0.3604,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "ny",
+    "day_of_week": 0,
+    "vol_ratio": 1.09,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.73,
+    "paper_only": true,
+    "mt5_symbol": "#US500_M26"
+  },
+  {
+    "ticket": -996058849,
+    "ticker": "YM=F",
+    "strategy": "ORDER_BLOCK_5M",
+    "direction": "SHORT",
+    "confidence": 0.697,
+    "entry": 49636.0,
+    "sl": 49717.1439,
+    "tp": 49473.7123,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.88,
+        "win_rate": 0.845
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BULLISH",
+        "confidence": 0.62,
+        "win_rate": 0.58
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.59,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.51,
+        "win_rate": 0.786
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.855
+      }
+    ],
+    "sent_at": "2026-05-18T13:55:19",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 27.2,
+    "atr_value": 53.8128,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "ny",
+    "day_of_week": 0,
+    "vol_ratio": 1.387,
+    "consensus_count": 1,
+    "pattern_boost_val": -0.05,
+    "calibrated_conf": 0.697,
+    "paper_only": true,
+    "mt5_symbol": "#US500_M26"
+  },
+  {
+    "ticket": -996059247,
+    "ticker": "CL=F",
+    "strategy": "FVG_5M",
+    "direction": "SHORT",
+    "confidence": 0.78,
+    "entry": 100.04,
+    "sl": 100.983,
+    "tp": 98.154,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.84,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.82,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.51,
+        "win_rate": 0.786
+      },
+      {
+        "name": "Inv. Head & Shoulders",
+        "bias": "BULLISH",
+        "confidence": 0.51,
+        "win_rate": 0.89
+      },
+      {
+        "name": "Head & Shoulders",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.825
+      },
+      {
+        "name": "Dragonfly Doji",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.67
+      }
+    ],
+    "sent_at": "2026-05-18T13:55:19",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 28.1,
+    "atr_value": 0.3772,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "ny",
+    "day_of_week": 0,
+    "vol_ratio": 1.845,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.78,
+    "paper_only": true,
+    "mt5_symbol": "#US500_M26"
+  },
+  {
+    "ticket": -997258764,
+    "ticker": "YM=F",
+    "strategy": "FVG_5M",
+    "direction": "LONG",
+    "confidence": 0.766,
+    "entry": 49714.0,
+    "sl": 49539.6604,
+    "tp": 50062.6792,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.787
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.88,
+        "win_rate": 0.823
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.57,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.832
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.786
+      }
+    ],
+    "sent_at": "2026-05-18T14:15:19",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 24.2,
+    "atr_value": 69.7358,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "ny",
+    "day_of_week": 0,
+    "vol_ratio": 1.546,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.766,
+    "paper_only": true,
+    "mt5_symbol": "#US500_M26"
+  },
+  {
+    "ticket": -1006261360,
+    "ticker": "GC=F",
+    "strategy": "ORDER_BLOCK_5M",
+    "direction": "SHORT",
+    "confidence": 0.79,
+    "entry": 146.0742,
+    "sl": 146.3656,
+    "tp": 145.4916,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.787
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.83,
+        "win_rate": 0.823
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.83,
+        "win_rate": 0.845
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.62,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BEARISH",
+        "confidence": 0.62,
+        "win_rate": 0.572
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.53,
+        "win_rate": 0.771
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.51,
+        "win_rate": 0.832
+      },
+      {
+        "name": "Head & Shoulders",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.825
+      },
+      {
+        "name": "Rising Wedge",
+        "bias": "BEARISH",
+        "confidence": 0.45,
+        "win_rate": 0.63
+      }
+    ],
+    "sent_at": "2026-05-18T16:45:21",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 31.9,
+    "atr_value": 0.1877,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "ny",
+    "day_of_week": 0,
+    "vol_ratio": 0.792,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.79,
+    "paper_only": true,
+    "mt5_symbol": "#US500_M26"
+  },
+  {
+    "ticket": -1022761825,
+    "ticker": "EURUSD=X",
+    "strategy": "FVG_5M",
+    "direction": "SHORT",
+    "confidence": 0.714,
+    "entry": 1.1652,
+    "sl": 1.1658,
+    "tp": 1.1641,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.845
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.88,
+        "win_rate": 0.823
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.66,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.771
+      },
+      {
+        "name": "Falling Wedge",
+        "bias": "BULLISH",
+        "confidence": 0.45,
+        "win_rate": 0.71
+      }
+    ],
+    "sent_at": "2026-05-18T21:20:22",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 20.8,
+    "atr_value": 0.0002,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 0.661,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.714,
+    "paper_only": true,
+    "mt5_symbol": "EURUSD"
+  },
+  {
+    "ticket": -1022762265,
+    "ticker": "AUDUSD=X",
+    "strategy": "ORDER_BLOCK_5M",
+    "direction": "SHORT",
+    "confidence": 0.79,
+    "entry": 0.7167,
+    "sl": 0.7176,
+    "tp": 0.715,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.845
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.88,
+        "win_rate": 0.823
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BEARISH",
+        "confidence": 0.62,
+        "win_rate": 0.572
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.59,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.51,
+        "win_rate": 0.832
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.51,
+        "win_rate": 0.771
+      }
+    ],
+    "sent_at": "2026-05-18T21:20:22",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 30.0,
+    "atr_value": 0.0005,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 1.346,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.79,
+    "paper_only": true,
+    "mt5_symbol": "EURUSD"
+  },
+  {
+    "ticket": -1022762703,
+    "ticker": "USDCAD=X",
+    "strategy": "ORDER_BLOCK_5M",
+    "direction": "LONG",
+    "confidence": 0.684,
+    "entry": 1.3735,
+    "sl": 1.3727,
+    "tp": 1.3751,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.9,
+        "win_rate": 0.823
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.845
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.71,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BEARISH",
+        "confidence": 0.62,
+        "win_rate": 0.572
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.832
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.771
+      }
+    ],
+    "sent_at": "2026-05-18T21:20:23",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 29.3,
+    "atr_value": 0.0003,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 1.209,
+    "consensus_count": 1,
+    "pattern_boost_val": -0.05,
+    "calibrated_conf": 0.684,
+    "paper_only": true,
+    "mt5_symbol": "EURUSD"
+  },
+  {
+    "ticket": -1022763095,
+    "ticker": "GBPJPY=X",
+    "strategy": "FVG_5M",
+    "direction": "SHORT",
+    "confidence": 0.78,
+    "entry": 213.096,
+    "sl": 213.2583,
+    "tp": 212.7715,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.89,
+        "win_rate": 0.823
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.845
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.66,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.771
+      }
+    ],
+    "sent_at": "2026-05-18T21:20:23",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 32.1,
+    "atr_value": 0.0649,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 1.2,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.78,
+    "paper_only": true,
+    "mt5_symbol": "EURUSD"
+  },
+  {
+    "ticket": -1023365103,
+    "ticker": "AUDUSD=X",
+    "strategy": "ORDER_BLOCK_5M",
+    "direction": "LONG",
+    "confidence": 0.684,
+    "entry": 0.7165,
+    "sl": 0.7153,
+    "tp": 0.719,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.845
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.87,
+        "win_rate": 0.823
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.68,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.51,
+        "win_rate": 0.832
+      }
+    ],
+    "sent_at": "2026-05-18T21:30:25",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 29.5,
+    "atr_value": 0.0005,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 1.211,
+    "consensus_count": 1,
+    "pattern_boost_val": -0.05,
+    "calibrated_conf": 0.684,
+    "paper_only": true,
+    "mt5_symbol": "EURUSD"
+  },
+  {
+    "ticket": -1023365519,
+    "ticker": "EURJPY=X",
+    "strategy": "FVG_5M",
+    "direction": "SHORT",
+    "confidence": 0.68,
+    "entry": 184.943,
+    "sl": 185.0523,
+    "tp": 184.7244,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.9,
+        "win_rate": 0.845
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.89,
+        "win_rate": 0.823
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.57,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.832
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.771
+      },
+      {
+        "name": "Falling Wedge",
+        "bias": "BULLISH",
+        "confidence": 0.45,
+        "win_rate": 0.71
+      }
+    ],
+    "sent_at": "2026-05-18T21:30:26",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 33.7,
+    "atr_value": 0.0437,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 1.124,
+    "consensus_count": 1,
+    "pattern_boost_val": -0.05,
+    "calibrated_conf": 0.68,
+    "paper_only": true,
+    "mt5_symbol": "EURUSD"
+  },
+  {
+    "ticket": -1025765990,
+    "ticker": "USDJPY=X",
+    "strategy": "FVG_5M",
+    "direction": "SHORT",
+    "confidence": 0.73,
+    "entry": 158.791,
+    "sl": 158.8764,
+    "tp": 158.6202,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.9,
+        "win_rate": 0.845
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.89,
+        "win_rate": 0.823
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.61,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.832
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.771
+      },
+      {
+        "name": "Inside Bar",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.54
+      },
+      {
+        "name": "Rising Wedge",
+        "bias": "BEARISH",
+        "confidence": 0.45,
+        "win_rate": 0.63
+      }
+    ],
+    "sent_at": "2026-05-18T22:10:26",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 45.3,
+    "atr_value": 0.038,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 0.894,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.05,
+    "calibrated_conf": 0.73,
+    "paper_only": true,
+    "mt5_symbol": "EURUSD"
+  },
+  {
+    "ticket": -1025766570,
+    "ticker": "GBPUSD=X",
+    "strategy": "ORDER_BLOCK_5M",
+    "direction": "SHORT",
+    "confidence": 0.661,
+    "entry": 1.3435,
+    "sl": 1.3439,
+    "tp": 1.3428,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.863
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.9,
+        "win_rate": 0.845
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.88,
+        "win_rate": 0.823
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.71,
+        "win_rate": 0.63
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BULLISH",
+        "confidence": 0.62,
+        "win_rate": 0.572
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.51,
+        "win_rate": 0.832
+      },
+      {
+        "name": "Inv. Head & Shoulders",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.89
+      },
+      {
+        "name": "Rising Wedge",
+        "bias": "BEARISH",
+        "confidence": 0.45,
+        "win_rate": 0.63
+      }
+    ],
+    "sent_at": "2026-05-18T22:10:27",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 24.7,
+    "atr_value": 0.0005,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 1.007,
+    "consensus_count": 1,
+    "pattern_boost_val": -0.05,
+    "calibrated_conf": 0.661,
+    "paper_only": true,
+    "mt5_symbol": "EURUSD"
   }
 ]
