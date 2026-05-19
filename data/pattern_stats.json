@@ -10,24 +10,24 @@
     "win_rate": 0.3333
   },
   "Triple Bottom": {
-    "wins": 1,
-    "trades": 3,
-    "win_rate": 0.3333
+    "wins": 3,
+    "trades": 5,
+    "win_rate": 0.6
   },
   "Triple Bottom:LONG": {
-    "wins": 1,
-    "trades": 3,
-    "win_rate": 0.3333
+    "wins": 3,
+    "trades": 5,
+    "win_rate": 0.6
   },
   "Double Bottom": {
-    "wins": 1,
-    "trades": 3,
-    "win_rate": 0.3333
+    "wins": 3,
+    "trades": 5,
+    "win_rate": 0.6
   },
   "Double Bottom:LONG": {
-    "wins": 1,
-    "trades": 3,
-    "win_rate": 0.3333
+    "wins": 3,
+    "trades": 5,
+    "win_rate": 0.6
   },
   "Descending Triangle": {
     "wins": 1,
@@ -118,5 +118,35 @@
     "wins": 0,
     "trades": 1,
     "win_rate": 0.0
+  },
+  "Hammer": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Hammer:LONG": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Fair Value Gap (Bull)": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Fair Value Gap (Bull):LONG": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Falling Wedge": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
+  },
+  "Falling Wedge:LONG": {
+    "wins": 1,
+    "trades": 1,
+    "win_rate": 1.0
   }
 }

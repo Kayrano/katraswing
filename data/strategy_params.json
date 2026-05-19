@@ -281,9 +281,9 @@
     "enabled": true,
     "paper_only": false,
     "disabled_directions": [],
-    "trades_seen": 3,
-    "wins": 1,
-    "win_rate": 0.333,
+    "trades_seen": 4,
+    "wins": 2,
+    "win_rate": 0.5,
     "last_adapted": null,
     "adapt_count": 0
   },
@@ -294,9 +294,9 @@
     "enabled": true,
     "paper_only": false,
     "disabled_directions": [],
-    "trades_seen": 2,
-    "wins": 1,
-    "win_rate": 0.5,
+    "trades_seen": 3,
+    "wins": 2,
+    "win_rate": 0.667,
     "last_adapted": null,
     "adapt_count": 0
   }
