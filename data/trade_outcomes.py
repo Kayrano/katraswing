@@ -284,7 +284,7 @@ def update_paper_outcomes_from_mt5(mt5_symbol_map: dict | None = None) -> int:
         if t.get("paper_only")
         and t.get("outcome") is None
         and t.get("entry") and t.get("sl") and t.get("tp")
-        and t.get("mt5_symbol") or t.get("ticker")
+        and (t.get("mt5_symbol") or t.get("ticker"))
     ]
     if not open_paper:
         return 0
@@ -384,11 +384,12 @@ def update_outcomes_from_mt5(magic: int = 234100) -> int:
     if raw_deals is None:
         return 0
 
-    # position_id on an exit deal matches the ticket of the opening order
+    # position_id on an exit deal matches the ticket of the opening order.
+    # We do NOT filter by magic here — manual closes and SL/TP closes on some
+    # brokers produce closing deals with magic=0 even when the opening order
+    # had our magic number. We only need to match by position_id.
     closed: dict[int, dict] = {}
     for d in raw_deals:
-        if d.magic != magic:
-            continue
         if d.entry != 1:   # 1 = OUT (closing deal)
             continue
         if d.position_id in open_tickets:
