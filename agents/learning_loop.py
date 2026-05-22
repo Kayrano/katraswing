@@ -789,6 +789,20 @@ def run_nightly(now: datetime) -> Path:
     except Exception as exc:
         logger.warning("ctx=nightly.ml_predictor: %s", exc)
 
+    # ── Boost-stack attribution (Phase 1) ─────────────────────────────
+    # Reports which boost components correlate with WIN outcomes so the
+    # user can spot anti-predictive components causing confidence inversion.
+    # Read-only — no auto-mutation; user reviews and edits signal_engine.py.
+    try:
+        from models.boost_attribution import compute_correlations, format_telegram
+        boost_report = compute_correlations(trades)
+        if boost_report["n"] >= 5:   # always log; only Telegram-send above min_trades
+            logger.info("ctx=nightly.boost_attribution: %s", boost_report["verdict"])
+        if boost_report["n"] >= 20:
+            _tg_send(format_telegram(boost_report))
+    except Exception as exc:
+        logger.warning("ctx=nightly.boost_attribution: %s", exc)
+
     # ── Calibration snapshot before forced refit ──────────────────────
     calibration_info = {"sample_count": 0, "fitted": False}
     try:

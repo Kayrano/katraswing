@@ -95,6 +95,16 @@ def record_trade(
     calibrated_conf: Optional[float] = None,
     paper_only: bool = False,
     mt5_symbol: Optional[str] = None,
+    # ── Boost-stack attribution (Phase 1) ─────────────────────────────────
+    # Recorded so models/boost_attribution.py can compute the correlation of
+    # each component with WIN outcomes after enough trades close. Without
+    # these we cannot tell which boost is anti-predictive.
+    base_confidence: Optional[float] = None,
+    consensus_boost: Optional[float] = None,
+    bt_adjustment: Optional[float] = None,
+    live_adjustment: Optional[float] = None,
+    news_boost: Optional[float] = None,
+    session_boost: Optional[float] = None,
 ) -> None:
     """Record a newly sent trade. Called immediately after order_send succeeds,
     OR for paper trades using a synthetic ticket so the promotion harness can
@@ -171,6 +181,13 @@ def record_trade(
         "calibrated_conf":   round(calibrated_conf, 4) if calibrated_conf is not None else None,
         "paper_only":        paper_only,
         "mt5_symbol":        mt5_symbol or "",
+        # ── Boost components (Phase 1: per-component WR attribution) ──────
+        "base_confidence":   round(base_confidence, 4) if base_confidence is not None else None,
+        "consensus_boost":   round(consensus_boost, 4) if consensus_boost is not None else None,
+        "bt_adjustment":     round(bt_adjustment, 4)   if bt_adjustment   is not None else None,
+        "live_adjustment":   round(live_adjustment, 4) if live_adjustment is not None else None,
+        "news_boost":        round(news_boost, 4)     if news_boost      is not None else None,
+        "session_boost":     round(session_boost, 4)  if session_boost   is not None else None,
     })
     _save(trades)
     logger.info(f"Recorded trade #{ticket} {direction} {ticker} via {strategy}")

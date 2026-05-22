@@ -828,6 +828,12 @@ def run_server(args: argparse.Namespace):
                             calibrated_conf=getattr(sr, "calibrated_conf", None),
                             paper_only=True,
                             mt5_symbol=_paper_mt5_sym,
+                            base_confidence=getattr(sr, "base_confidence", None),
+                            consensus_boost=getattr(sr, "consensus_boost", None),
+                            bt_adjustment=getattr(sr, "bt_adjustment", None),
+                            live_adjustment=getattr(sr, "live_adjustment", None),
+                            news_boost=getattr(sr, "news_boost", None),
+                            session_boost=getattr(sr, "session_boost", None),
                         )
                     except Exception as _pe:
                         log.debug("paper record_trade: %s", _pe)
@@ -913,6 +919,12 @@ def run_server(args: argparse.Namespace):
                             consensus_count=getattr(sr, "consensus_count", None),
                             pattern_boost_val=getattr(sr, "pattern_boost_val", None),
                             calibrated_conf=getattr(sr, "calibrated_conf", None),
+                            base_confidence=getattr(sr, "base_confidence", None),
+                            consensus_boost=getattr(sr, "consensus_boost", None),
+                            bt_adjustment=getattr(sr, "bt_adjustment", None),
+                            live_adjustment=getattr(sr, "live_adjustment", None),
+                            news_boost=getattr(sr, "news_boost", None),
+                            session_boost=getattr(sr, "session_boost", None),
                         )
                     except Exception as _rte:
                         log.warning("record_trade #%s: %s", result.ticket, _rte)
@@ -1002,6 +1014,12 @@ def run_server(args: argparse.Namespace):
                             consensus_count=getattr(sr, "consensus_count", None),
                             pattern_boost_val=getattr(sr, "pattern_boost_val", None),
                             calibrated_conf=getattr(sr, "calibrated_conf", None),
+                            base_confidence=getattr(sr, "base_confidence", None),
+                            consensus_boost=getattr(sr, "consensus_boost", None),
+                            bt_adjustment=getattr(sr, "bt_adjustment", None),
+                            live_adjustment=getattr(sr, "live_adjustment", None),
+                            news_boost=getattr(sr, "news_boost", None),
+                            session_boost=getattr(sr, "session_boost", None),
                         )
                     except Exception as _rte:
                         log.warning("record_trade H1 #%s: %s", result.ticket, _rte)
