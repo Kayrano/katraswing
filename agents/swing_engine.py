@@ -388,8 +388,23 @@ def run_h1_signal(
         if not daily_trend_vetoed and gate_conf < _SIGNAL_FLOOR:
             direction = "NO TRADE"
 
+        # ── Volatility ratio: current ATR vs 20-bar average ──────────────
+        # Computed BEFORE the ML gate so the predictor sees the same value
+        # the model was trained on (else falls back to 1.0 default).
+        vol_ratio = 1.0
+        try:
+            _atr_s = ta.atr(df["High"], df["Low"], df["Close"], length=10).dropna()
+            if len(_atr_s) >= 20:
+                _cur_atr = float(_atr_s.iloc[-1])
+                _avg_atr = float(_atr_s.iloc[-20:].mean())
+                if _avg_atr > 0:
+                    vol_ratio = round(_cur_atr / _avg_atr, 3)
+        except Exception:
+            pass
+
         # ── ML win-probability gate (H1 — slightly higher bar than 5m) ───
         # H1 trades carry wider stops → larger capital exposure per trade.
+        # Pass every feature the model was trained on (vol_ratio, pattern_boost).
         if direction not in ("NO TRADE", "FLAT") and best is not None:
             try:
                 from models.ml_predictor import get_predictor as _get_pred
@@ -405,7 +420,9 @@ def run_h1_signal(
                         adx_value=adx_val,
                         atr_value=best.atr,
                         h1_trend=daily_trend_direction,
+                        vol_ratio=vol_ratio,
                         consensus_count=consensus_count,
+                        pattern_boost_val=pattern_boost,
                         calibrated_conf=calibrated_conf,
                     )
                     if _ml_prob is not None and _ml_prob < 0.35:
@@ -414,18 +431,6 @@ def run_h1_signal(
                 pass
 
         final_conf = raw_confidence
-
-        # ── Volatility ratio: current ATR vs 20-bar average ──────────────
-        vol_ratio = 1.0
-        try:
-            _atr_s = ta.atr(df["High"], df["Low"], df["Close"], length=10).dropna()
-            if len(_atr_s) >= 20:
-                _cur_atr = float(_atr_s.iloc[-1])
-                _avg_atr = float(_atr_s.iloc[-20:].mean())
-                if _avg_atr > 0:
-                    vol_ratio = round(_cur_atr / _avg_atr, 3)
-        except Exception:
-            pass
 
         if final_conf >= 0.80:
             risk_level = "LOW"

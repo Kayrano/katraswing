@@ -162,6 +162,12 @@ class IsotonicConfidenceCalibrator:
             # including them would bias calibrator toward "low conf always loses".
             if t.get("strategy") == "MT5_IMPORT":
                 continue
+            # Paper trades resolve at exact TP/SL via 5m bar data — no spread,
+            # no slippage, no commission. Live execution has real costs that
+            # depress WR by ~3-7%. Mixing the two biases the calibrator's
+            # raw → empirical-WR mapping. Only fit on live outcomes.
+            if t.get("paper_only"):
+                continue
             if outcome not in ("WIN", "LOSS") or confidence is None:
                 continue
             predictions.append(float(confidence))
@@ -197,6 +203,7 @@ def _count_eligible_trades(path: Optional[Path] = None) -> int:
         for t in trades
         if t.get("outcome") in ("WIN", "LOSS")
         and t.get("strategy") != "MT5_IMPORT"
+        and not t.get("paper_only")   # paper has no spread/slippage cost
         and t.get("confidence") is not None
     )
 

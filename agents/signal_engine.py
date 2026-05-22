@@ -633,11 +633,25 @@ def run_signal(
         if not daily_trend_vetoed and gate_conf < _SIGNAL_FLOOR:
             direction = "NO TRADE"
 
+        # ── Volatility ratio: current ATR vs 20-bar average ──────────────────
+        # Computed BEFORE the ML gate so the predictor receives the same
+        # vol_ratio value the model was trained on (otherwise it falls back
+        # to the 1.0 default, biasing predictions).
+        vol_ratio = 1.0
+        try:
+            _atr_s = ta.atr(df["High"], df["Low"], df["Close"], length=10).dropna()
+            if len(_atr_s) >= 20:
+                _cur_atr = float(_atr_s.iloc[-1])
+                _avg_atr = float(_atr_s.iloc[-20:].mean())
+                if _avg_atr > 0:
+                    vol_ratio = round(_cur_atr / _avg_atr, 3)
+        except Exception:
+            pass
+
         # ── ML win-probability gate ───────────────────────────────────────────
-        # When the ML predictor has been trained (≥40 closed trades), suppress
-        # signals whose predicted win probability falls below the overall
-        # historical win rate (~0.38). The gate is skipped when the model is
-        # not yet fitted (early data collection phase).
+        # Pass every signal-time feature the model was trained on — missing
+        # features fall back to neutral defaults at inference and bias the
+        # prediction. See models/ml_predictor.extract_features.
         if direction not in ("NO TRADE", "FLAT") and best is not None:
             try:
                 from models.ml_predictor import get_predictor
@@ -653,6 +667,10 @@ def run_signal(
                         adx_value=adx_val,
                         atr_value=best.atr,
                         h1_trend=daily_trend_direction,
+                        vol_ratio=vol_ratio,
+                        consensus_count=consensus_count,
+                        pattern_boost_val=pattern_boost,
+                        calibrated_conf=calibrated_conf,
                     )
                     if _ml_prob is not None and _ml_prob < 0.33:  # was 0.38; model immature (<200 samples)
                         direction = "NO TRADE"
@@ -668,20 +686,6 @@ def run_signal(
         # continue to use the raw blended score so behaviour matches the
         # months of trades the rest of the system was calibrated on.
         final_conf = raw_confidence
-
-        # ── Volatility ratio: current ATR vs 20-bar average ──────────────────
-        # Passed to send_from_signal_result to scale lot size down in volatile
-        # conditions and up slightly in calm conditions.
-        vol_ratio = 1.0
-        try:
-            _atr_s = ta.atr(df["High"], df["Low"], df["Close"], length=10).dropna()
-            if len(_atr_s) >= 20:
-                _cur_atr = float(_atr_s.iloc[-1])
-                _avg_atr = float(_atr_s.iloc[-20:].mean())
-                if _avg_atr > 0:
-                    vol_ratio = round(_cur_atr / _avg_atr, 3)
-        except Exception:
-            pass
 
         # ── Derive risk level from confidence + volatility ────────────────────
         # HIGH confidence = LOW risk label = larger position (1.5× multiplier)
