@@ -20,11 +20,30 @@ $INSTALL_DIR  = "C:\katraswing"
 #
 # Telegram/Finnhub keys are baked into the katraswing-server service config
 # at install time (deploy\install_service.ps1) and are not needed here.
-$GITHUB_PAT  = ""
-$GITHUB_USER = "Kayrano"
-$GITHUB_REPO = "katraswing"
+# If $TELEGRAM_TOKEN + $TELEGRAM_CHAT_ID are also set in local_config.ps1,
+# the watcher will send a ping each time an auto-update lands or fails.
+$GITHUB_PAT       = ""
+$GITHUB_USER      = "Kayrano"
+$GITHUB_REPO      = "katraswing"
+$TELEGRAM_TOKEN   = ""
+$TELEGRAM_CHAT_ID = ""
 $_localCfg   = Join-Path $INSTALL_DIR "deploy\local_config.ps1"
 if (Test-Path $_localCfg) { . $_localCfg }
+
+function Send-Telegram($text) {
+    if (-not $TELEGRAM_TOKEN -or -not $TELEGRAM_CHAT_ID) { return }
+    try {
+        $url = "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage"
+        $body = @{
+            chat_id    = $TELEGRAM_CHAT_ID
+            text       = $text
+            parse_mode = "HTML"
+        }
+        Invoke-RestMethod -Uri $url -Method Post -Body $body -TimeoutSec 10 | Out-Null
+    } catch {
+        Write-Host "  [tg] notify failed: $_" -ForegroundColor DarkYellow
+    }
+}
 
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Write-OK($msg)   { Write-Host "    OK: $msg" -ForegroundColor Green }
@@ -113,6 +132,7 @@ while ($true) {
     if ($local -ne $remote) {
         Write-Host ""
         Write-Host "[$checkTime] New commits detected -- updating..." -ForegroundColor Yellow
+        $oldHash = (git rev-parse --short HEAD).Trim()
         try {
             Write-Host "  [1/6] Stopping signal server..." -ForegroundColor DarkGray
             Stop-SignalServer
@@ -129,6 +149,7 @@ while ($true) {
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "[$checkTime] git pull FAILED -- aborting update cycle." -ForegroundColor Red
                 Write-Host "  $pullOut" -ForegroundColor Red
+                Send-Telegram "<b>[VPS] auto-update FAILED</b>%0A<code>$pullOut</code>"
                 Start-SignalServer
                 Start-StreamlitService
                 Start-Sleep -Seconds 300
@@ -144,10 +165,13 @@ while ($true) {
             Write-Host "  [6/6] Starting signal server..." -ForegroundColor DarkGray
             Start-SignalServer
 
-            $newHash = git rev-parse --short HEAD
+            $newHash = (git rev-parse --short HEAD).Trim()
+            $subject = (git log -1 --format=%s).Trim()
             Write-Host "[$checkTime] Update complete -- now at commit $newHash" -ForegroundColor Green
+            Send-Telegram "<b>[VPS] auto-update OK</b>`n$oldHash → <code>$newHash</code>`n$subject"
         } catch {
             Write-Host "[$checkTime] Update ERROR: $_" -ForegroundColor Red
+            Send-Telegram "<b>[VPS] auto-update ERROR</b>`n<code>$_</code>"
         }
     } else {
         Write-Host "[$checkTime] Up to date ($($local.Substring(0,7)))" -ForegroundColor DarkGray
