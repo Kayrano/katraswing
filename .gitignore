@@ -36,6 +36,9 @@ logs/
 # Local VPS overrides (never commit — contains PAT)
 deploy/local_config.ps1
 
+# Local diagnostic snapshots pulled from VPS for analysis
+*_vps.json
+
 # OS
 .DS_Store
 Thumbs.db
