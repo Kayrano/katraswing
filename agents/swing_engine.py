@@ -30,6 +30,7 @@ from agents.signal_engine import (
     _ADX_CENTER, _ADX_SLOPE,
     _MR_MAX_PENALTY, _TREND_MAX_PENALTY,
     _SIGNAL_FLOOR,
+    _CALIBRATED_FLOOR,
     _BACKTEST_BASELINE_WR,
     _safe_detect_patterns,
     _safe_indicators,
@@ -384,8 +385,14 @@ def run_h1_signal(
             pass
 
         # ── Floor (calibrated when available, raw otherwise) ─────────────
-        gate_conf = calibrated_conf if calibration_applied else final_conf
-        if not daily_trend_vetoed and gate_conf < _SIGNAL_FLOOR:
+        # Separate floors per regime — see signal_engine.py for rationale.
+        if calibration_applied:
+            gate_conf  = calibrated_conf
+            gate_floor = _CALIBRATED_FLOOR
+        else:
+            gate_conf  = final_conf
+            gate_floor = _SIGNAL_FLOOR
+        if not daily_trend_vetoed and gate_conf < gate_floor:
             direction = "NO TRADE"
 
         # ── Volatility ratio: current ATR vs 20-bar average ──────────────

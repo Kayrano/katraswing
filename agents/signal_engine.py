@@ -112,6 +112,16 @@ _TREND_STRATEGIES = {"ORB_5M", "TREND_MOM_5M", "EMA_PB_15M", "SQUEEZE_15M",
 # 20+ new trades in this range show WR < 0.40, revert to 0.70.
 _SIGNAL_FLOOR = 0.65
 
+# Floor applied when the isotonic calibrator is fitted and we gate on the
+# calibrated (empirical-WR) value instead of the raw blended confidence.
+# Set near the system's long-run live WR — gating against this means "only
+# trade signals whose past-trade win rate at this confidence level was at
+# least above-average". A 0.65 floor against a 50% empirical WR would
+# block almost every signal; this separate floor preserves the Phase 1
+# intent (gate on empirical evidence) without starving the system of
+# trades while the model is still maturing.
+_CALIBRATED_FLOOR = 0.50
+
 # Baseline win rate used for backtest calibration adjustment
 _BACKTEST_BASELINE_WR = 0.62
 
@@ -599,17 +609,9 @@ def run_signal(
             session_boost_val = 0.0
 
         # ── Isotonic confidence calibration ──────────────────────────────────
-        # Maps the blended raw confidence onto an empirically-grounded
-        # win probability fitted from closed trades. Identity below 50
-        # samples (see models.calibration).
-        #
-        # IMPORTANT: the calibrated number is informational — it reflects the
-        # *empirical* win rate of past trades at this raw-confidence level.
-        # The 0.60 floor below gates on the *raw* blended confidence (the
-        # statistical edge), not the calibrated value, because the system's
-        # historical WR (~35–45% on closed trades) is far below 60% and a
-        # naive calibrated-floor blocks every signal. We preserve calibration
-        # as a UI hint via SignalResult.raw_confidence vs .confidence.
+        # Maps the blended raw confidence onto an empirically-grounded win
+        # probability fitted from closed LIVE trades (paper excluded — see
+        # models.calibration). Identity below 50 live samples.
         raw_confidence = final_conf
         calibrated_conf = final_conf
         calibration_applied = False
@@ -627,10 +629,19 @@ def run_signal(
             )
 
         # ── Enforce confidence floor ──────────────────────────────────────────
-        # Use calibrated (empirical win probability) when the calibrator is
-        # fitted; fall back to raw blended confidence otherwise.
-        gate_conf = calibrated_conf if calibration_applied else final_conf
-        if not daily_trend_vetoed and gate_conf < _SIGNAL_FLOOR:
+        # Two regimes:
+        #   - calibrator fitted → gate on empirical WR vs _CALIBRATED_FLOOR (0.50)
+        #   - calibrator unfit  → gate on raw blended confidence vs _SIGNAL_FLOOR (0.65)
+        # Separate floors because the two values live on different scales: raw
+        # confidence is a 6-component boost blend; calibrated is the empirical
+        # win rate, which clusters around the system's long-run average.
+        if calibration_applied:
+            gate_conf  = calibrated_conf
+            gate_floor = _CALIBRATED_FLOOR
+        else:
+            gate_conf  = final_conf
+            gate_floor = _SIGNAL_FLOOR
+        if not daily_trend_vetoed and gate_conf < gate_floor:
             direction = "NO TRADE"
 
         # ── Volatility ratio: current ATR vs 20-bar average ──────────────────
