@@ -271,11 +271,22 @@ def update_paper_outcomes_from_mt5(mt5_symbol_map: dict | None = None) -> int:
     LONG: WIN if any bar's high >= tp, LOSS if any bar's low <= sl
     SHORT: WIN if any bar's low <= tp, LOSS if any bar's high >= sl
 
+    Logs a per-call summary at INFO so the hourly loop's resolution rate is
+    visible. Auto-repairs missing/wrong mt5_symbol fields using the bridge's
+    resolver — older logs from before the symbol-fix can self-heal in place.
+
     Returns the number of paper trades whose outcome was updated.
     """
     try:
         import MetaTrader5 as mt5  # type: ignore[import]
     except ImportError:
+        return 0
+
+    # MT5 must be initialised by the caller (signal server). If it isn't,
+    # copy_rates_range silently returns None for every symbol — log loudly
+    # so the failure mode is obvious.
+    if mt5.terminal_info() is None:
+        logger.warning("update_paper_outcomes: MT5 not connected — skipping")
         return 0
 
     trades = _load()
@@ -287,19 +298,42 @@ def update_paper_outcomes_from_mt5(mt5_symbol_map: dict | None = None) -> int:
         and (t.get("mt5_symbol") or t.get("ticker"))
     ]
     if not open_paper:
+        logger.debug("update_paper_outcomes: no open paper trades")
         return 0
 
-    from datetime import timedelta
-    updated = 0
+    try:
+        from utils.mt5_bridge import resolve_mt5_symbol
+    except Exception:
+        resolve_mt5_symbol = None  # type: ignore[assignment]
+
+    updated      = 0
+    no_bars      = 0
+    bad_symbol   = 0
+    bad_date     = 0
+    self_healed  = 0
 
     for t in open_paper:
-        mt5_sym = t.get("mt5_symbol") or t.get("ticker", "")
+        mt5_sym = (t.get("mt5_symbol") or "").strip()
+        # Self-heal: if stored mt5_symbol is empty or stale (looks like a
+        # yfinance ticker), resolve from the bridge.
+        if (not mt5_sym or "=" in mt5_sym) and resolve_mt5_symbol:
+            try:
+                resolved = resolve_mt5_symbol(t.get("ticker", "")) or ""
+                if resolved and resolved != mt5_sym:
+                    t["mt5_symbol"] = resolved
+                    mt5_sym = resolved
+                    self_healed += 1
+            except Exception:
+                pass
         if not mt5_sym:
+            bad_symbol += 1
             continue
+
         sent_str = t.get("sent_at", "")
         try:
             sent_dt = datetime.fromisoformat(sent_str).replace(tzinfo=None)
         except Exception:
+            bad_date += 1
             continue
 
         entry     = float(t["entry"])
@@ -308,9 +342,16 @@ def update_paper_outcomes_from_mt5(mt5_symbol_map: dict | None = None) -> int:
         direction = t.get("direction", "LONG")
         now_utc   = datetime.now(timezone.utc).replace(tzinfo=None)
 
-        # Query 5m bars from entry time to now
+        # Ensure symbol is subscribed before querying bars — some brokers
+        # return None for symbols not in Market Watch.
+        try:
+            mt5.symbol_select(mt5_sym, True)
+        except Exception:
+            pass
+
         bars = mt5.copy_rates_range(mt5_sym, mt5.TIMEFRAME_M5, sent_dt, now_utc)
         if bars is None or len(bars) == 0:
+            no_bars += 1
             continue
 
         outcome = None
@@ -353,9 +394,16 @@ def update_paper_outcomes_from_mt5(mt5_symbol_map: dict | None = None) -> int:
             t["profit"]       = abs(tp - entry) if outcome == "WIN" else -abs(sl - entry)
             updated += 1
 
-    if updated:
+    # Persist if anything changed (resolved outcomes OR self-healed symbols).
+    if updated or self_healed:
         _save(trades)
-        logger.info("update_paper_outcomes: resolved %d paper trade(s)", updated)
+
+    logger.info(
+        "update_paper_outcomes: open=%d resolved=%d still_open=%d "
+        "(no_bars=%d bad_symbol=%d bad_date=%d self_healed=%d)",
+        len(open_paper), updated, len(open_paper) - updated,
+        no_bars, bad_symbol, bad_date, self_healed,
+    )
     return updated
 
 

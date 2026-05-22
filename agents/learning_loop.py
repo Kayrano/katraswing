@@ -321,10 +321,10 @@ def run_hourly(now: datetime) -> dict:
     try:
         from data.trade_outcomes import update_paper_outcomes_from_mt5
         paper_resolved = update_paper_outcomes_from_mt5()
-        if paper_resolved:
-            extras["paper_resolved"] = paper_resolved
+        extras["paper_resolved"] = paper_resolved
     except Exception as exc:
-        logger.debug("ctx=hourly.paper_outcomes: %s", exc)
+        logger.warning("ctx=hourly.paper_outcomes: %s", exc)
+        extras["paper_resolved"] = -1
 
     # 2. Refresh pattern stats unconditionally (cheap and important)
     try:
