@@ -78,6 +78,7 @@ def extract_features(
     consensus_count: int | None = None,
     pattern_boost_val: float | None = None,
     calibrated_conf: float | None = None,
+    is_paper: bool | None = None,
 ) -> dict:
     """Return a flat feature dict for one signal."""
     if isinstance(sent_at, str):
@@ -125,6 +126,12 @@ def extract_features(
         "consensus_count": float(consensus_count) if consensus_count is not None else 1.0,
         "pattern_boost_val": pattern_boost_val if pattern_boost_val is not None else 0.0,
         "calibrated_conf": calibrated_conf if calibrated_conf is not None else confidence,
+        # Execution regime: 1 = paper (no spread/slippage/commission),
+        # 0 = live broker fill. Lets the model learn that the same signal
+        # pattern resolves differently under real execution costs — paper
+        # tends to hit TP cleaner because bar-data resolution is exact.
+        # At inference we default to 0 (live).
+        "is_paper": 1 if is_paper else 0,
     }
     for s in _KNOWN_STRATEGIES:
         feats[f"strat_{s}"] = int(strategy == s)
@@ -155,6 +162,16 @@ class WinRatePredictor:
         """
         Fit on closed automated trades.  Returns True on success.
         Excludes MT5_IMPORT (manual trades) and open trades.
+
+        Phase 2: Cross-validation uses TimeSeriesSplit instead of random k-fold.
+        Each test fold contains only trades chronologically after every trade
+        in its train fold — no future-data leakage, AUC is honest.
+
+        Phase 3: paper trades are kept in the training set with `is_paper`
+        as a feature, so the tree can split on the execution regime. Once
+        ≥30 live trades accumulate the model can learn live-specific
+        patterns in the is_paper=0 leaves without losing the bulk of the
+        sample size today.
         """
         try:
             from lightgbm import LGBMClassifier
@@ -162,7 +179,7 @@ class WinRatePredictor:
             logger.warning("ml_predictor: lightgbm not installed — run: pip install lightgbm>=4.0")
             return False
 
-        from sklearn.model_selection import cross_val_score
+        from sklearn.model_selection import TimeSeriesSplit
 
         closed = [
             t for t in trades
@@ -181,6 +198,13 @@ class WinRatePredictor:
             logger.warning("ml_predictor: degenerate win rate %.1f%% — skipping fit",
                            100 * wins / len(closed))
             return False
+
+        # Chronological sort: time-series CV requires the data to be ordered
+        # by close time. Use closed_at if present (more accurate); fall back
+        # to sent_at for any legacy row. Open trades were filtered above.
+        def _sort_key(t: dict) -> str:
+            return t.get("closed_at") or t.get("sent_at") or ""
+        closed.sort(key=_sort_key)
 
         rows = [
             extract_features(
@@ -201,6 +225,7 @@ class WinRatePredictor:
                 consensus_count=t.get("consensus_count"),
                 pattern_boost_val=t.get("pattern_boost_val"),
                 calibrated_conf=t.get("calibrated_conf"),
+                is_paper=bool(t.get("paper_only")),
             )
             for t in closed
         ]
@@ -222,10 +247,29 @@ class WinRatePredictor:
             verbosity=-1,
         )
 
-        cv_folds = min(5, max(2, len(closed) // 8))
-        cv_scores = cross_val_score(clf, X, y, cv=cv_folds, scoring="roc_auc")
-        self.cv_score = float(np.mean(cv_scores))
-        logger.info("ml_predictor: CV AUC=%.3f (n=%d, LightGBM)", self.cv_score, len(closed))
+        # TimeSeriesSplit: each test fold contains only trades chronologically
+        # after every trade in its train fold. The previous KFold leaked
+        # future data into training and inflated CV AUC.
+        n_splits = min(5, max(2, len(closed) // 20))
+        tscv = TimeSeriesSplit(n_splits=n_splits)
+        fold_aucs: list[float] = []
+        from sklearn.metrics import roc_auc_score
+        for train_idx, test_idx in tscv.split(X):
+            # Both classes must be present in train AND test for a usable AUC
+            if len(set(y[train_idx])) < 2 or len(set(y[test_idx])) < 2:
+                continue
+            clf_fold = LGBMClassifier(
+                n_estimators=200, learning_rate=0.05, max_depth=4,
+                min_child_samples=5, class_weight="balanced", verbosity=-1,
+            )
+            clf_fold.fit(X[train_idx], y[train_idx])
+            preds = clf_fold.predict_proba(X[test_idx])[:, 1]
+            fold_aucs.append(float(roc_auc_score(y[test_idx], preds)))
+        self.cv_score = float(np.mean(fold_aucs)) if fold_aucs else 0.5
+        logger.info(
+            "ml_predictor: TimeSeries CV AUC=%.3f (n=%d, folds=%d, LightGBM)",
+            self.cv_score, len(closed), len(fold_aucs),
+        )
 
         clf.fit(X, y)
         self.model = clf
@@ -255,8 +299,15 @@ class WinRatePredictor:
         consensus_count: int | None = None,
         pattern_boost_val: float | None = None,
         calibrated_conf: float | None = None,
+        is_paper: bool = False,
     ) -> float | None:
-        """Return predicted win probability, or None if model not fitted."""
+        """Return predicted win probability, or None if model not fitted.
+
+        Defaults `is_paper=False` because the gate runs on live signals.
+        At training time paper trades carry is_paper=1 — trees can split on
+        the regime so live predictions aren't contaminated by paper-execution
+        patterns even though paper rows are in the training set.
+        """
         if not self.is_fitted:
             return None
         feats = extract_features(
@@ -265,6 +316,7 @@ class WinRatePredictor:
             spread_pips=spread_pips, h1_trend=h1_trend,
             vol_ratio=vol_ratio, consensus_count=consensus_count,
             pattern_boost_val=pattern_boost_val, calibrated_conf=calibrated_conf,
+            is_paper=is_paper,
         )
         x = _feats_to_array(feats, self.feature_names).reshape(1, -1)
         try:
