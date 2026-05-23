@@ -303,13 +303,9 @@ def run_h1_signal(
                     break
 
         news_boost   = 0.0   # removed in Round 4 A4; routed to event veto
+        # Pattern boost disabled 2026-05-23 (Phase 1 attribution: corr=-0.207).
+        # See agents/signal_engine.py for full rationale.
         pattern_boost = 0.0
-        if patterns.dominant_bias != "NEUTRAL":
-            aligns = (
-                (direction == "LONG"  and patterns.dominant_bias == "BULLISH") or
-                (direction == "SHORT" and patterns.dominant_bias == "BEARISH")
-            )
-            pattern_boost = 0.05 if aligns else -0.05
 
         import datetime as _dt
         _hour_utc = _dt.datetime.now(_dt.timezone.utc).hour

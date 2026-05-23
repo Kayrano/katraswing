@@ -514,14 +514,21 @@ def run_signal(
         # and for upcoming B2 work to populate the event veto.
         news_boost = 0.0
 
-        # ── Pattern boost ±0.05 (kept; smallest, posterior-driven) ───────────
+        # ── Pattern boost: disabled 2026-05-23 by Phase 1 attribution ────────
+        # corr=-0.207 across n=114 closed trades: aligned-pattern trades had
+        # mean boost +0.030 in losses vs +0.011 in wins → boost was actively
+        # anti-predictive. Textbook pattern win rates (Bulkowski daily chart)
+        # don't transfer to 5m FX/gold. Patterns still inform pattern_stats
+        # and the UI, but no longer move the confidence score.
+        # Re-enable only after replacing binary ±0.05 with a learned-per-
+        # pattern-direction posterior weight.
         pattern_boost = 0.0
-        if patterns.dominant_bias != "NEUTRAL":
-            p_aligns = (
-                (direction == "LONG"  and patterns.dominant_bias == "BULLISH") or
-                (direction == "SHORT" and patterns.dominant_bias == "BEARISH")
-            )
-            pattern_boost = 0.05 if p_aligns else -0.05
+        # if patterns.dominant_bias != "NEUTRAL":
+        #     p_aligns = (
+        #         (direction == "LONG"  and patterns.dominant_bias == "BULLISH") or
+        #         (direction == "SHORT" and patterns.dominant_bias == "BEARISH")
+        #     )
+        #     pattern_boost = 0.05 if p_aligns else -0.05
 
         # ── Round 4: hard total-boost cap of +0.20 ───────────────────────────
         # Theoretical max stack pre-Round-4 was +0.59. Live data shows the
