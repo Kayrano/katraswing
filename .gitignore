@@ -30,6 +30,7 @@ data/pattern_stats.json
 data/assessment_log.json
 data/stop_minimums.json
 data/learning_state.json
+data/symbol_promotions.json
 data/reports/
 logs/
 
