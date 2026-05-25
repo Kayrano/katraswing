@@ -531,7 +531,10 @@ class WinRatePredictor:
         try:
             global_p = float(self.model.predict_proba(x)[0, 1])
             # Phase 6: blend with per-strategy sub-model when available.
-            sub = (self.sub_models or {}).get(strategy)
+            # `getattr` for forward compat — pickles saved before Phase 6
+            # don't have a sub_models attribute on the unpickled instance.
+            sub_models = getattr(self, "sub_models", None) or {}
+            sub = sub_models.get(strategy)
             if sub is None:
                 return global_p
             try:
