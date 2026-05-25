@@ -40,6 +40,15 @@ _MODEL_PATH = Path(__file__).parent.parent / "data" / "ml_predictor.pkl"
 _MIN_SAMPLES = 30   # LightGBM with shallow trees handles smaller datasets than logistic regression
 _MIN_WIN_RATE = 0.10  # sanity check — don't fit on degenerate data
 
+# Phase 6: per-strategy sub-models activate once a strategy has enough
+# closed trades to fit a meaningful tree without overfitting.
+_SUB_MODEL_MIN_TRADES = 30
+
+# Phase 7: candidate thresholds swept on the last test fold. The threshold
+# that maximises sum(pnl_per_R for trades the gate would have ADMITTED)
+# becomes the operational floor.
+_THRESHOLD_GRID = [0.25, 0.30, 0.33, 0.35, 0.40, 0.45, 0.50, 0.55]
+
 # Known strategies for stable one-hot encoding across retrains
 _KNOWN_STRATEGIES = [
     "VWAP_RSI_5M", "ORB_5M", "TREND_MOM_5M", "CAMARILLA_5M",
@@ -79,6 +88,10 @@ def extract_features(
     pattern_boost_val: float | None = None,
     calibrated_conf: float | None = None,
     is_paper: bool | None = None,
+    # ── Phase 5: real-time edge-decay features ────────────────────────────
+    recent_strategy_wr: float | None = None,
+    recent_symbol_wr: float | None = None,
+    recent_mfe_r_avg: float | None = None,
 ) -> dict:
     """Return a flat feature dict for one signal."""
     if isinstance(sent_at, str):
@@ -132,6 +145,12 @@ def extract_features(
         # tends to hit TP cleaner because bar-data resolution is exact.
         # At inference we default to 0 (live).
         "is_paper": 1 if is_paper else 0,
+        # Phase 5: recent-edge features (computed from trade log at signal
+        # time; from PRIOR trades only at training time to avoid leakage).
+        # Defaults: 0.5 WR (neutral), 0.0 mfe (no excursion data yet).
+        "recent_strategy_wr": recent_strategy_wr if recent_strategy_wr is not None else 0.5,
+        "recent_symbol_wr":   recent_symbol_wr   if recent_symbol_wr   is not None else 0.5,
+        "recent_mfe_r_avg":   recent_mfe_r_avg   if recent_mfe_r_avg   is not None else 0.5,
     }
     for s in _KNOWN_STRATEGIES:
         feats[f"strat_{s}"] = int(strategy == s)
@@ -141,6 +160,44 @@ def extract_features(
 
 def _feats_to_array(feats: dict, feature_names: list[str]) -> np.ndarray:
     return np.array([feats.get(k, 0.0) for k in feature_names], dtype=float)
+
+
+# ── Phase 5: recent-edge feature helpers ──────────────────────────────────
+
+def _recent_wr_at(prior_trades: list[dict], strategy: str, symbol: str, k: int = 10) -> tuple[float, float, float]:
+    """Compute the most recent (strategy_wr, symbol_wr, avg_mfe_r) using only
+    `prior_trades` (already chronologically filtered to be before the current
+    trade). Returns (0.5, 0.5, 0.5) defaults when no prior data exists.
+
+    `k` = how many most-recent prior trades to look at. Smaller k = more
+    responsive to recent regime change; larger k = less noisy.
+    """
+    norm_sym = symbol.replace("=X", "").replace("=F", "").upper() if symbol else ""
+
+    def _wr(rows: list[dict]) -> float:
+        if not rows:
+            return 0.5   # neutral default
+        wins = sum(1 for r in rows if r.get("outcome") == "WIN")
+        return wins / len(rows)
+
+    # Strategy-specific recent k
+    by_strat = [r for r in prior_trades
+                if r.get("strategy") == strategy
+                and r.get("outcome") in ("WIN", "LOSS")][-k:]
+    # Symbol-specific recent k
+    by_sym = [r for r in prior_trades
+              if (r.get("ticker", "").replace("=X", "").replace("=F", "").upper()) == norm_sym
+              and r.get("outcome") in ("WIN", "LOSS")][-k:]
+
+    strat_wr = _wr(by_strat)
+    sym_wr   = _wr(by_sym)
+
+    # Average MFE-in-R for the same strategy's last k trades (Phase 4 data).
+    # Captures "this strategy has been getting close to TP lately" vs not.
+    mfes = [float(r["mfe_r"]) for r in by_strat if r.get("mfe_r") is not None]
+    mfe_avg = sum(mfes) / len(mfes) if mfes else 0.5
+
+    return strat_wr, sym_wr, mfe_avg
 
 
 class WinRatePredictor:
@@ -153,6 +210,13 @@ class WinRatePredictor:
         self.cv_score: float | None = None
         self.trained_at: str | None = None
         self.feature_importances_: dict[str, float] = {}
+        # Phase 6: per-strategy sub-models. Keys are strategy names; values
+        # are LGBMClassifier instances fitted only on that strategy's trades.
+        # Activated for strategies with >= _SUB_MODEL_MIN_TRADES samples.
+        self.sub_models: dict[str, object] = {}
+        # Phase 7: P&L-optimal threshold derived from the last held-out test
+        # fold. Falls back to 0.33 (signal_engine default) when None.
+        self.optimal_threshold: float | None = None
 
     @property
     def is_fitted(self) -> bool:
@@ -206,8 +270,16 @@ class WinRatePredictor:
             return t.get("closed_at") or t.get("sent_at") or ""
         closed.sort(key=_sort_key)
 
-        rows = [
-            extract_features(
+        # Build rows with prior-only recent-WR (no future-data leakage)
+        rows: list[dict] = []
+        for i, t in enumerate(closed):
+            # Prior trades = chronologically older entries in `closed`
+            # (since we already sorted by closed_at above). Pre-computing
+            # in a list comprehension is fine — n is bounded by training set.
+            strat_wr, sym_wr, mfe_avg = _recent_wr_at(
+                closed[:i], t["strategy"], t.get("ticker", ""), k=10,
+            )
+            rows.append(extract_features(
                 strategy=t["strategy"],
                 direction=t.get("direction", "LONG"),
                 entry=t["entry"],
@@ -226,9 +298,10 @@ class WinRatePredictor:
                 pattern_boost_val=t.get("pattern_boost_val"),
                 calibrated_conf=t.get("calibrated_conf"),
                 is_paper=bool(t.get("paper_only")),
-            )
-            for t in closed
-        ]
+                recent_strategy_wr=strat_wr,
+                recent_symbol_wr=sym_wr,
+                recent_mfe_r_avg=mfe_avg,
+            ))
 
         feature_names = list(rows[0].keys())
         self.feature_names = feature_names
@@ -280,7 +353,120 @@ class WinRatePredictor:
         if hasattr(clf, "feature_importances_"):
             self.feature_importances_ = dict(zip(feature_names, clf.feature_importances_))
 
+        # ── Phase 7: P&L-optimal threshold from the last test fold ────────
+        # Sweep candidate thresholds against the most recent held-out fold;
+        # pick the one maximising expected R-multiple. Falls back to None
+        # (signal_engine then uses its hardcoded 0.33) if no usable fold.
+        self.optimal_threshold = self._compute_optimal_threshold(
+            clf, X, y, n_splits, closed,
+        )
+        if self.optimal_threshold is not None:
+            logger.info(
+                "ml_predictor: optimal threshold = %.2f (vs default 0.33)",
+                self.optimal_threshold,
+            )
+
+        # ── Phase 6: per-strategy sub-models ──────────────────────────────
+        # Fit a tiny LGBM per strategy with ≥ _SUB_MODEL_MIN_TRADES trades.
+        # Predictions are blended 50/50 with the global model at inference.
+        self.sub_models = self._fit_sub_models(clf, X, y, closed, feature_names)
+        if self.sub_models:
+            logger.info("ml_predictor: %d per-strategy sub-models fitted",
+                        len(self.sub_models))
+
         return True
+
+    def _compute_optimal_threshold(
+        self,
+        clf,
+        X: np.ndarray,
+        y: np.ndarray,
+        n_splits: int,
+        closed: list[dict],
+    ) -> float | None:
+        """Sweep _THRESHOLD_GRID on the last TimeSeriesSplit test fold; pick
+        the threshold that maximises sum of R-multiples over admitted trades.
+
+        R-multiple per trade: profit / risk if WIN, -1.0 if LOSS (full SL).
+        Approximates expected utility — a low-WR strategy at 3R is admitted
+        over a high-WR strategy at 0.5R.
+        """
+        from sklearn.model_selection import TimeSeriesSplit
+        try:
+            tscv = TimeSeriesSplit(n_splits=n_splits)
+            splits = list(tscv.split(X))
+            if not splits:
+                return None
+            train_idx, test_idx = splits[-1]   # most recent fold
+            if len(set(y[train_idx])) < 2 or len(set(y[test_idx])) < 2:
+                return None
+            from lightgbm import LGBMClassifier
+            clf_eval = LGBMClassifier(
+                n_estimators=200, learning_rate=0.05, max_depth=4,
+                min_child_samples=5, class_weight="balanced", verbosity=-1,
+            )
+            clf_eval.fit(X[train_idx], y[train_idx])
+            preds = clf_eval.predict_proba(X[test_idx])[:, 1]
+            # Per-trade R-multiple from the test fold's underlying trade rows
+            test_trades = [closed[i] for i in test_idx]
+            r_mults: list[float] = []
+            for t in test_trades:
+                entry, sl, tp = float(t["entry"]), float(t["sl"]), float(t["tp"])
+                risk = abs(entry - sl)
+                if risk <= 0:
+                    r_mults.append(0.0)
+                    continue
+                if t["outcome"] == "WIN":
+                    r_mults.append(abs(tp - entry) / risk)
+                else:
+                    r_mults.append(-1.0)
+            best_thr, best_sum = None, -float("inf")
+            for thr in _THRESHOLD_GRID:
+                admitted_r = sum(r for r, p in zip(r_mults, preds) if p >= thr)
+                if admitted_r > best_sum:
+                    best_sum = admitted_r
+                    best_thr = thr
+            return best_thr
+        except Exception as exc:
+            logger.warning("optimal_threshold sweep failed: %s", exc)
+            return None
+
+    def _fit_sub_models(
+        self,
+        global_clf,
+        X: np.ndarray,
+        y: np.ndarray,
+        closed: list[dict],
+        feature_names: list[str],
+    ) -> dict[str, object]:
+        """Fit a per-strategy LGBM on rows where strategy matches. Skip
+        strategies with < _SUB_MODEL_MIN_TRADES samples — global handles them.
+        """
+        from collections import defaultdict
+        try:
+            from lightgbm import LGBMClassifier
+        except ImportError:
+            return {}
+        idx_by_strat: dict[str, list[int]] = defaultdict(list)
+        for i, t in enumerate(closed):
+            idx_by_strat[t["strategy"]].append(i)
+        sub_models: dict[str, object] = {}
+        for strat, idx in idx_by_strat.items():
+            if len(idx) < _SUB_MODEL_MIN_TRADES:
+                continue
+            y_sub = y[idx]
+            if len(set(y_sub)) < 2:
+                continue   # degenerate (all wins or all losses)
+            try:
+                clf_sub = LGBMClassifier(
+                    n_estimators=100, learning_rate=0.05, max_depth=3,
+                    min_child_samples=3, class_weight="balanced", verbosity=-1,
+                )
+                clf_sub.fit(X[idx], y_sub)
+                sub_models[strat] = clf_sub
+            except Exception as exc:
+                logger.warning("sub-model fit failed for %s: %s", strat, exc)
+        return sub_models
 
     def predict_proba(
         self,
@@ -300,6 +486,7 @@ class WinRatePredictor:
         pattern_boost_val: float | None = None,
         calibrated_conf: float | None = None,
         is_paper: bool = False,
+        ticker: str = "",
     ) -> float | None:
         """Return predicted win probability, or None if model not fitted.
 
@@ -307,9 +494,28 @@ class WinRatePredictor:
         At training time paper trades carry is_paper=1 — trees can split on
         the regime so live predictions aren't contaminated by paper-execution
         patterns even though paper rows are in the training set.
+
+        Phase 5: recent_strategy_wr / recent_symbol_wr / recent_mfe_r_avg are
+        computed from the trade log at predict time. `ticker` is required
+        for the symbol-WR computation; falls back to neutral defaults when
+        omitted.
+
+        Phase 6: If a per-strategy sub-model exists, the returned probability
+        is the 50/50 blend of the global and strategy-specific models.
         """
         if not self.is_fitted:
             return None
+        # Compute Phase 5 features from current trade log
+        strat_wr, sym_wr, mfe_avg = 0.5, 0.5, 0.5
+        try:
+            from data.trade_outcomes import _load as _load_trades
+            prior = [t for t in _load_trades()
+                     if t.get("outcome") in ("WIN", "LOSS")
+                     and t.get("strategy") != "MT5_IMPORT"]
+            strat_wr, sym_wr, mfe_avg = _recent_wr_at(prior, strategy, ticker, k=10)
+        except Exception:
+            pass
+
         feats = extract_features(
             strategy, direction, entry, sl, tp, confidence, sent_at,
             adx_value=adx_value, atr_value=atr_value,
@@ -317,12 +523,22 @@ class WinRatePredictor:
             vol_ratio=vol_ratio, consensus_count=consensus_count,
             pattern_boost_val=pattern_boost_val, calibrated_conf=calibrated_conf,
             is_paper=is_paper,
+            recent_strategy_wr=strat_wr,
+            recent_symbol_wr=sym_wr,
+            recent_mfe_r_avg=mfe_avg,
         )
         x = _feats_to_array(feats, self.feature_names).reshape(1, -1)
         try:
-            proba = self.model.predict_proba(x)
-            # LGBMClassifier returns shape (1, 2); col 1 = win probability
-            return float(proba[0, 1])
+            global_p = float(self.model.predict_proba(x)[0, 1])
+            # Phase 6: blend with per-strategy sub-model when available.
+            sub = (self.sub_models or {}).get(strategy)
+            if sub is None:
+                return global_p
+            try:
+                sub_p = float(sub.predict_proba(x)[0, 1])
+                return 0.5 * global_p + 0.5 * sub_p
+            except Exception:
+                return global_p
         except Exception as exc:
             logger.warning("ml_predictor: predict failed: %s", exc)
             return None

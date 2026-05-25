@@ -374,13 +374,29 @@ def update_paper_outcomes_from_mt5(mt5_symbol_map: dict | None = None) -> int:
         outcome = None
         close_time = None
         close_price = None
+        # ── Phase 4: MFE/MAE tracking ─────────────────────────────────────
+        # Walk the bars and keep track of maximum favorable/adverse excursion
+        # in price units; convert to R-multiples (relative to risk) at the end.
+        # MFE = highest profit the trade reached before close
+        # MAE = deepest drawdown the trade reached before close
+        # These give the ML feature engineering richer labels than binary
+        # WIN/LOSS — e.g. a 0.7R MFE that reversed to SL tells us the entry
+        # was right but the exit was wrong.
+        mfe_price = entry   # best price reached in favorable direction
+        mae_price = entry   # worst price reached in adverse direction
+        bars_to_close = 0
 
         for bar in bars:
             bar_high = float(bar["high"])
             bar_low  = float(bar["low"])
             bar_time = datetime.utcfromtimestamp(int(bar["time"])).isoformat(timespec="seconds")
+            bars_to_close += 1
 
+            # Track excursion BEFORE checking SL/TP — the same bar that hit
+            # SL also represents that bar's worst MAE.
             if direction == "LONG":
+                if bar_high > mfe_price: mfe_price = bar_high
+                if bar_low  < mae_price: mae_price = bar_low
                 if bar_high >= tp:
                     outcome = "WIN"
                     close_time  = bar_time
@@ -392,6 +408,8 @@ def update_paper_outcomes_from_mt5(mt5_symbol_map: dict | None = None) -> int:
                     close_price = sl
                     break
             else:  # SHORT
+                if bar_low  < mfe_price: mfe_price = bar_low
+                if bar_high > mae_price: mae_price = bar_high
                 if bar_low <= tp:
                     outcome = "WIN"
                     close_time  = bar_time
@@ -404,11 +422,24 @@ def update_paper_outcomes_from_mt5(mt5_symbol_map: dict | None = None) -> int:
                     break
 
         if outcome:
+            risk = abs(entry - sl)
+            if direction == "LONG":
+                mfe_r = (mfe_price - entry) / risk if risk > 0 else 0.0
+                mae_r = (entry - mae_price) / risk if risk > 0 else 0.0
+            else:
+                mfe_r = (entry - mfe_price) / risk if risk > 0 else 0.0
+                mae_r = (mae_price - entry) / risk if risk > 0 else 0.0
+
             t["outcome"]      = outcome
             t["closed_at"]    = close_time
             t["close_price"]  = close_price
             t["close_reason"] = "TP" if outcome == "WIN" else "SL"
             t["profit"]       = abs(tp - entry) if outcome == "WIN" else -abs(sl - entry)
+            # MFE/MAE in R-multiples — clamped at zero on the unfavorable side
+            t["mfe_r"]                 = round(max(mfe_r, 0.0), 3)
+            t["mae_r"]                 = round(max(mae_r, 0.0), 3)
+            t["bars_to_resolution"]    = bars_to_close
+            t["time_to_resolution_min"] = bars_to_close * 5   # 5m bars
             updated += 1
 
     # Persist if anything changed (resolved outcomes OR self-healed symbols).
@@ -422,6 +453,75 @@ def update_paper_outcomes_from_mt5(mt5_symbol_map: dict | None = None) -> int:
         no_bars, bad_symbol, bad_date, self_healed,
     )
     return updated
+
+
+def _enrich_live_trade_with_mfe_mae(t: dict, mt5) -> None:
+    """Fetch 5m bars between sent_at and closed_at; compute MFE/MAE.
+
+    Mutates `t` in place. Silent on failure — these are diagnostic-only
+    fields; the trade outcome itself is already recorded.
+    """
+    entry = t.get("entry")
+    sl    = t.get("sl")
+    if not entry or not sl:
+        return
+    sent_str = t.get("sent_at", "")
+    close_str = t.get("closed_at", "")
+    if not sent_str or not close_str:
+        return
+    try:
+        sent_dt  = datetime.fromisoformat(sent_str).replace(tzinfo=None)
+        close_dt = datetime.fromisoformat(close_str).replace(tzinfo=None)
+    except Exception:
+        return
+
+    # Resolve the broker symbol for this trade
+    sym = (t.get("mt5_symbol") or "").strip()
+    if not sym:
+        try:
+            from utils.mt5_bridge import resolve_mt5_symbol
+            sym = resolve_mt5_symbol(t.get("ticker", "")) or ""
+        except Exception:
+            return
+    if not sym:
+        return
+
+    try:
+        mt5.symbol_select(sym, True)
+    except Exception:
+        pass
+
+    bars = mt5.copy_rates_range(sym, mt5.TIMEFRAME_M5, sent_dt, close_dt)
+    if bars is None or len(bars) == 0:
+        return
+
+    direction = t.get("direction", "LONG")
+    entry_p   = float(entry)
+    sl_p      = float(sl)
+    mfe_price = entry_p
+    mae_price = entry_p
+    for bar in bars:
+        bar_high = float(bar["high"])
+        bar_low  = float(bar["low"])
+        if direction == "LONG":
+            if bar_high > mfe_price: mfe_price = bar_high
+            if bar_low  < mae_price: mae_price = bar_low
+        else:
+            if bar_low  < mfe_price: mfe_price = bar_low
+            if bar_high > mae_price: mae_price = bar_high
+
+    risk = abs(entry_p - sl_p)
+    if direction == "LONG":
+        mfe_r = (mfe_price - entry_p) / risk if risk > 0 else 0.0
+        mae_r = (entry_p - mae_price) / risk if risk > 0 else 0.0
+    else:
+        mfe_r = (entry_p - mfe_price) / risk if risk > 0 else 0.0
+        mae_r = (mae_price - entry_p) / risk if risk > 0 else 0.0
+
+    t["mfe_r"]                  = round(max(mfe_r, 0.0), 3)
+    t["mae_r"]                  = round(max(mae_r, 0.0), 3)
+    t["bars_to_resolution"]     = len(bars)
+    t["time_to_resolution_min"] = len(bars) * 5
 
 
 def update_outcomes_from_mt5(magic: int = 234100) -> int:
@@ -487,6 +587,14 @@ def update_outcomes_from_mt5(magic: int = 234100) -> int:
             )
             p = info["profit"]
             t["outcome"]   = "WIN" if p > 0 else ("LOSS" if p < 0 else "BREAKEVEN")
+            # ── Phase 4: MFE/MAE for live trades ─────────────────────────
+            # Fetch the 5m bars during the trade's life and compute the same
+            # MFE/MAE / bars_to_resolution metrics as paper trades.
+            try:
+                _enrich_live_trade_with_mfe_mae(t, mt5)
+            except Exception as exc:
+                logger.debug("mfe/mae enrichment skipped for #%s: %s",
+                             t.get("ticket"), exc)
             updated += 1
 
     if updated:

@@ -427,8 +427,11 @@ def run_h1_signal(
                         consensus_count=consensus_count,
                         pattern_boost_val=pattern_boost,
                         calibrated_conf=calibrated_conf,
+                        ticker=ticker,
                     )
-                    if _ml_prob is not None and _ml_prob < 0.35:
+                    # Phase 7: use P&L-optimal threshold + small H1 premium.
+                    _ml_floor = (getattr(_pred, "optimal_threshold", None) or 0.33) + 0.02
+                    if _ml_prob is not None and _ml_prob < _ml_floor:
                         direction = "NO TRADE"
             except Exception:
                 pass

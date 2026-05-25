@@ -689,8 +689,12 @@ def run_signal(
                         consensus_count=consensus_count,
                         pattern_boost_val=pattern_boost,
                         calibrated_conf=calibrated_conf,
+                        ticker=ticker,
                     )
-                    if _ml_prob is not None and _ml_prob < 0.33:  # was 0.38; model immature (<200 samples)
+                    # Phase 7: use the P&L-optimal threshold computed at last
+                    # retrain, falling back to 0.33 when no sweep ran yet.
+                    _ml_floor = getattr(_pred, "optimal_threshold", None) or 0.33
+                    if _ml_prob is not None and _ml_prob < _ml_floor:
                         direction = "NO TRADE"
             except Exception as _ml_exc:
                 import logging as _logging
