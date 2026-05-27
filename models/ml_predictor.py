@@ -390,6 +390,15 @@ class WinRatePredictor:
         R-multiple per trade: profit / risk if WIN, -1.0 if LOSS (full SL).
         Approximates expected utility — a low-WR strategy at 3R is admitted
         over a high-WR strategy at 0.5R.
+
+        Safety caps:
+        - When AUC < 0.60 the model isn't discriminating well enough to
+          justify a strict floor — high thresholds on weak models block
+          live signals for days. Cap at 0.40 in that regime.
+        - When the chosen threshold would have admitted fewer than 25% of
+          test-fold trades, fall back to the next-permissive threshold
+          that admits at least that fraction. This prevents the sweep
+          from picking a corner-case threshold that filters everything.
         """
         from sklearn.model_selection import TimeSeriesSplit
         try:
@@ -420,12 +429,38 @@ class WinRatePredictor:
                     r_mults.append(abs(tp - entry) / risk)
                 else:
                     r_mults.append(-1.0)
-            best_thr, best_sum = None, -float("inf")
+
+            n_test = len(preds)
+            min_admit = max(1, int(n_test * 0.25))   # admit at least 25%
+
+            # Score every candidate, keeping only those that admit enough
+            scored: list[tuple[float, float, int]] = []
             for thr in _THRESHOLD_GRID:
                 admitted_r = sum(r for r, p in zip(r_mults, preds) if p >= thr)
-                if admitted_r > best_sum:
-                    best_sum = admitted_r
-                    best_thr = thr
+                admitted_n = sum(1 for p in preds if p >= thr)
+                scored.append((thr, admitted_r, admitted_n))
+
+            # Filter to candidates that admit enough trades
+            viable = [(t, r, n) for t, r, n in scored if n >= min_admit]
+            if not viable:
+                # Even the lowest threshold doesn't admit 25% — model is too
+                # weak / data too sparse. Use the LOWEST threshold to keep
+                # signals flowing while data accumulates.
+                best_thr = _THRESHOLD_GRID[0]
+            else:
+                best_thr = max(viable, key=lambda x: x[1])[0]
+
+            # AUC-aware cap: when the model is barely better than chance,
+            # don't let the sweep pick an aggressive threshold that starves
+            # the live system of trades.
+            auc = self.cv_score or 0.5
+            if auc < 0.60 and best_thr > 0.40:
+                logger.info(
+                    "optimal_threshold capped 0.40 (sweep wanted %.2f, AUC=%.3f<0.60)",
+                    best_thr, auc,
+                )
+                best_thr = 0.40
+
             return best_thr
         except Exception as exc:
             logger.warning("optimal_threshold sweep failed: %s", exc)
