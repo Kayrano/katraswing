@@ -14682,5 +14682,93 @@
     "mae_r": 10.3,
     "bars_to_resolution": 1,
     "time_to_resolution_min": 5
+  },
+  {
+    "ticket": -688215353,
+    "ticker": "EURJPY=X",
+    "strategy": "BB_SCALP_5M",
+    "direction": "LONG",
+    "confidence": 0.709,
+    "entry": 185.482,
+    "sl": 185.4618,
+    "tp": 185.5224,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.31
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.89,
+        "win_rate": 0.422
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.36
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BEARISH",
+        "confidence": 0.62,
+        "win_rate": 0.326
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.6,
+        "win_rate": 0.404
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.403
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.368
+      },
+      {
+        "name": "Head & Shoulders",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.533
+      }
+    ],
+    "sent_at": "2026-05-27T10:40:17",
+    "closed_at": "2026-05-27T07:45:00",
+    "profit": -0.02019999999998845,
+    "outcome": "LOSS",
+    "adx_value": 18.3,
+    "atr_value": 0.0336,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "london",
+    "day_of_week": 2,
+    "vol_ratio": 0.898,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.0,
+    "calibrated_conf": 0.709,
+    "paper_only": true,
+    "mt5_symbol": "EURJPY",
+    "base_confidence": 0.679,
+    "consensus_boost": 0.0,
+    "bt_adjustment": 0.0,
+    "live_adjustment": 0.0,
+    "news_boost": 0.0,
+    "session_boost": 0.03,
+    "close_price": 185.4618,
+    "close_reason": "SL",
+    "mfe_r": 0.0,
+    "mae_r": 5.792,
+    "bars_to_resolution": 1,
+    "time_to_resolution_min": 5
   }
 ]

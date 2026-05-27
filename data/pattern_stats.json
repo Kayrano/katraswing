@@ -11,23 +11,23 @@
   },
   "Triple Bottom": {
     "wins": 26,
-    "trades": 62,
-    "win_rate": 0.4194
+    "trades": 63,
+    "win_rate": 0.4127
   },
   "Triple Bottom:LONG": {
     "wins": 26,
-    "trades": 62,
-    "win_rate": 0.4194
+    "trades": 63,
+    "win_rate": 0.4127
   },
   "Double Bottom": {
     "wins": 24,
-    "trades": 60,
-    "win_rate": 0.4
+    "trades": 61,
+    "win_rate": 0.3934
   },
   "Double Bottom:LONG": {
     "wins": 24,
-    "trades": 60,
-    "win_rate": 0.4
+    "trades": 61,
+    "win_rate": 0.3934
   },
   "Descending Triangle": {
     "wins": 17,
