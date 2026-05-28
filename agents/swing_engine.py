@@ -429,10 +429,12 @@ def run_h1_signal(
                         calibrated_conf=calibrated_conf,
                         ticker=ticker,
                     )
-                    # Phase 7: use P&L-optimal threshold + small H1 premium.
-                    _ml_floor = (getattr(_pred, "optimal_threshold", None) or 0.33) + 0.02
-                    if _ml_prob is not None and _ml_prob < _ml_floor:
-                        direction = "NO TRADE"
+                    # Same AUC kill-switch as 5m engine — see signal_engine.py.
+                    _auc = getattr(_pred, "cv_score", None) or 0.5
+                    if _auc >= 0.60:
+                        _ml_floor = (getattr(_pred, "optimal_threshold", None) or 0.33) + 0.02
+                        if _ml_prob is not None and _ml_prob < _ml_floor:
+                            direction = "NO TRADE"
             except Exception:
                 pass
 

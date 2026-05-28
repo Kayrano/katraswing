@@ -670,6 +670,12 @@ def run_signal(
         # Pass every signal-time feature the model was trained on — missing
         # features fall back to neutral defaults at inference and bias the
         # prediction. See models/ml_predictor.extract_features.
+        #
+        # Kill-switch: when the model's CV AUC is below 0.60 it isn't
+        # discriminating well enough to be worth a hard gate. Predictions
+        # are recorded onto the SignalResult for observability but the
+        # gate is skipped. Once AUC clears 0.60 the gate re-activates
+        # automatically — no code change required.
         if direction not in ("NO TRADE", "FLAT") and best is not None:
             try:
                 from models.ml_predictor import get_predictor
@@ -691,11 +697,13 @@ def run_signal(
                         calibrated_conf=calibrated_conf,
                         ticker=ticker,
                     )
-                    # Phase 7: use the P&L-optimal threshold computed at last
-                    # retrain, falling back to 0.33 when no sweep ran yet.
-                    _ml_floor = getattr(_pred, "optimal_threshold", None) or 0.33
-                    if _ml_prob is not None and _ml_prob < _ml_floor:
-                        direction = "NO TRADE"
+                    _auc = getattr(_pred, "cv_score", None) or 0.5
+                    if _auc >= 0.60:
+                        # Model is discriminating — apply the P&L-optimal floor
+                        _ml_floor = getattr(_pred, "optimal_threshold", None) or 0.33
+                        if _ml_prob is not None and _ml_prob < _ml_floor:
+                            direction = "NO TRADE"
+                    # AUC < 0.60: model not strong enough to gate; observe-only
             except Exception as _ml_exc:
                 import logging as _logging
                 _logging.getLogger(__name__).debug(
