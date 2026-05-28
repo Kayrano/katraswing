@@ -983,9 +983,45 @@ def run_server(args: argparse.Namespace):
                     log.info(f"  [dedup] H1 {sr.direction} {display} already recorded today (paper -- skipping).")
                     continue
                 # H1 strategies are paper_only at launch — no broker round-trip.
+                # Record with a synthetic ticket so the nightly promotion harness
+                # can accumulate outcomes and auto-promote H1 strategies that
+                # earn ≥10 closed trades with WR≥0.50 and PF≥1.10 (see
+                # learning_loop.run_nightly). Without this, H1 strategies fire
+                # signals indefinitely but never collect the data needed to
+                # graduate to live.
                 if getattr(sr, "paper_only", True):
                     log.info(f"  [H1 paper] signal recorded for calibration")
                     sent_signals.add(key)
+                    try:
+                        import time as _time
+                        from data.trade_outcomes import record_trade as _rt
+                        from utils.mt5_bridge import resolve_mt5_symbol as _resolve_sym
+                        _syn_ticket = -(int(_time.time() * 1000) % (2**30))
+                        _strat = sr.chart_signals[0].strategy if getattr(sr, "chart_signals", None) else "UNKNOWN"
+                        _pats  = sr.patterns.patterns if getattr(sr, "patterns", None) else None
+                        _h1_mt5_sym = getattr(sr, "mt5_symbol", "") or _resolve_sym(ticker) or ""
+                        _rt(
+                            _syn_ticket, ticker, _strat, sr.direction,
+                            sr.confidence, sr.entry, sr.sl, sr.tp,
+                            patterns=_pats,
+                            adx_value=getattr(sr, "adx_value", None),
+                            atr_value=getattr(sr, "atr", None),
+                            h1_trend=getattr(sr, "daily_trend_direction", None),
+                            vol_ratio=getattr(sr, "vol_ratio", None),
+                            consensus_count=getattr(sr, "consensus_count", None),
+                            pattern_boost_val=getattr(sr, "pattern_boost_val", None),
+                            calibrated_conf=getattr(sr, "calibrated_conf", None),
+                            paper_only=True,
+                            mt5_symbol=_h1_mt5_sym,
+                            base_confidence=getattr(sr, "base_confidence", None),
+                            consensus_boost=getattr(sr, "consensus_boost", None),
+                            bt_adjustment=getattr(sr, "bt_adjustment", None),
+                            live_adjustment=getattr(sr, "live_adjustment", None),
+                            news_boost=getattr(sr, "news_boost", None),
+                            session_boost=getattr(sr, "session_boost", None),
+                        )
+                    except Exception as _pe:
+                        log.debug("H1 paper record_trade: %s", _pe)
                     continue
                 # If a strategy has been auto-promoted to live, process normally.
                 if args.dry_run:
