@@ -134,13 +134,13 @@
   "BB_SCALP_5M": {
     "sl_mult": 1.0,
     "tp_mult": 1.0,
-    "conf_floor": 0.66,
+    "conf_floor": 0.8,
     "enabled": false,
     "trades_seen": 10,
     "wins": 3,
     "win_rate": 0.3,
-    "last_adapted": "2026-05-29T23:00:03.154050+00:00",
-    "adapt_count": 3,
+    "last_adapted": "2026-05-30T06:00:15.052765+00:00",
+    "adapt_count": 10,
     "paper_only": true,
     "disabled_directions": []
   },
