@@ -114,13 +114,22 @@ _SIGNAL_FLOOR = 0.65
 
 # Floor applied when the isotonic calibrator is fitted and we gate on the
 # calibrated (empirical-WR) value instead of the raw blended confidence.
-# Set near the system's long-run live WR — gating against this means "only
-# trade signals whose past-trade win rate at this confidence level was at
-# least above-average". A 0.65 floor against a 50% empirical WR would
-# block almost every signal; this separate floor preserves the Phase 1
-# intent (gate on empirical evidence) without starving the system of
-# trades while the model is still maturing.
-_CALIBRATED_FLOOR = 0.50
+#
+# This floor MUST be tied to break-even economics, not the raw WR. The system
+# trades a 2:1 R:R (TP = entry + 2R) with a hard min-R:R filter of 1.5. Break-
+# even win rate is therefore 1/(1+2)=33.3% at 2:1 and 1/(1+1.5)=40% at the
+# worst allowed R:R. A signal whose empirical WR clears break-even has POSITIVE
+# expectancy and should trade.
+#
+# The previous value (0.50) was a silent kill-switch: it sat strictly ABOVE
+# break-even for every trade the system is even allowed to take, so once the
+# calibrator fitted (≥50 closed trades) it mapped the true ~39% live WR below
+# 0.50 and vetoed essentially every signal — the system stopped trading for
+# ~11 days (May 19 → May 30 2026). The fix lowers the floor to break-even at
+# 2:1 plus a small margin: this admits the bulk of signals (calibrated ≈0.39,
+# positive expectancy at 2:1) while still rejecting the catastrophic low-
+# confidence bucket (raw 0.65 → calibrated 0.11, deeply negative expectancy).
+_CALIBRATED_FLOOR = 0.38
 
 # Baseline win rate used for backtest calibration adjustment
 _BACKTEST_BASELINE_WR = 0.62
