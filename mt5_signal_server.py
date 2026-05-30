@@ -848,10 +848,25 @@ def run_server(args: argparse.Namespace):
                 from utils.mt5_bridge import (
                     get_spread_ratio as _spread_ratio,
                     get_current_price as _cur_price,
+                    is_market_open as _market_open,
                 )
 
-                # 1. Spread filter: skip if spread > 2× typical
                 _mt5_sym_live = getattr(sr, "mt5_symbol", "") or mt5_sym or ""
+
+                # 0. Market-closed guard: on weekends / out-of-session the broker
+                # rejects order_send, but yfinance still serves stale Friday bars,
+                # so the SAME signal recomputes and re-fires every poll forever
+                # (the dedup key is only recorded on a *successful* order). Skip
+                # quietly before the Telegram notify + order_send so closed
+                # markets don't spam identical signals. Re-evaluated next poll —
+                # trading resumes automatically when the session reopens.
+                if _mt5_sym_live:
+                    _closed, _why = _market_open(_mt5_sym_live)
+                    if _closed:
+                        log.info(f"  [closed] {display} skipped -- {_why}")
+                        continue
+
+                # 1. Spread filter: skip if spread > 2× typical
                 if _mt5_sym_live:
                     _sr = _spread_ratio(_mt5_sym_live)
                     if _sr > 2.0:
