@@ -15879,9 +15879,9 @@
       }
     ],
     "sent_at": "2026-05-29T15:00:45",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null,
+    "closed_at": "2026-06-01T16:30:00",
+    "profit": -0.0042400000000000215,
+    "outcome": "LOSS",
     "adx_value": 17.4,
     "atr_value": 0.0011,
     "spread_pips": null,
@@ -15899,7 +15899,13 @@
     "bt_adjustment": 0.0,
     "live_adjustment": 0.0,
     "news_boost": 0.0,
-    "session_boost": 0.0
+    "session_boost": 0.0,
+    "close_price": 1.16249,
+    "close_reason": "SL",
+    "mfe_r": 0.436,
+    "mae_r": 1.047,
+    "bars_to_resolution": 342,
+    "time_to_resolution_min": 1710
   },
   {
     "ticket": -876642780,
@@ -16031,9 +16037,9 @@
       }
     ],
     "sent_at": "2026-05-29T16:00:47",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null,
+    "closed_at": "2026-06-01T04:45:00",
+    "profit": -1.2447000000000088,
+    "outcome": "LOSS",
     "adx_value": 26.0,
     "atr_value": 0.4979,
     "spread_pips": null,
@@ -16051,7 +16057,13 @@
     "bt_adjustment": 0.0,
     "live_adjustment": 0.0,
     "news_boost": 0.0,
-    "session_boost": 0.0
+    "session_boost": 0.0,
+    "close_price": 88.8247,
+    "close_reason": "SL",
+    "mfe_r": 1.763,
+    "mae_r": 1.087,
+    "bars_to_resolution": 177,
+    "time_to_resolution_min": 885
   },
   {
     "ticket": -888033327,
@@ -16517,9 +16529,9 @@
       }
     ],
     "sent_at": "2026-05-30T11:15:41",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null,
+    "closed_at": "2026-06-01T03:55:00",
+    "profit": 0.15629999999998745,
+    "outcome": "WIN",
     "adx_value": 23.8,
     "atr_value": 0.0471,
     "spread_pips": null,
@@ -16537,7 +16549,13 @@
     "bt_adjustment": 0.0,
     "live_adjustment": 0.0,
     "news_boost": 0.0,
-    "session_boost": 0.03
+    "session_boost": 0.03,
+    "close_price": 214.4953,
+    "close_reason": "TP",
+    "mfe_r": 2.023,
+    "mae_r": 0.487,
+    "bars_to_resolution": 48,
+    "time_to_resolution_min": 240
   },
   {
     "ticket": -949539411,
@@ -16581,9 +16599,9 @@
       }
     ],
     "sent_at": "2026-05-30T11:15:41",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null,
+    "closed_at": "2026-06-01T00:00:00",
+    "profit": -0.0484000000000151,
+    "outcome": "LOSS",
     "adx_value": 25.2,
     "atr_value": 0.0315,
     "spread_pips": null,
@@ -16601,7 +16619,13 @@
     "bt_adjustment": 0.0,
     "live_adjustment": 0.0,
     "news_boost": 0.0,
-    "session_boost": 0.03
+    "session_boost": 0.03,
+    "close_price": 185.6786,
+    "close_reason": "SL",
+    "mfe_r": 0.0,
+    "mae_r": 1.116,
+    "bars_to_resolution": 1,
+    "time_to_resolution_min": 5
   },
   {
     "ticket": -957404172,
@@ -16651,9 +16675,9 @@
       }
     ],
     "sent_at": "2026-05-30T13:26:46",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null,
+    "closed_at": "2026-06-01T03:55:00",
+    "profit": 0.15629999999998745,
+    "outcome": "WIN",
     "adx_value": 23.8,
     "atr_value": 0.0471,
     "spread_pips": null,
@@ -16671,7 +16695,13 @@
     "bt_adjustment": 0.0,
     "live_adjustment": 0.0,
     "news_boost": 0.0,
-    "session_boost": 0.0
+    "session_boost": 0.0,
+    "close_price": 214.4953,
+    "close_reason": "TP",
+    "mfe_r": 2.023,
+    "mae_r": 0.487,
+    "bars_to_resolution": 48,
+    "time_to_resolution_min": 240
   },
   {
     "ticket": -957404540,
@@ -16715,9 +16745,9 @@
       }
     ],
     "sent_at": "2026-05-30T13:26:46",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null,
+    "closed_at": "2026-06-01T00:00:00",
+    "profit": -0.0484000000000151,
+    "outcome": "LOSS",
     "adx_value": 25.2,
     "atr_value": 0.0315,
     "spread_pips": null,
@@ -16735,7 +16765,13 @@
     "bt_adjustment": 0.0,
     "live_adjustment": 0.0,
     "news_boost": 0.0,
-    "session_boost": 0.0
+    "session_boost": 0.0,
+    "close_price": 185.6786,
+    "close_reason": "SL",
+    "mfe_r": 0.0,
+    "mae_r": 1.116,
+    "bars_to_resolution": 1,
+    "time_to_resolution_min": 5
   },
   {
     "ticket": -984612536,
@@ -16785,9 +16821,9 @@
       }
     ],
     "sent_at": "2026-05-30T21:00:14",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null,
+    "closed_at": "2026-06-01T03:55:00",
+    "profit": 0.15629999999998745,
+    "outcome": "WIN",
     "adx_value": 23.8,
     "atr_value": 0.0471,
     "spread_pips": null,
@@ -16805,7 +16841,13 @@
     "bt_adjustment": 0.0,
     "live_adjustment": 0.0,
     "news_boost": 0.0,
-    "session_boost": 0.0
+    "session_boost": 0.0,
+    "close_price": 214.4953,
+    "close_reason": "TP",
+    "mfe_r": 2.023,
+    "mae_r": 0.487,
+    "bars_to_resolution": 48,
+    "time_to_resolution_min": 240
   },
   {
     "ticket": -984612949,
@@ -16849,9 +16891,9 @@
       }
     ],
     "sent_at": "2026-05-30T21:00:15",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null,
+    "closed_at": "2026-06-01T00:00:00",
+    "profit": -0.0484000000000151,
+    "outcome": "LOSS",
     "adx_value": 25.2,
     "atr_value": 0.0315,
     "spread_pips": null,
@@ -16869,7 +16911,13 @@
     "bt_adjustment": 0.0,
     "live_adjustment": 0.0,
     "news_boost": 0.0,
-    "session_boost": 0.0
+    "session_boost": 0.0,
+    "close_price": 185.6786,
+    "close_reason": "SL",
+    "mfe_r": 0.0,
+    "mae_r": 1.116,
+    "bars_to_resolution": 1,
+    "time_to_resolution_min": 5
   },
   {
     "ticket": -1071028161,
@@ -16919,9 +16967,9 @@
       }
     ],
     "sent_at": "2026-05-31T21:00:30",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null,
+    "closed_at": "2026-06-01T03:55:00",
+    "profit": 0.15629999999998745,
+    "outcome": "WIN",
     "adx_value": 23.8,
     "atr_value": 0.0471,
     "spread_pips": null,
@@ -16939,7 +16987,13 @@
     "bt_adjustment": 0.0,
     "live_adjustment": 0.0,
     "news_boost": 0.0,
-    "session_boost": 0.0
+    "session_boost": 0.0,
+    "close_price": 214.4953,
+    "close_reason": "TP",
+    "mfe_r": 2.023,
+    "mae_r": 0.487,
+    "bars_to_resolution": 48,
+    "time_to_resolution_min": 240
   },
   {
     "ticket": -1071028529,
@@ -16983,9 +17037,9 @@
       }
     ],
     "sent_at": "2026-05-31T21:00:30",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null,
+    "closed_at": "2026-06-01T00:00:00",
+    "profit": -0.0484000000000151,
+    "outcome": "LOSS",
     "adx_value": 25.2,
     "atr_value": 0.0315,
     "spread_pips": null,
@@ -17003,6 +17057,1384 @@
     "bt_adjustment": 0.0,
     "live_adjustment": 0.0,
     "news_boost": 0.0,
+    "session_boost": 0.0,
+    "close_price": 185.6786,
+    "close_reason": "SL",
+    "mfe_r": 0.0,
+    "mae_r": 1.116,
+    "bars_to_resolution": 1,
+    "time_to_resolution_min": 5
+  },
+  {
+    "ticket": 237056392,
+    "ticker": "EURUSD=X",
+    "strategy": "TREND_MOM_5M",
+    "direction": "SHORT",
+    "confidence": 0.841,
+    "entry": 1.1661,
+    "sl": 1.1663,
+    "tp": 1.1655,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.31
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.9,
+        "win_rate": 0.384
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.9,
+        "win_rate": 0.367
+      },
+      {
+        "name": "Bullish Engulfing",
+        "bias": "BULLISH",
+        "confidence": 0.66,
+        "win_rate": 0.717
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.56,
+        "win_rate": 0.415
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.375
+      },
+      {
+        "name": "Falling Wedge",
+        "bias": "BULLISH",
+        "confidence": 0.45,
+        "win_rate": 0.636
+      }
+    ],
+    "sent_at": "2026-05-31T23:45:57",
+    "closed_at": "2026-06-01T03:25:52",
+    "profit": 4.07,
+    "outcome": "WIN",
+    "adx_value": 26.2,
+    "atr_value": 0.0002,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 6,
+    "vol_ratio": 0.891,
+    "consensus_count": 2,
+    "pattern_boost_val": 0.0,
+    "calibrated_conf": 0.841,
+    "paper_only": false,
+    "mt5_symbol": "",
+    "base_confidence": 0.791,
+    "consensus_boost": 0.05,
+    "bt_adjustment": 0.0,
+    "live_adjustment": 0.0,
+    "news_boost": 0.0,
+    "session_boost": 0.0,
+    "close_price": 1.16462,
+    "close_reason": "TRADE_MANAGER",
+    "mfe_r": 4.75,
+    "mae_r": 0.0,
+    "bars_to_resolution": 6,
+    "time_to_resolution_min": 30
+  },
+  {
+    "ticket": -11690943,
+    "ticker": "USDJPY=X",
+    "strategy": "MSS_H1",
+    "direction": "LONG",
+    "confidence": 0.753,
+    "entry": 159.464,
+    "sl": 159.217,
+    "tp": 159.958,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.31
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.88,
+        "win_rate": 0.384
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.88,
+        "win_rate": 0.367
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.82,
+        "win_rate": 0.27
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.51,
+        "win_rate": 0.375
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.366
+      },
+      {
+        "name": "Rising Wedge",
+        "bias": "BEARISH",
+        "confidence": 0.45,
+        "win_rate": 0.467
+      }
+    ],
+    "sent_at": "2026-06-01T01:00:35",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 29.2,
+    "atr_value": 0.09362,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "asia",
+    "day_of_week": 0,
+    "vol_ratio": 1.089,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.0,
+    "calibrated_conf": 0.753,
+    "paper_only": true,
+    "mt5_symbol": "USDJPY",
+    "base_confidence": 0.773,
+    "consensus_boost": 0.0,
+    "bt_adjustment": 0.0,
+    "live_adjustment": 0.0,
+    "news_boost": 0.0,
+    "session_boost": -0.02
+  },
+  {
+    "ticket": -11690999,
+    "ticker": "GBPUSD=X",
+    "strategy": "MSS_H1",
+    "direction": "SHORT",
+    "confidence": 0.742,
+    "entry": 1.34506,
+    "sl": 1.34707,
+    "tp": 1.34104,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.289
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.87,
+        "win_rate": 0.367
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.85,
+        "win_rate": 0.384
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.64,
+        "win_rate": 0.415
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BEARISH",
+        "confidence": 0.62,
+        "win_rate": 0.52
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.51,
+        "win_rate": 0.366
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.375
+      },
+      {
+        "name": "Rising Wedge",
+        "bias": "BEARISH",
+        "confidence": 0.46,
+        "win_rate": 0.467
+      }
+    ],
+    "sent_at": "2026-06-01T01:00:35",
+    "closed_at": "2026-06-01T09:45:00",
+    "profit": -0.0020100000000000673,
+    "outcome": "LOSS",
+    "adx_value": 24.8,
+    "atr_value": 0.00138,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "asia",
+    "day_of_week": 0,
+    "vol_ratio": 1.087,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.0,
+    "calibrated_conf": 0.742,
+    "paper_only": true,
+    "mt5_symbol": "GBPUSD",
+    "base_confidence": 0.762,
+    "consensus_boost": 0.0,
+    "bt_adjustment": 0.0,
+    "live_adjustment": 0.0,
+    "news_boost": 0.0,
+    "session_boost": -0.02,
+    "close_price": 1.34707,
+    "close_reason": "SL",
+    "mfe_r": 0.264,
+    "mae_r": 1.055,
+    "bars_to_resolution": 118,
+    "time_to_resolution_min": 590
+  },
+  {
+    "ticket": -11691106,
+    "ticker": "USDCAD=X",
+    "strategy": "MSS_H1",
+    "direction": "LONG",
+    "confidence": 0.711,
+    "entry": 1.38047,
+    "sl": 1.37703,
+    "tp": 1.38735,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.289
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.87,
+        "win_rate": 0.367
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.85,
+        "win_rate": 0.384
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.62,
+        "win_rate": 0.27
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.52,
+        "win_rate": 0.375
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.51,
+        "win_rate": 0.366
+      },
+      {
+        "name": "Head & Shoulders",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.533
+      },
+      {
+        "name": "Falling Wedge",
+        "bias": "BULLISH",
+        "confidence": 0.45,
+        "win_rate": 0.636
+      }
+    ],
+    "sent_at": "2026-06-01T01:00:35",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 22.6,
+    "atr_value": 0.00134,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "asia",
+    "day_of_week": 0,
+    "vol_ratio": 1.234,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.0,
+    "calibrated_conf": 0.711,
+    "paper_only": true,
+    "mt5_symbol": "USDCAD",
+    "base_confidence": 0.731,
+    "consensus_boost": 0.0,
+    "bt_adjustment": 0.0,
+    "live_adjustment": 0.0,
+    "news_boost": 0.0,
+    "session_boost": -0.02
+  },
+  {
+    "ticket": -25463497,
+    "ticker": "AUDUSD=X",
+    "strategy": "VWAP_RSI_5M",
+    "direction": "LONG",
+    "confidence": 0.714,
+    "entry": 0.7183,
+    "sl": 0.7179,
+    "tp": 0.7191,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.289
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.9,
+        "win_rate": 0.367
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.89,
+        "win_rate": 0.384
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.64,
+        "win_rate": 0.415
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BEARISH",
+        "confidence": 0.62,
+        "win_rate": 0.251
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.366
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.375
+      },
+      {
+        "name": "Dragonfly Doji",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.654
+      },
+      {
+        "name": "Rising Wedge",
+        "bias": "BEARISH",
+        "confidence": 0.45,
+        "win_rate": 0.467
+      }
+    ],
+    "sent_at": "2026-06-01T04:50:07",
+    "closed_at": "2026-06-01T01:55:00",
+    "profit": -0.00040000000000006697,
+    "outcome": "LOSS",
+    "adx_value": 13.8,
+    "atr_value": 0.0002,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 0.706,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.0,
+    "calibrated_conf": 0.714,
+    "paper_only": true,
+    "mt5_symbol": "AUDUSD",
+    "base_confidence": 0.734,
+    "consensus_boost": 0.0,
+    "bt_adjustment": 0.0,
+    "live_adjustment": 0.0,
+    "news_boost": 0.0,
+    "session_boost": -0.02,
+    "close_price": 0.7179,
+    "close_reason": "SL",
+    "mfe_r": 0.0,
+    "mae_r": 1.2,
+    "bars_to_resolution": 1,
+    "time_to_resolution_min": 5
+  },
+  {
+    "ticket": -29671355,
+    "ticker": "EURUSD=X",
+    "strategy": "MSS_H1",
+    "direction": "LONG",
+    "confidence": 0.687,
+    "entry": 1.16521,
+    "sl": 1.16415,
+    "tp": 1.16733,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.283
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.367
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.86,
+        "win_rate": 0.378
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BULLISH",
+        "confidence": 0.62,
+        "win_rate": 0.251
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.6,
+        "win_rate": 0.27
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.51,
+        "win_rate": 0.361
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.51,
+        "win_rate": 0.375
+      },
+      {
+        "name": "Falling Wedge",
+        "bias": "BULLISH",
+        "confidence": 0.47,
+        "win_rate": 0.636
+      }
+    ],
+    "sent_at": "2026-06-01T06:00:15",
+    "closed_at": "2026-06-01T06:40:00",
+    "profit": -0.001060000000000061,
+    "outcome": "LOSS",
+    "adx_value": 16.1,
+    "atr_value": 0.00094,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 0.806,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.0,
+    "calibrated_conf": 0.687,
+    "paper_only": true,
+    "mt5_symbol": "EURUSD",
+    "base_confidence": 0.687,
+    "consensus_boost": 0.0,
+    "bt_adjustment": 0.0,
+    "live_adjustment": 0.0,
+    "news_boost": 0.0,
+    "session_boost": 0.0,
+    "close_price": 1.16415,
+    "close_reason": "SL",
+    "mfe_r": 0.132,
+    "mae_r": 1.0,
+    "bars_to_resolution": 44,
+    "time_to_resolution_min": 220
+  },
+  {
+    "ticket": -29671408,
+    "ticker": "AUDUSD=X",
+    "strategy": "MSS_H1",
+    "direction": "LONG",
+    "confidence": 0.73,
+    "entry": 0.71876,
+    "sl": 0.71753,
+    "tp": 0.72122,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.283
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.9,
+        "win_rate": 0.367
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.84,
+        "win_rate": 0.378
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BULLISH",
+        "confidence": 0.62,
+        "win_rate": 0.251
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.57,
+        "win_rate": 0.27
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.52,
+        "win_rate": 0.375
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.51,
+        "win_rate": 0.361
+      }
+    ],
+    "sent_at": "2026-06-01T06:00:15",
+    "closed_at": "2026-06-01T06:15:00",
+    "profit": -0.0012299999999999534,
+    "outcome": "LOSS",
+    "adx_value": 22.5,
+    "atr_value": 0.00078,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 0.794,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.0,
+    "calibrated_conf": 0.73,
+    "paper_only": true,
+    "mt5_symbol": "AUDUSD",
+    "base_confidence": 0.73,
+    "consensus_boost": 0.0,
+    "bt_adjustment": 0.0,
+    "live_adjustment": 0.0,
+    "news_boost": 0.0,
+    "session_boost": 0.0,
+    "close_price": 0.71753,
+    "close_reason": "SL",
+    "mfe_r": 0.0,
+    "mae_r": 1.0,
+    "bars_to_resolution": 39,
+    "time_to_resolution_min": 195
+  },
+  {
+    "ticket": -29671491,
+    "ticker": "GBPJPY=X",
+    "strategy": "MSS_H1",
+    "direction": "LONG",
+    "confidence": 0.743,
+    "entry": 214.679,
+    "sl": 214.218,
+    "tp": 215.601,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.283
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.9,
+        "win_rate": 0.367
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.88,
+        "win_rate": 0.378
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BULLISH",
+        "confidence": 0.62,
+        "win_rate": 0.251
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.61,
+        "win_rate": 0.27
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.51,
+        "win_rate": 0.361
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.51,
+        "win_rate": 0.375
+      },
+      {
+        "name": "Inv. Head & Shoulders",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.626
+      },
+      {
+        "name": "Gravestone Doji",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.659
+      },
+      {
+        "name": "Rising Wedge",
+        "bias": "BEARISH",
+        "confidence": 0.47,
+        "win_rate": 0.467
+      }
+    ],
+    "sent_at": "2026-06-01T06:00:15",
+    "closed_at": "2026-06-01T16:55:00",
+    "profit": -0.46100000000001273,
+    "outcome": "LOSS",
+    "adx_value": 22.8,
+    "atr_value": 0.16551,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 0.891,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.0,
+    "calibrated_conf": 0.743,
+    "paper_only": true,
+    "mt5_symbol": "GBPJPY",
+    "base_confidence": 0.743,
+    "consensus_boost": 0.0,
+    "bt_adjustment": 0.0,
+    "live_adjustment": 0.0,
+    "news_boost": 0.0,
+    "session_boost": 0.0,
+    "close_price": 214.218,
+    "close_reason": "SL",
+    "mfe_r": 0.423,
+    "mae_r": 1.015,
+    "bars_to_resolution": 167,
+    "time_to_resolution_min": 835
+  },
+  {
+    "ticket": -33279847,
+    "ticker": "EURJPY=X",
+    "strategy": "MSS_H1",
+    "direction": "LONG",
+    "confidence": 0.743,
+    "entry": 185.949,
+    "sl": 185.653,
+    "tp": 186.541,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.283
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.9,
+        "win_rate": 0.375
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.88,
+        "win_rate": 0.378
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.67,
+        "win_rate": 0.27
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BULLISH",
+        "confidence": 0.62,
+        "win_rate": 0.251
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.51,
+        "win_rate": 0.361
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.51,
+        "win_rate": 0.384
+      },
+      {
+        "name": "Inv. Head & Shoulders",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.626
+      },
+      {
+        "name": "Rising Wedge",
+        "bias": "BEARISH",
+        "confidence": 0.46,
+        "win_rate": 0.467
+      },
+      {
+        "name": "Bearish Harami",
+        "bias": "BEARISH",
+        "confidence": 0.42,
+        "win_rate": 0.489
+      }
+    ],
+    "sent_at": "2026-06-01T07:00:24",
+    "closed_at": "2026-06-01T06:40:00",
+    "profit": -0.2960000000000207,
+    "outcome": "LOSS",
+    "adx_value": 21.8,
+    "atr_value": 0.11589,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "london",
+    "day_of_week": 0,
+    "vol_ratio": 0.828,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.0,
+    "calibrated_conf": 0.743,
+    "paper_only": true,
+    "mt5_symbol": "EURJPY",
+    "base_confidence": 0.713,
+    "consensus_boost": 0.0,
+    "bt_adjustment": 0.0,
+    "live_adjustment": 0.0,
+    "news_boost": 0.0,
+    "session_boost": 0.03,
+    "close_price": 185.653,
+    "close_reason": "SL",
+    "mfe_r": 0.0,
+    "mae_r": 1.0,
+    "bars_to_resolution": 32,
+    "time_to_resolution_min": 160
+  },
+  {
+    "ticket": -43466318,
+    "ticker": "USDJPY=X",
+    "strategy": "VWAP_RSI_5M",
+    "direction": "LONG",
+    "confidence": 0.68,
+    "entry": 159.465,
+    "sl": 159.4349,
+    "tp": 159.5251,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.283
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.9,
+        "win_rate": 0.378
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.9,
+        "win_rate": 0.37
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BEARISH",
+        "confidence": 0.62,
+        "win_rate": 0.251
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.56,
+        "win_rate": 0.406
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.361
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.378
+      },
+      {
+        "name": "Rising Wedge",
+        "bias": "BEARISH",
+        "confidence": 0.45,
+        "win_rate": 0.467
+      }
+    ],
+    "sent_at": "2026-06-01T09:50:10",
+    "closed_at": "2026-06-01T09:00:00",
+    "profit": -0.030100000000004457,
+    "outcome": "LOSS",
+    "adx_value": 10.3,
+    "atr_value": 0.0135,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "london",
+    "day_of_week": 0,
+    "vol_ratio": 0.809,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.0,
+    "calibrated_conf": 0.68,
+    "paper_only": true,
+    "mt5_symbol": "USDJPY",
+    "base_confidence": 0.65,
+    "consensus_boost": 0.0,
+    "bt_adjustment": 0.0,
+    "live_adjustment": 0.0,
+    "news_boost": 0.0,
+    "session_boost": 0.03,
+    "close_price": 159.4349,
+    "close_reason": "SL",
+    "mfe_r": 0.532,
+    "mae_r": 1.229,
+    "bars_to_resolution": 26,
+    "time_to_resolution_min": 130
+  },
+  {
+    "ticket": -47674594,
+    "ticker": "ES=F",
+    "strategy": "MSS_H1",
+    "direction": "LONG",
+    "confidence": 0.78,
+    "entry": 7616.75,
+    "sl": 7577.25,
+    "tp": 7695.75,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.265
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.71,
+        "win_rate": 0.364
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.65,
+        "win_rate": 0.25
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.51,
+        "win_rate": 0.347
+      },
+      {
+        "name": "Rising Wedge",
+        "bias": "BEARISH",
+        "confidence": 0.46,
+        "win_rate": 0.467
+      }
+    ],
+    "sent_at": "2026-06-01T11:00:18",
+    "closed_at": "2026-06-01T16:25:00",
+    "profit": -39.5,
+    "outcome": "LOSS",
+    "adx_value": 29.7,
+    "atr_value": 20.5845,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "london",
+    "day_of_week": 0,
+    "vol_ratio": 0.915,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.0,
+    "calibrated_conf": 0.78,
+    "paper_only": true,
+    "mt5_symbol": "#US500_M26",
+    "base_confidence": 0.78,
+    "consensus_boost": 0.0,
+    "bt_adjustment": 0.0,
+    "live_adjustment": 0.0,
+    "news_boost": 0.0,
+    "session_boost": 0.0,
+    "close_price": 7577.25,
+    "close_reason": "SL",
+    "mfe_r": 0.127,
+    "mae_r": 1.013,
+    "bars_to_resolution": 101,
+    "time_to_resolution_min": 505
+  },
+  {
+    "ticket": -55474304,
+    "ticker": "SI=F",
+    "strategy": "VWAP_RSI_5M",
+    "direction": "LONG",
+    "confidence": 0.65,
+    "entry": 75.726,
+    "sl": 75.2952,
+    "tp": 76.5877,
+    "patterns": [
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.317
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.366
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.85,
+        "win_rate": 0.359
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BEARISH",
+        "confidence": 0.62,
+        "win_rate": 0.194
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.59,
+        "win_rate": 0.25
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.52,
+        "win_rate": 0.342
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.52,
+        "win_rate": 0.373
+      },
+      {
+        "name": "Rising Wedge",
+        "bias": "BEARISH",
+        "confidence": 0.46,
+        "win_rate": 0.447
+      }
+    ],
+    "sent_at": "2026-06-01T13:10:18",
+    "closed_at": "2026-06-01T10:45:00",
+    "profit": -0.43080000000000496,
+    "outcome": "LOSS",
+    "adx_value": 12.2,
+    "atr_value": 0.1723,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "ny",
+    "day_of_week": 0,
+    "vol_ratio": 1.03,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.0,
+    "calibrated_conf": 0.65,
+    "paper_only": true,
+    "mt5_symbol": "SILVER",
+    "base_confidence": 0.65,
+    "consensus_boost": 0.0,
+    "bt_adjustment": 0.0,
+    "live_adjustment": 0.0,
+    "news_boost": 0.0,
+    "session_boost": 0.0,
+    "close_price": 75.2952,
+    "close_reason": "SL",
+    "mfe_r": 0.376,
+    "mae_r": 1.026,
+    "bars_to_resolution": 7,
+    "time_to_resolution_min": 35
+  },
+  {
+    "ticket": -68990769,
+    "ticker": "USDCAD=X",
+    "strategy": "PDH_PDL_SWEEP_5M",
+    "direction": "SHORT",
+    "confidence": 0.677,
+    "entry": 1.3828,
+    "sl": 1.3831,
+    "tp": 1.3822,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.26
+      },
+      {
+        "name": "Descending Triangle",
+        "bias": "BEARISH",
+        "confidence": 1.0,
+        "win_rate": 0.317
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.9,
+        "win_rate": 0.366
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.89,
+        "win_rate": 0.354
+      },
+      {
+        "name": "Fair Value Gap (Bear)",
+        "bias": "BEARISH",
+        "confidence": 0.63,
+        "win_rate": 0.394
+      },
+      {
+        "name": "Inside Bar (NR4)",
+        "bias": "BEARISH",
+        "confidence": 0.62,
+        "win_rate": 0.502
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.51,
+        "win_rate": 0.338
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.373
+      },
+      {
+        "name": "Falling Wedge",
+        "bias": "BULLISH",
+        "confidence": 0.45,
+        "win_rate": 0.614
+      },
+      {
+        "name": "Bullish Harami",
+        "bias": "BULLISH",
+        "confidence": 0.42,
+        "win_rate": 0.53
+      },
+      {
+        "name": "Symmetrical Triangle",
+        "bias": "NEUTRAL",
+        "confidence": 0.4,
+        "win_rate": 0.65
+      }
+    ],
+    "sent_at": "2026-06-01T16:55:34",
+    "closed_at": "2026-06-01T14:40:00",
+    "profit": -0.00029999999999996696,
+    "outcome": "LOSS",
+    "adx_value": 16.8,
+    "atr_value": 0.0004,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "ny",
+    "day_of_week": 0,
+    "vol_ratio": 0.872,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.0,
+    "calibrated_conf": 0.677,
+    "paper_only": true,
+    "mt5_symbol": "USDCAD",
+    "base_confidence": 0.677,
+    "consensus_boost": 0.0,
+    "bt_adjustment": 0.0,
+    "live_adjustment": 0.0,
+    "news_boost": 0.0,
+    "session_boost": 0.0,
+    "close_price": 1.3831,
+    "close_reason": "SL",
+    "mfe_r": 1.4,
+    "mae_r": 2.467,
+    "bars_to_resolution": 9,
+    "time_to_resolution_min": 45
+  },
+  {
+    "ticket": -72905477,
+    "ticker": "CL=F",
+    "strategy": "ORB_H1",
+    "direction": "SHORT",
+    "confidence": 0.659,
+    "entry": 91.7,
+    "sl": 94.97411,
+    "tp": 87.82999,
+    "patterns": [
+      {
+        "name": "Rectangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.712
+      },
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 0.86,
+        "win_rate": 0.26
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.82,
+        "win_rate": 0.244
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.61,
+        "win_rate": 0.338
+      }
+    ],
+    "sent_at": "2026-06-01T18:00:49",
+    "closed_at": null,
+    "profit": null,
+    "outcome": null,
+    "adx_value": 49.0,
+    "atr_value": 1.94108,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 1.254,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.0,
+    "calibrated_conf": 0.659,
+    "paper_only": true,
+    "mt5_symbol": "WTI",
+    "base_confidence": 0.659,
+    "consensus_boost": 0.0,
+    "bt_adjustment": 0.0,
+    "live_adjustment": 0.0,
+    "news_boost": 0.0,
     "session_boost": 0.0
+  },
+  {
+    "ticket": -76506898,
+    "ticker": "GBPJPY=X",
+    "strategy": "LIQ_SWEEP_5M",
+    "direction": "SHORT",
+    "confidence": 0.737,
+    "entry": 214.943,
+    "sl": 215.0152,
+    "tp": 214.7986,
+    "patterns": [
+      {
+        "name": "Ascending Triangle",
+        "bias": "BULLISH",
+        "confidence": 1.0,
+        "win_rate": 0.26
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.366
+      },
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.88,
+        "win_rate": 0.354
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.58,
+        "win_rate": 0.244
+      },
+      {
+        "name": "Bearish Engulfing",
+        "bias": "BEARISH",
+        "confidence": 0.55,
+        "win_rate": 0.625
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.338
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.373
+      },
+      {
+        "name": "Inside Bar",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.54
+      }
+    ],
+    "sent_at": "2026-06-01T19:00:51",
+    "closed_at": "2026-06-01T16:05:00",
+    "profit": 0.14440000000001874,
+    "outcome": "WIN",
+    "adx_value": 42.6,
+    "atr_value": 0.0374,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 0.878,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.0,
+    "calibrated_conf": 0.737,
+    "paper_only": true,
+    "mt5_symbol": "GBPJPY",
+    "base_confidence": 0.737,
+    "consensus_boost": 0.0,
+    "bt_adjustment": 0.0,
+    "live_adjustment": 0.0,
+    "news_boost": 0.0,
+    "session_boost": 0.0,
+    "close_price": 214.7986,
+    "close_reason": "TP",
+    "mfe_r": 4.418,
+    "mae_r": 0.0,
+    "bars_to_resolution": 1,
+    "time_to_resolution_min": 5
+  },
+  {
+    "ticket": -83685440,
+    "ticker": "USDCAD=X",
+    "strategy": "LIQ_SWEEP_5M",
+    "direction": "LONG",
+    "confidence": 0.776,
+    "entry": 1.3839,
+    "sl": 1.3834,
+    "tp": 1.385,
+    "patterns": [
+      {
+        "name": "Triple Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.89,
+        "win_rate": 0.341
+      },
+      {
+        "name": "Triple Top",
+        "bias": "BEARISH",
+        "confidence": 0.89,
+        "win_rate": 0.369
+      },
+      {
+        "name": "Fair Value Gap (Bull)",
+        "bias": "BULLISH",
+        "confidence": 0.6,
+        "win_rate": 0.227
+      },
+      {
+        "name": "Hanging Man",
+        "bias": "BEARISH",
+        "confidence": 0.57,
+        "win_rate": 0.534
+      },
+      {
+        "name": "Double Bottom",
+        "bias": "BULLISH",
+        "confidence": 0.5,
+        "win_rate": 0.325
+      },
+      {
+        "name": "Double Top",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.377
+      },
+      {
+        "name": "Head & Shoulders",
+        "bias": "BEARISH",
+        "confidence": 0.5,
+        "win_rate": 0.533
+      }
+    ],
+    "sent_at": "2026-06-01T21:00:29",
+    "closed_at": "2026-06-01T18:20:00",
+    "profit": -0.0004999999999999449,
+    "outcome": "LOSS",
+    "adx_value": 14.4,
+    "atr_value": 0.0003,
+    "spread_pips": null,
+    "h1_trend": "NEUTRAL",
+    "session": "other",
+    "day_of_week": 0,
+    "vol_ratio": 1.265,
+    "consensus_count": 1,
+    "pattern_boost_val": 0.0,
+    "calibrated_conf": 0.776,
+    "paper_only": true,
+    "mt5_symbol": "USDCAD",
+    "base_confidence": 0.776,
+    "consensus_boost": 0.0,
+    "bt_adjustment": 0.0,
+    "live_adjustment": 0.0,
+    "news_boost": 0.0,
+    "session_boost": 0.0,
+    "close_price": 1.3834,
+    "close_reason": "SL",
+    "mfe_r": 0.22,
+    "mae_r": 1.2,
+    "bars_to_resolution": 4,
+    "time_to_resolution_min": 20
   }
 ]
