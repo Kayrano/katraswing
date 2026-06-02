@@ -82,9 +82,9 @@
     "tp_mult": 1.0,
     "conf_floor": 0.6,
     "enabled": true,
-    "trades_seen": 5,
-    "wins": 1,
-    "win_rate": 0.2,
+    "trades_seen": 7,
+    "wins": 3,
+    "win_rate": 0.429,
     "last_adapted": null,
     "adapt_count": 0,
     "paper_only": true,
@@ -212,15 +212,15 @@
   "MSS_H1": {
     "sl_mult": 1.0,
     "tp_mult": 1.0,
-    "conf_floor": 0.74,
+    "conf_floor": 0.8,
     "enabled": false,
     "paper_only": true,
     "disabled_directions": [],
     "trades_seen": 13,
     "wins": 0,
     "win_rate": 0.0,
-    "last_adapted": "2026-06-01T23:00:17.811712+00:00",
-    "adapt_count": 7
+    "last_adapted": "2026-06-02T20:00:00.558720+00:00",
+    "adapt_count": 10
   },
   "ORB_H1": {
     "sl_mult": 1.0,
@@ -268,11 +268,11 @@
     "enabled": true,
     "paper_only": false,
     "disabled_directions": [],
-    "trades_seen": 17,
-    "wins": 12,
-    "win_rate": 0.706,
-    "last_adapted": "2026-06-01T22:00:17.188179+00:00",
-    "adapt_count": 4
+    "trades_seen": 21,
+    "wins": 14,
+    "win_rate": 0.65,
+    "last_adapted": "2026-06-02T18:00:00.190433+00:00",
+    "adapt_count": 5
   },
   "ORDER_BLOCK_5M": {
     "sl_mult": 1.0,
