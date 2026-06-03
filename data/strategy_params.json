@@ -2,13 +2,13 @@
   "VWAP_RSI_5M": {
     "sl_mult": 1.0,
     "tp_mult": 1.0,
-    "conf_floor": 0.6,
-    "enabled": true,
-    "trades_seen": 9,
-    "wins": 0,
-    "win_rate": 0.0,
-    "last_adapted": null,
-    "adapt_count": 0,
+    "conf_floor": 0.8,
+    "enabled": false,
+    "trades_seen": 11,
+    "wins": 1,
+    "win_rate": 0.091,
+    "last_adapted": "2026-06-03T10:00:16.104297+00:00",
+    "adapt_count": 10,
     "paper_only": true,
     "disabled_directions": []
   },
@@ -216,11 +216,11 @@
     "enabled": false,
     "paper_only": true,
     "disabled_directions": [],
-    "trades_seen": 13,
-    "wins": 0,
-    "win_rate": 0.0,
-    "last_adapted": "2026-06-02T20:00:00.558720+00:00",
-    "adapt_count": 10
+    "trades_seen": 16,
+    "wins": 2,
+    "win_rate": 0.125,
+    "last_adapted": "2026-06-03T23:00:24.492113+00:00",
+    "adapt_count": 13
   },
   "ORB_H1": {
     "sl_mult": 1.0,
@@ -268,11 +268,11 @@
     "enabled": true,
     "paper_only": false,
     "disabled_directions": [],
-    "trades_seen": 21,
-    "wins": 14,
+    "trades_seen": 22,
+    "wins": 15,
     "win_rate": 0.65,
-    "last_adapted": "2026-06-02T18:00:00.190433+00:00",
-    "adapt_count": 5
+    "last_adapted": "2026-06-03T01:00:11.354241+00:00",
+    "adapt_count": 6
   },
   "ORDER_BLOCK_5M": {
     "sl_mult": 1.0,

@@ -15023,9 +15023,9 @@
       }
     ],
     "sent_at": "2026-05-28T21:00:22",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null,
+    "closed_at": "2026-06-03T19:25:00",
+    "profit": -2.6440000000000055,
+    "outcome": "LOSS",
     "adx_value": 19.8,
     "atr_value": 1.02904,
     "spread_pips": null,
@@ -15043,7 +15043,13 @@
     "bt_adjustment": 0.0,
     "live_adjustment": 0.0,
     "news_boost": 0.0,
-    "session_boost": 0.0
+    "session_boost": 0.0,
+    "close_price": 73.154,
+    "close_reason": "SL",
+    "mfe_r": 0.458,
+    "mae_r": 1.003,
+    "bars_to_resolution": 1121,
+    "time_to_resolution_min": 5605
   },
   {
     "ticket": -811819988,
@@ -17201,9 +17207,9 @@
       }
     ],
     "sent_at": "2026-06-01T01:00:35",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null,
+    "closed_at": "2026-06-02T20:45:00",
+    "profit": 0.4939999999999998,
+    "outcome": "WIN",
     "adx_value": 29.2,
     "atr_value": 0.09362,
     "spread_pips": null,
@@ -17221,7 +17227,13 @@
     "bt_adjustment": 0.0,
     "live_adjustment": 0.0,
     "news_boost": 0.0,
-    "session_boost": -0.02
+    "session_boost": -0.02,
+    "close_price": 159.958,
+    "close_reason": "TP",
+    "mfe_r": 2.016,
+    "mae_r": 0.68,
+    "bars_to_resolution": 538,
+    "time_to_resolution_min": 2690
   },
   {
     "ticket": -11690999,
@@ -17371,9 +17383,9 @@
       }
     ],
     "sent_at": "2026-06-01T01:00:35",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null,
+    "closed_at": "2026-06-03T16:15:00",
+    "profit": 0.006879999999999997,
+    "outcome": "WIN",
     "adx_value": 22.6,
     "atr_value": 0.00134,
     "spread_pips": null,
@@ -17391,7 +17403,13 @@
     "bt_adjustment": 0.0,
     "live_adjustment": 0.0,
     "news_boost": 0.0,
-    "session_boost": -0.02
+    "session_boost": -0.02,
+    "close_price": 1.38735,
+    "close_reason": "TP",
+    "mfe_r": 2.009,
+    "mae_r": 0.453,
+    "bars_to_resolution": 772,
+    "time_to_resolution_min": 3860
   },
   {
     "ticket": -25463497,
@@ -18977,9 +18995,9 @@
       }
     ],
     "sent_at": "2026-06-02T14:35:10",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null,
+    "closed_at": "2026-06-02T14:50:00",
+    "profit": -0.0008000000000001339,
+    "outcome": "LOSS",
     "adx_value": 26.4,
     "atr_value": 0.0003,
     "spread_pips": null,
@@ -18997,7 +19015,13 @@
     "bt_adjustment": 0.0,
     "live_adjustment": 0.0,
     "news_boost": 0.0,
-    "session_boost": 0.0
+    "session_boost": 0.0,
+    "close_price": 1.1651,
+    "close_reason": "SL",
+    "mfe_r": 0.587,
+    "mae_r": 1.075,
+    "bars_to_resolution": 39,
+    "time_to_resolution_min": 195
   },
   {
     "ticket": -165275113,
@@ -19059,9 +19083,9 @@
       }
     ],
     "sent_at": "2026-06-02T19:40:19",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null,
+    "closed_at": "2026-06-02T17:40:00",
+    "profit": 0.001000000000000112,
+    "outcome": "WIN",
     "adx_value": 22.8,
     "atr_value": 0.0002,
     "spread_pips": null,
@@ -19079,7 +19103,13 @@
     "bt_adjustment": 0.0,
     "live_adjustment": 0.0,
     "news_boost": 0.0,
-    "session_boost": 0.0
+    "session_boost": 0.0,
+    "close_price": 1.3478,
+    "close_reason": "TP",
+    "mfe_r": 2.48,
+    "mae_r": 0.94,
+    "bars_to_resolution": 12,
+    "time_to_resolution_min": 60
   },
   {
     "ticket": -173678847,
@@ -19147,9 +19177,9 @@
       }
     ],
     "sent_at": "2026-06-02T22:00:23",
-    "closed_at": null,
-    "profit": null,
-    "outcome": null,
+    "closed_at": "2026-06-02T19:05:00",
+    "profit": 0.00039999999999995595,
+    "outcome": "WIN",
     "adx_value": 11.5,
     "atr_value": 0.0002,
     "spread_pips": null,
@@ -19167,6 +19197,12 @@
     "bt_adjustment": 0.0,
     "live_adjustment": 0.0,
     "news_boost": 0.0,
-    "session_boost": 0.0
+    "session_boost": 0.0,
+    "close_price": 1.1633,
+    "close_reason": "TP",
+    "mfe_r": 5.35,
+    "mae_r": 0.0,
+    "bars_to_resolution": 1,
+    "time_to_resolution_min": 5
   }
 ]
