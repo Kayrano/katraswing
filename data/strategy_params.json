@@ -30,9 +30,9 @@
     "tp_mult": 1.0,
     "conf_floor": 0.8,
     "enabled": true,
-    "trades_seen": 3,
+    "trades_seen": 5,
     "wins": 2,
-    "win_rate": 0.667,
+    "win_rate": 0.4,
     "last_adapted": "2026-05-11T08:00:19.136886+00:00",
     "adapt_count": 12,
     "paper_only": false,
@@ -268,11 +268,11 @@
     "enabled": true,
     "paper_only": false,
     "disabled_directions": [],
-    "trades_seen": 22,
-    "wins": 15,
+    "trades_seen": 25,
+    "wins": 18,
     "win_rate": 0.65,
-    "last_adapted": "2026-06-03T01:00:11.354241+00:00",
-    "adapt_count": 6
+    "last_adapted": "2026-06-04T22:00:29.381662+00:00",
+    "adapt_count": 8
   },
   "ORDER_BLOCK_5M": {
     "sl_mult": 1.0,

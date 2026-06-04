@@ -1,43 +1,43 @@
 {
   "Ascending Triangle": {
     "wins": 14,
-    "trades": 52,
-    "win_rate": 0.2692
+    "trades": 53,
+    "win_rate": 0.2642
   },
   "Ascending Triangle:LONG": {
     "wins": 14,
-    "trades": 52,
-    "win_rate": 0.2692
+    "trades": 53,
+    "win_rate": 0.2642
   },
   "Triple Bottom": {
-    "wins": 31,
-    "trades": 87,
-    "win_rate": 0.3563
+    "wins": 33,
+    "trades": 90,
+    "win_rate": 0.3667
   },
   "Triple Bottom:LONG": {
-    "wins": 31,
-    "trades": 87,
-    "win_rate": 0.3563
+    "wins": 33,
+    "trades": 90,
+    "win_rate": 0.3667
   },
   "Double Bottom": {
-    "wins": 30,
-    "trades": 86,
-    "win_rate": 0.3488
+    "wins": 32,
+    "trades": 89,
+    "win_rate": 0.3596
   },
   "Double Bottom:LONG": {
-    "wins": 30,
-    "trades": 86,
-    "win_rate": 0.3488
+    "wins": 32,
+    "trades": 89,
+    "win_rate": 0.3596
   },
   "Descending Triangle": {
     "wins": 19,
-    "trades": 61,
-    "win_rate": 0.3115
+    "trades": 62,
+    "win_rate": 0.3065
   },
   "Descending Triangle:SHORT": {
     "wins": 19,
-    "trades": 61,
-    "win_rate": 0.3115
+    "trades": 62,
+    "win_rate": 0.3065
   },
   "Rectangle": {
     "wins": 1,
@@ -50,14 +50,14 @@
     "win_rate": 0.3333
   },
   "Triple Top": {
-    "wins": 33,
-    "trades": 86,
-    "win_rate": 0.3837
+    "wins": 34,
+    "trades": 88,
+    "win_rate": 0.3864
   },
   "Triple Top:SHORT": {
-    "wins": 33,
-    "trades": 86,
-    "win_rate": 0.3837
+    "wins": 34,
+    "trades": 88,
+    "win_rate": 0.3864
   },
   "Bear Flag": {
     "wins": 1,
@@ -70,14 +70,14 @@
     "win_rate": 1.0
   },
   "Double Top": {
-    "wins": 31,
-    "trades": 78,
-    "win_rate": 0.3974
+    "wins": 32,
+    "trades": 80,
+    "win_rate": 0.4
   },
   "Double Top:SHORT": {
-    "wins": 31,
-    "trades": 78,
-    "win_rate": 0.3974
+    "wins": 32,
+    "trades": 80,
+    "win_rate": 0.4
   },
   "Head & Shoulders": {
     "wins": 3,
@@ -115,24 +115,24 @@
     "win_rate": 0.4211
   },
   "Fair Value Gap (Bear)": {
-    "wins": 13,
-    "trades": 33,
-    "win_rate": 0.3939
+    "wins": 14,
+    "trades": 35,
+    "win_rate": 0.4
   },
   "Fair Value Gap (Bear):SHORT": {
-    "wins": 13,
-    "trades": 33,
-    "win_rate": 0.3939
+    "wins": 14,
+    "trades": 35,
+    "win_rate": 0.4
   },
   "Rising Wedge": {
-    "wins": 5,
-    "trades": 17,
-    "win_rate": 0.2941
+    "wins": 6,
+    "trades": 18,
+    "win_rate": 0.3333
   },
   "Rising Wedge:SHORT": {
-    "wins": 5,
-    "trades": 17,
-    "win_rate": 0.2941
+    "wins": 6,
+    "trades": 18,
+    "win_rate": 0.3333
   },
   "Bearish Engulfing": {
     "wins": 3,
@@ -146,23 +146,23 @@
   },
   "Fair Value Gap (Bull)": {
     "wins": 11,
-    "trades": 46,
-    "win_rate": 0.2391
+    "trades": 47,
+    "win_rate": 0.234
   },
   "Fair Value Gap (Bull):LONG": {
     "wins": 11,
-    "trades": 46,
-    "win_rate": 0.2391
+    "trades": 47,
+    "win_rate": 0.234
   },
   "Inv. Head & Shoulders": {
     "wins": 8,
-    "trades": 20,
-    "win_rate": 0.4
+    "trades": 21,
+    "win_rate": 0.381
   },
   "Inv. Head & Shoulders:LONG": {
     "wins": 8,
-    "trades": 20,
-    "win_rate": 0.4
+    "trades": 21,
+    "win_rate": 0.381
   },
   "Bearish Harami": {
     "wins": 5,
@@ -258,5 +258,15 @@
     "wins": 5,
     "trades": 5,
     "win_rate": 1.0
+  },
+  "Inside Bar": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
+  },
+  "Inside Bar:SHORT": {
+    "wins": 0,
+    "trades": 1,
+    "win_rate": 0.0
   }
 }
